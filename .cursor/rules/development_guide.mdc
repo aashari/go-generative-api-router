@@ -1,0 +1,92 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Generative API Router Development Guide
+
+This guide provides instructions and tips for developing, testing, and maintaining the Generative API Router project.
+
+## Project Structure
+
+- **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server. ([cmd/server/main.go](mdc:cmd/server/main.go))
+- **`internal/app/app.go`**: Centralizes application configuration and dependencies. ([internal/app/app.go](mdc:internal/app/app.go))
+- **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication. ([internal/proxy/proxy.go](mdc:internal/proxy/proxy.go))
+- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs. ([internal/proxy/client.go](mdc:internal/proxy/client.go))
+- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models. ([internal/selector/selector.go](mdc:internal/selector/selector.go))
+- **`internal/validator/validator.go`**: Handles validation of incoming requests. ([internal/validator/validator.go](mdc:internal/validator/validator.go))
+- **`internal/config/config.go`**: Loads and manages configuration from JSON files. ([internal/config/config.go](mdc:internal/config/config.go))
+- **`credentials.json`**: Stores API keys for different vendors (ensure this is gitignored). ([credentials.json.example](mdc:credentials.json.example))
+- **`models.json`**: Defines the available models and their vendors. ([models.json](mdc:models.json))
+- **`Dockerfile`**: For building the Docker image. ([Dockerfile](mdc:Dockerfile))
+- **`docker-compose.yml`**: For running the service with Docker Compose. ([docker-compose.yml](mdc:docker-compose.yml))
+
+## Development
+
+1.  **Configuration**:
+    *   Ensure `credentials.json` is populated with valid API keys. Use `credentials.json.example` as a template.
+    *   Modify `models.json` to define your desired vendor/model pool.
+2.  **Running Locally**:
+    *   Use `go run cmd/server/main.go` to start the server.
+    *   The server typically runs on port `:8082`.
+3.  **Building**:
+    *   Use `go build -o <output_name> ./cmd/server` to create a binary.
+
+## Testing
+
+**Key Principle**: This service acts as a *transparent proxy*. Except for the intentional `model` field override in requests, all other request and response data (headers, body, status code) from the vendor **must** be passed *exactly* to the client, and vice-versa. Changes must not interfere with this.
+
+1.  **Prerequisites for Testing**:
+    *   **Kill Existing Processes**: Before starting a new server instance for testing, ensure no other instance is running on the same port (typically `:8082`).
+        *   Use `sudo lsof -i :8082 | cat` to check for processes.
+        *   Use `sudo kill -9 <PID>` to terminate any conflicting process.
+        *   If a Docker container is using the port, use `docker ps | grep 8082 | cat` to find it and `docker stop <container_id_or_name> | cat` to stop it.
+    *   **Wait for Server Initialization**: After starting the server (e.g., `./your_binary &`), *wait a few seconds* before sending requests (e.g., `sleep 2`). This is crucial to avoid "Connection refused" errors because the server might not be fully ready to accept connections immediately.
+2.  **Health Check**:
+    ```bash
+    curl -X GET http://localhost:8082/health | cat
+    ```
+3.  **Basic Chat Completion**:
+    ```bash
+    curl -X POST http://localhost:8082/chat/completions -H "Content-Type: application/json" -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}' | cat
+    ```
+    *   Verify the response comes from one of the configured vendors/models.
+    *   Check that headers and status code are proxied correctly.
+4.  **Tool Calling Test**:
+    ```bash
+    curl -X POST http://localhost:8082/chat/completions -H "Content-Type: application/json" -d '{"model":"any-model","messages":[{"role":"user","content":"What is the weather in Boston?"}],"tools":[{"type":"function","function":{"name":"get_current_weather","description":"Get current weather","parameters":{"type":"object","properties":{"location":{"type":"string","description":"City name"}},"required":["location"]}}}],"tool_choice":"auto"}' | cat
+    ```
+    *   Verify the response includes a valid `tool_calls` section.
+5.  **Error Handling Tests**:
+    *   **Invalid Request (Missing Messages)**:
+        ```bash
+        curl -X POST http://localhost:8082/chat/completions -H "Content-Type: application/json" -d '{"model":"any-model"}' | cat
+        ```
+        *   Expected: Error message about missing `messages` field, HTTP 400.
+    *   **Invalid Method**:
+        ```bash
+        curl -X GET http://localhost:8082/chat/completions | cat
+        ```
+        *   Expected: "Method not allowed" error, HTTP 405.
+    *   **Unknown Vendor (Router Internal Error)**:
+        *   To test this, temporarily modify `models.json` to include a model from a vendor not configured in `internal/proxy/client.go`'s `BaseURLs` map.
+        *   Send a request. The router should pick this invalid configuration eventually.
+        *   Expected: "Internal configuration error: Unknown vendor", HTTP 400 (or as configured in `proxy.go`).
+    *   **Vendor API Error (e.g., Invalid API Key)**:
+        *   Temporarily use an invalid API key in `credentials.json` for one of the vendors.
+        *   Send requests until that vendor is selected.
+        *   Expected: The exact error response (body, headers, status code) from the vendor API should be proxied back to the client (e.g., a 401 Unauthorized).
+
+## Maintenance
+
+*   **Dependencies**: Run `go mod tidy` periodically to clean up dependencies.
+*   **Configuration Updates**: API keys (`credentials.json`) and model lists (`models.json`) can be updated without code changes. Restart the server for changes to take effect.
+*   **Logging**: Review logs for errors or unexpected behavior. The server logs selected vendors/models for each request.
+
+## Common Pitfalls & Lessons Learned
+
+*   **Port Conflicts**: Always ensure port `:8082` (or the configured port) is free before starting the server. Use `sudo lsof -i :<port> | cat` and `sudo kill -9 <PID>`.
+*   **Server Startup Time**: *Always* add a short delay (e.g., `sleep 2`) after starting the server in the background before sending test `curl` requests. This prevents premature "Connection refused" errors.
+*   **Curl Command Formatting**: Ensure JSON payloads in `curl -d` arguments are properly quoted and escaped, especially when using multi-line JSON. Single-line JSON with escaped quotes is often safer in scripts.
+*   **Background Processes**: When starting the server with `&`, ensure it's managed correctly (e.g., `pkill -f <binary_name>` to stop it).
+*   **Error Message Reliance**: Avoid relying on exact string matching for error messages (e.g., `err.Error()[:7] == "unknown"`). Use typed errors (`errors.Is()`) for more robust error handling, as implemented for `ErrUnknownVendor`.
