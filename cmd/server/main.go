@@ -1,12 +1,13 @@
 package main
 
 import (
-    "log"
-    "math/rand"
-    "net/http"
-    "time"
-    "github.com/aashari/generative-api-router/internal/config"
-    "github.com/aashari/generative-api-router/internal/proxy"
+	"log"
+	"math/rand"
+	"net/http"
+	"time"
+
+	"github.com/aashari/generative-api-router/internal/config"
+	"github.com/aashari/generative-api-router/internal/proxy"
 )
 
 func main() {
@@ -38,7 +39,16 @@ func main() {
     log.Printf("Loaded %d credentials and %d vendor-model pairs", len(creds), len(models))
 
     mux := http.NewServeMux()
+    
+    // Add a simple health check endpoint
+    mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        log.Println("Health check endpoint hit")
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte("OK"))
+    })
+    
     mux.HandleFunc("/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+        log.Printf("Received request to /chat/completions from %s", r.RemoteAddr)
         proxy.ProxyRequest(w, r, creds, models)
     })
 

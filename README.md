@@ -8,6 +8,7 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple vendors (
 - Randomly selects a vendor and model from a predefined list
 - Proxies requests to the selected vendor's API
 - Supports both OpenAI and Google's Gemini API (using OpenAI compatibility mode)
+- Supports tool calling (function calling) for integrating with external APIs
 
 ## Setup
 
@@ -46,16 +47,20 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple vendors (
    ```json
    [
      {
-       "vendor": "openai",
-       "model": "gpt-4o"
-     },
-     {
        "vendor": "gemini",
        "model": "gemini-1.5-flash"
      },
      {
        "vendor": "gemini",
        "model": "gemini-1.5-pro"
+     },
+     {
+       "vendor": "openai",
+       "model": "gpt-4o"
+     },
+     {
+       "vendor": "openai",
+       "model": "gpt-4o-mini"
      }
    ]
    ```
@@ -73,11 +78,43 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple vendors (
 
 ## Testing the Service
 
+### Basic Chat Completion
+
 Send a request to the `/chat/completions` endpoint:
 ```bash
-curl -X POST http://localhost:8080/chat/completions \
+curl -X POST http://localhost:8082/chat/completions \
      -H "Content-Type: application/json" \
      -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+### Tool Calling
+
+Test tool calling with a function definition:
+```bash
+curl -X POST http://localhost:8082/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{
+       "model": "any-model",
+       "messages": [{"role": "user", "content": "What is the weather in Boston?"}],
+       "tools": [{
+         "type": "function",
+         "function": {
+           "name": "get_current_weather",
+           "description": "Get the current weather in a given location",
+           "parameters": {
+             "type": "object",
+             "properties": {
+               "location": {
+                 "type": "string",
+                 "description": "The city, e.g., Boston"
+               }
+             },
+             "required": ["location"]
+           }
+         }
+       }],
+       "tool_choice": "auto"
+     }'
 ```
 
 **Note**: The `model` field in your request will be ignored and replaced with a randomly selected model from `models.json`. You can provide any value for this field, but it will not affect the processing.
@@ -91,10 +128,17 @@ curl -X POST http://localhost:8080/chat/completions \
    - Forwards the request to the appropriate vendor API
    - Streams the response back to the client
 
-2. This approach ensures:
+2. For tool calling:
+   - The service validates and forwards `tools` and `tool_choice` parameters
+   - The selected model may respond with `tool_calls` for function execution
+   - The service streams these responses back to the client for processing
+   - The client is responsible for executing the functions and continuing the conversation
+
+3. This approach ensures:
    - Randomized distribution across different AI vendors and models
    - Clients don't need to be aware of vendor-specific model names
    - OpenAI API compatibility is maintained for client applications
+   - Tool calling is supported across vendors that implement it
 
 ## Security Notes
 
@@ -107,12 +151,15 @@ curl -X POST http://localhost:8080/chat/completions \
 - The client's requested model is completely ignored and replaced with a randomly selected one
 - Only the `/chat/completions` endpoint is supported
 - Each vendor in `models.json` must have at least one matching credential in `credentials.json`
+- Tool execution is the client's responsibility; the router only forwards `tool_calls`
 
 ## Troubleshooting
 
 - If you encounter 401 errors, check that your API keys are valid.
 - For 400 errors, check the request format and ensure all required fields are present.
 - Response format differences between vendors may occur, especially for error cases.
+- If tool calls aren't working, ensure the model supports tool calling and the prompt is clear enough to trigger a function call.
+- For streaming issues with tool calls, check that your client can handle streamed `tool_calls` in the response.
 
 ## Future Enhancements
 

@@ -9,5 +9,5 @@ WORKDIR /app
 COPY --from=builder /app/generative-api-router .
 COPY credentials.json .
 COPY models.json .
-EXPOSE 8080
+EXPOSE 8082
 CMD ["./generative-api-router"] 

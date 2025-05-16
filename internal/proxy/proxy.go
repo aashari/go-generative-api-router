@@ -82,6 +82,41 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
         return
     }
 
+    // Validate tools if present
+    if tools, ok := requestData["tools"]; ok {
+        toolsArr, ok := tools.([]interface{})
+        if !ok {
+            http.Error(w, "Invalid 'tools' format: must be an array", http.StatusBadRequest)
+            return
+        }
+        for _, tool := range toolsArr {
+            toolMap, ok := tool.(map[string]interface{})
+            if !ok || toolMap["type"] != "function" || toolMap["function"] == nil {
+                http.Error(w, "Invalid 'tools' format: each tool must have type 'function' and a 'function' object", http.StatusBadRequest)
+                return
+            }
+        }
+    }
+
+    // Validate tool_choice if present
+    if toolChoice, ok := requestData["tool_choice"]; ok {
+        switch v := toolChoice.(type) {
+        case string:
+            if v != "none" && v != "auto" && v != "required" {
+                http.Error(w, "Invalid 'tool_choice': must be 'none', 'auto', 'required', or a function object", http.StatusBadRequest)
+                return
+            }
+        case map[string]interface{}:
+            if v["type"] != "function" || v["function"] == nil {
+                http.Error(w, "Invalid 'tool_choice': function object must have type 'function' and a 'function' field", http.StatusBadRequest)
+                return
+            }
+        default:
+            http.Error(w, "Invalid 'tool_choice': must be a string or function object", http.StatusBadRequest)
+            return
+        }
+    }
+
     // Replace the model with our selected one
     requestData["model"] = model
 
