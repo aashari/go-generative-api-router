@@ -2,26 +2,39 @@ package proxy
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/aashari/generative-api-router/internal/selector"
+)
+
+// Error types for common API client errors
+var (
+	ErrUnknownVendor = errors.New("unknown vendor")
 )
 
 // APIClient handles communication with vendor APIs
 type APIClient struct {
 	BaseURLs map[string]string
+	httpClient *http.Client
 }
 
 // NewAPIClient creates a new API client with configured base URLs
 func NewAPIClient() *APIClient {
+	httpClient := &http.Client{
+		Timeout: 60 * time.Second,
+	}
+
 	return &APIClient{
 		BaseURLs: map[string]string{
 			"openai": "https://api.openai.com/v1",
 			"gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
 		},
+		httpClient: httpClient,
 	}
 }
 
@@ -29,7 +42,7 @@ func NewAPIClient() *APIClient {
 func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selection *selector.VendorSelection, modifiedBody []byte) error {
 	baseURL, ok := c.BaseURLs[selection.Vendor]
 	if !ok {
-		return fmt.Errorf("unknown vendor: %s", selection.Vendor)
+		return fmt.Errorf("%w: %s", ErrUnknownVendor, selection.Vendor)
 	}
 
 	// All vendors use the same OpenAI-compatible endpoint
@@ -52,8 +65,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	req.Header.Set("Authorization", "Bearer "+selection.Credential.Value)
 
 	// Send the request to the vendor
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request to vendor: %v", err)
 	}

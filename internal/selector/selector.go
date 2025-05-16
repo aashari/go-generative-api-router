@@ -16,11 +16,17 @@ type VendorSelection struct {
 }
 
 // RandomSelector is a selector that randomly chooses vendors and models
-type RandomSelector struct {}
+type RandomSelector struct {
+	rng *rand.Rand
+}
 
 // NewRandomSelector creates a new random selector
 func NewRandomSelector() *RandomSelector {
-	return &RandomSelector{}
+	// In Go 1.20+, math/rand is automatically seeded
+	// For a shared selector, we could pass a custom rng for more control and testing
+	return &RandomSelector{
+		rng: rand.New(rand.NewSource(rand.Int63())), // This ensures each selector has its own randomness
+	}
 }
 
 // Select randomly selects a vendor, model and its credential
@@ -29,7 +35,7 @@ func (s *RandomSelector) Select(creds []config.Credential, models []config.Vendo
 		return nil, fmt.Errorf("no credentials available")
 	}
 	
-	selectedCred := creds[rand.Intn(len(creds))]
+	selectedCred := creds[s.rng.Intn(len(creds))]
 	vendor := selectedCred.Platform
 	
 	log.Printf("Randomly selected credential for vendor: %s", vendor)
@@ -47,7 +53,7 @@ func (s *RandomSelector) Select(creds []config.Credential, models []config.Vendo
 	}
 
 	// Randomly select a model for the vendor
-	selectedModel := vendorModels[rand.Intn(len(vendorModels))]
+	selectedModel := vendorModels[s.rng.Intn(len(vendorModels))]
 	model := selectedModel.Model
 	
 	log.Printf("Randomly selected model: %s for vendor: %s", model, vendor)

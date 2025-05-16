@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"errors"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/aashari/generative-api-router/internal/config"
@@ -10,15 +12,14 @@ import (
 )
 
 // ProxyRequest handles the incoming request, routes it to the appropriate vendor, and forwards the response
-func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credential, models []config.VendorModel) {
+func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credential, models []config.VendorModel, apiClient *APIClient, modelSelector selector.Selector) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Create a selector that determines which vendor and model to use
-	sel := selector.NewRandomSelector()
-	selection, err := sel.Select(creds, models)
+	// Use the provided selector to determine which vendor and model to use
+	selection, err := modelSelector.Select(creds, models)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -39,15 +40,18 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 		return
 	}
 
-	// Create and use API client
-	client := NewAPIClient()
-	err = client.SendRequest(w, r, selection, modifiedBody)
+	// Use the provided API client
+	err = apiClient.SendRequest(w, r, selection, modifiedBody)
 	if err != nil {
-		statusCode := http.StatusInternalServerError
-		if err.Error()[:7] == "unknown" {
-			statusCode = http.StatusBadRequest
+		// Check for specific error types
+		if errors.Is(err, ErrUnknownVendor) {
+			log.Printf("Error: %v, for vendor: %s", err, selection.Vendor)
+			http.Error(w, "Internal configuration error: Unknown vendor", http.StatusBadRequest)
+			return
 		}
-		http.Error(w, err.Error(), statusCode)
+		
+		// For other network errors
+		http.Error(w, "Failed to communicate with upstream service: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 } 
