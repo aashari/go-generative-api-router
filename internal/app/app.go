@@ -1,9 +1,11 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/aashari/generative-api-router/internal/config"
 	"github.com/aashari/generative-api-router/internal/proxy"
@@ -54,6 +56,28 @@ func NewApp() (*App, error) {
 	}, nil
 }
 
+// Helper function to filter credentials by vendor
+func filterCredentialsByVendor(creds []config.Credential, vendor string) []config.Credential {
+	var result []config.Credential
+	for _, c := range creds {
+		if c.Platform == vendor {
+			result = append(result, c)
+		}
+	}
+	return result
+}
+
+// Helper function to filter models by vendor
+func filterModelsByVendor(models []config.VendorModel, vendor string) []config.VendorModel {
+	var result []config.VendorModel
+	for _, m := range models {
+		if m.Vendor == vendor {
+			result = append(result, m)
+		}
+	}
+	return result
+}
+
 // HealthHandler handles the health check endpoint
 func (a *App) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Health check endpoint hit")
@@ -64,5 +88,75 @@ func (a *App) HealthHandler(w http.ResponseWriter, r *http.Request) {
 // ChatCompletionsHandler handles the chat completions endpoint
 func (a *App) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received request to /chat/completions from %s", r.RemoteAddr)
-	proxy.ProxyRequest(w, r, a.Credentials, a.VendorModels, a.APIClient, a.ModelSelector)
+	
+	// Optional vendor filter via query parameter
+	vendorFilter := r.URL.Query().Get("vendor")
+	
+	// Filter credentials and models if vendor is specified
+	creds := a.Credentials
+	models := a.VendorModels
+	if vendorFilter != "" {
+		log.Printf("Filtering by vendor: %s", vendorFilter)
+		creds = filterCredentialsByVendor(creds, vendorFilter)
+		models = filterModelsByVendor(models, vendorFilter)
+		
+		// Check if we have credentials and models for this vendor
+		if len(creds) == 0 {
+			http.Error(w, fmt.Sprintf("No credentials available for vendor: %s", vendorFilter), http.StatusBadRequest)
+			return
+		}
+		if len(models) == 0 {
+			http.Error(w, fmt.Sprintf("No models available for vendor: %s", vendorFilter), http.StatusBadRequest)
+			return
+		}
+	}
+	
+	proxy.ProxyRequest(w, r, creds, models, a.APIClient, a.ModelSelector)
+}
+
+// ModelsHandler handles the models endpoint
+func (a *App) ModelsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	type Model struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		Created int64  `json:"created"`
+		OwnedBy string `json:"owned_by"`
+	}
+
+	var response struct {
+		Object string  `json:"object"`
+		Data   []Model `json:"data"`
+	}
+
+	// Optional vendor filter via query parameter
+	vendorFilter := r.URL.Query().Get("vendor")
+	models := a.VendorModels
+	if vendorFilter != "" {
+		log.Printf("Filtering models by vendor: %s", vendorFilter)
+		models = filterModelsByVendor(models, vendorFilter)
+	}
+
+	response.Object = "list"
+	timestamp := time.Now().Unix() // or a fixed timestamp if preferred
+
+	for _, vm := range models {
+		model := Model{
+			ID:      vm.Model,
+			Object:  "model",
+			Created: timestamp,
+			OwnedBy: vm.Vendor, // either "openai" or "gemini"
+		}
+		response.Data = append(response.Data, model)
+	}
+
+	jsonResp, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, "Failed to generate model list", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonResp)
 } 
