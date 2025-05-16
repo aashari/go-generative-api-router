@@ -1,0 +1,48 @@
+# Binaries and executables
+/generative-api-router
+/server
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment and config files
+.env
+.env.*
+!.env.example
+
+# Credentials (to avoid accidental commit of API keys)
+credentials.json
+
+# Logs
+*.log
+
+# Build related
+bin/
+build/
+dist/
+tmp/
+
+# OS specific
+.DS_Store
+Thumbs.db 
