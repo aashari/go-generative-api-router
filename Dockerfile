@@ -1,6 +1,14 @@
 FROM golang:1.24-alpine AS builder
 WORKDIR /app
 COPY . .
+
+# Install swag for Swagger generation
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+
+# Generate Swagger documentation
+RUN $(go env GOPATH)/bin/swag init -g cmd/server/main.go
+
+# Build the application
 RUN GOOS=linux go build -o generative-api-router ./cmd/server
 
 FROM alpine:latest
