@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -45,6 +46,16 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		return fmt.Errorf("%w: %s", ErrUnknownVendor, selection.Vendor)
 	}
 
+	// Log the vendor and model being used
+	isStreaming := false
+	var requestData map[string]interface{}
+	if err := json.Unmarshal(modifiedBody, &requestData); err == nil {
+		if stream, ok := requestData["stream"].(bool); ok && stream {
+			isStreaming = true
+			log.Printf("Initiating streaming from vendor %s, model %s", selection.Vendor, selection.Model)
+		}
+	}
+
 	// All vendors use the same OpenAI-compatible endpoint
 	fullURL := baseURL + "/chat/completions"
 
@@ -71,18 +82,25 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	}
 	defer resp.Body.Close()
 
-	// Copy response status code and headers
-	w.WriteHeader(resp.StatusCode)
+	// Copy response headers before setting status code
 	for k, vs := range resp.Header {
 		for _, v := range vs {
 			w.Header().Add(k, v)
 		}
 	}
 
+	// Set Transfer-Encoding explicitly if streaming
+	if isStreaming || resp.Header.Get("Transfer-Encoding") == "chunked" {
+		w.Header().Set("Transfer-Encoding", "chunked")
+	}
+
+	// Now write status code after headers
+	w.WriteHeader(resp.StatusCode)
+
 	// Stream the response directly to the client
 	_, err = io.Copy(w, resp.Body)
 	if err != nil {
-		log.Printf("Error copying response: %v", err)
+		log.Printf("Streaming error: %v", err)
 	}
 
 	return nil

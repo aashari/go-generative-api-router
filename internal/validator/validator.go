@@ -26,6 +26,11 @@ func ValidateAndModifyRequest(body []byte, model string) ([]byte, error) {
 	if err := validateToolChoice(requestData); err != nil {
 		return nil, err
 	}
+	
+	// Validate stream if present
+	if err := validateStream(requestData); err != nil {
+		return nil, err
+	}
 
 	// Replace the model with our selected one
 	requestData["model"] = model
@@ -91,5 +96,16 @@ func validateToolChoice(requestData map[string]interface{}) error {
 		return fmt.Errorf("invalid 'tool_choice': must be a string or function object")
 	}
 	
+	return nil
+}
+
+// validateStream ensures the 'stream' field, if present, is boolean
+func validateStream(requestData map[string]interface{}) error {
+	stream, exists := requestData["stream"]
+	if exists {
+		if _, ok := stream.(bool); !ok {
+			return fmt.Errorf("invalid 'stream' field: must be boolean")
+		}
+	}
 	return nil
 } 
