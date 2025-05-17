@@ -1,8 +1,7 @@
 FROM golang:1.24-alpine AS builder
 WORKDIR /app
 COPY . .
-RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux go build -o generative-api-router ./cmd/server
+RUN GOOS=linux go build -o generative-api-router ./cmd/server
 
 FROM alpine:latest
 WORKDIR /app
