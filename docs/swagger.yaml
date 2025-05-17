@@ -168,7 +168,22 @@ info:
   title: Generative API Router
   version: "1.0"
 paths:
-  /chat/completions:
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: Returns "OK" if the service is running properly
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Health check endpoint
+      tags:
+      - health
+  /v1/chat/completions:
     post:
       consumes:
       - application/json
@@ -208,22 +223,7 @@ paths:
       summary: Chat completions API
       tags:
       - chat
-  /health:
-    get:
-      consumes:
-      - application/json
-      description: Returns "OK" if the service is running properly
-      produces:
-      - text/plain
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: string
-      summary: Health check endpoint
-      tags:
-      - health
-  /models:
+  /v1/models:
     get:
       consumes:
       - application/json

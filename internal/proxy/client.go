@@ -415,6 +415,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	}
 
 	// All vendors use the same OpenAI-compatible endpoint
+	// Do not change this
 	fullURL := baseURL + "/chat/completions"
 
 	// Create the proxied request

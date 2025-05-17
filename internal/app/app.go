@@ -107,9 +107,9 @@ func (a *App) HealthHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure      400     {object}  ErrorResponse          "Bad request error"
 // @Failure      401     {object}  ErrorResponse          "Unauthorized error"
 // @Failure      500     {object}  ErrorResponse          "Internal server error"
-// @Router       /chat/completions [post]
+// @Router       /v1/chat/completions [post]
 func (a *App) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request to /chat/completions from %s", r.RemoteAddr)
+	log.Printf("Received request to /v1/chat/completions from %s", r.RemoteAddr)
 
 	// Optional vendor filter via query parameter
 	vendorFilter := r.URL.Query().Get("vendor")
@@ -144,7 +144,7 @@ func (a *App) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Param        vendor  query     string         false  "Optional vendor to filter models (e.g., 'openai', 'gemini')"
 // @Success      200     {object}  ModelsResponse "List of available models"
-// @Router       /models [get]
+// @Router       /v1/models [get]
 func (a *App) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -197,8 +197,8 @@ func (a *App) SetupRoutes() http.Handler {
 
 	// Register API handlers
 	mux.HandleFunc("/health", a.HealthHandler)
-	mux.HandleFunc("/chat/completions", a.ChatCompletionsHandler)
-	mux.HandleFunc("/models", a.ModelsHandler)
+	mux.HandleFunc("/v1/chat/completions", a.ChatCompletionsHandler)
+	mux.HandleFunc("/v1/models", a.ModelsHandler)
 	
 	// Serve Swagger UI with proper configuration
 	mux.Handle("/swagger/", httpSwagger.Handler(

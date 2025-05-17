@@ -104,8 +104,8 @@ GET /health
 ### Models Listing
 
 ```http
-GET /models
-GET /models?vendor=openai
+GET /v1/models
+GET /v1/models?vendor=openai
 ```
 
 **Example Response**:
@@ -126,13 +126,13 @@ GET /models?vendor=openai
 ### Chat Completions
 
 ```http
-POST /chat/completions
-POST /chat/completions?vendor=gemini
+POST /v1/chat/completions
+POST /v1/chat/completions?vendor=gemini
 ```
 
 **Basic Example**:
 ```bash
-curl -X POST http://localhost:8082/chat/completions \
+curl -X POST http://localhost:8082/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "any-model",
@@ -145,7 +145,7 @@ curl -X POST http://localhost:8082/chat/completions \
 Enable streaming responses by adding `"stream": true` to your request:
 
 ```bash
-curl -X POST http://localhost:8082/chat/completions \
+curl -X POST http://localhost:8082/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "any-model",
@@ -159,7 +159,7 @@ curl -X POST http://localhost:8082/chat/completions \
 Leverage function calling for more advanced use cases:
 
 ```bash
-curl -X POST http://localhost:8082/chat/completions \
+curl -X POST http://localhost:8082/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "any-model",
@@ -214,10 +214,10 @@ Test basic functionality:
 curl -X GET http://localhost:8082/health
 
 # List models
-curl -X GET http://localhost:8082/models
+curl -X GET http://localhost:8082/v1/models
 
 # Basic completion
-curl -X POST http://localhost:8082/chat/completions \
+curl -X POST http://localhost:8082/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
