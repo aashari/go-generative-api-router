@@ -12,18 +12,18 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendo
 </div>
 -->
 
-## 🌟 Features
+## Features
 
-- **🔄 Multi-Vendor Support**: Routes requests to OpenAI or Gemini using OpenAI API compatibility
-- **🎲 Random Selection**: Automatically distributes requests across configured vendors and models
-- **🔎 Vendor Filtering**: Supports explicit vendor selection via `?vendor=` query parameter
-- **🔍 Transparent Proxy**: Maintains all original request/response data (except for model selection)
-- **⚡ Streaming Support**: Properly handles chunked streaming responses for real-time applications
-- **🛠️ Tool Calling**: Supports function calling/tools for AI agents with proper validation
-- **📦 Modular Design**: Clean separation of concerns with selector, validator, and client components
-- **⚙️ Configuration Driven**: Easily configure available models and credentials via JSON files
+- **Multi-Vendor Support**: Routes requests to OpenAI or Gemini using OpenAI API compatibility
+- **Random Selection**: Automatically distributes requests across configured vendors and models
+- **Vendor Filtering**: Supports explicit vendor selection via `?vendor=` query parameter
+- **Transparent Proxy**: Maintains all original request/response data (except for model selection)
+- **Streaming Support**: Properly handles chunked streaming responses for real-time applications
+- **Tool Calling**: Supports function calling/tools for AI agents with proper validation
+- **Modular Design**: Clean separation of concerns with selector, validator, and client components
+- **Configuration Driven**: Easily configure available models and credentials via JSON files
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -83,7 +83,7 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendo
    
    The service will be available at http://localhost:8082
 
-## 🐳 Docker Deployment
+## Docker Deployment
 
 Build and run using Docker Compose:
 
@@ -91,7 +91,7 @@ Build and run using Docker Compose:
 docker-compose up --build
 ```
 
-## 🔌 API Reference
+## API Reference
 
 ### Health Check
 
@@ -182,7 +182,7 @@ curl -X POST http://localhost:8082/chat/completions \
   }'
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 The project follows a modular design with clear separation of concerns:
 
@@ -198,7 +198,7 @@ generative-api-router/
 └── models.json          # Vendor-model configuration
 ```
 
-## 🛠️ Development
+## Development
 
 ### Building
 
@@ -222,14 +222,14 @@ curl -X POST http://localhost:8082/chat/completions \
   -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-## 🔒 Security Considerations
+## Security Considerations
 
 - The current implementation stores API keys in plain text in `credentials.json`. 
 - For production environments, consider using environment variables or a secret management solution.
 - The `credentials.json` file is included in `.gitignore` to prevent accidentally committing API keys.
 - Consider implementing rate limiting for production deployments.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Here's how you can contribute:
 
@@ -239,11 +239,11 @@ Contributions are welcome! Here's how you can contribute:
 4. Push to the branch: `git push origin feature/my-feature`
 5. Submit a pull request
 
-## 📜 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - This project was inspired by the need for a unified interface to multiple LLM providers.
 - Special thanks to the Go community for the excellent libraries and tools.
