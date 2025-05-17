@@ -49,3 +49,7 @@ tmp/
 Thumbs.db 
 repomix-output.xml
 deploy.sh
+
+# Test data and responses
+/test_responses/
+*.json
