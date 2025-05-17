@@ -1,14 +1,14 @@
 # Generative API Router
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/aashari/generative-api-router)](https://goreportcard.com/report/github.com/aashari/generative-api-router)
+[![Go Report Card](https://goreportcard.com/badge/github.com/aashari/go-generative-api-router)](https://goreportcard.com/report/github.com/aashari/go-generative-api-router)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/aashari/generative-api-router)](https://github.com/aashari/generative-api-router)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/aashari/go-generative-api-router)](https://github.com/aashari/go-generative-api-router)
 
 A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendors (OpenAI, Gemini) using configurable selection strategies. This router simplifies integration with AI services by providing a unified interface while handling the complexity of multi-vendor management.
 
 <!-- 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/aashari/generative-api-router/main/docs/assets/architecture-diagram.png" alt="Architecture Diagram" width="800">
+  <img src="https://raw.githubusercontent.com/aashari/go-generative-api-router/main/docs/assets/architecture-diagram.png" alt="Architecture Diagram" width="800">
 </div>
 -->
 
@@ -34,8 +34,8 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendo
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/aashari/generative-api-router.git
-   cd generative-api-router
+   git clone https://github.com/aashari/go-generative-api-router.git
+   cd go-generative-api-router
    ```
 
 2. **Configure Credentials**:
@@ -187,7 +187,7 @@ curl -X POST http://localhost:8082/chat/completions \
 The project follows a modular design with clear separation of concerns:
 
 ```
-generative-api-router/
+go-generative-api-router/
 ├── cmd/server/          # Application entry point
 ├── internal/
 │   ├── app/             # Application core and HTTP handlers
@@ -203,7 +203,7 @@ generative-api-router/
 ### Building
 
 ```bash
-go build -o generative-api-router ./cmd/server
+go build -o go-generative-api-router ./cmd/server
 ```
 
 ### Testing

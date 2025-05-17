@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/aashari/generative-api-router/internal/app"
+	"github.com/aashari/go-generative-api-router/internal/app"
 )
 
 func main() {

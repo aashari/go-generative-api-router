@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aashari/generative-api-router/internal/config"
-	"github.com/aashari/generative-api-router/internal/proxy"
-	"github.com/aashari/generative-api-router/internal/selector"
+	"github.com/aashari/go-generative-api-router/internal/config"
+	"github.com/aashari/go-generative-api-router/internal/proxy"
+	"github.com/aashari/go-generative-api-router/internal/selector"
 )
 
 // App centralizes the application's dependencies and configuration

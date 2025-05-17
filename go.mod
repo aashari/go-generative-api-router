@@ -1,3 +1,3 @@
-module github.com/aashari/generative-api-router
+module github.com/aashari/go-generative-api-router
 
 go 1.22.2

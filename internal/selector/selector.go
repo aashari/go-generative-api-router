@@ -5,7 +5,7 @@ import (
 	"log"
 	"math/rand"
 
-	"github.com/aashari/generative-api-router/internal/config"
+	"github.com/aashari/go-generative-api-router/internal/config"
 )
 
 // VendorSelection stores the selected vendor, model and credential

@@ -6,9 +6,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/aashari/generative-api-router/internal/config"
-	"github.com/aashari/generative-api-router/internal/selector"
-	"github.com/aashari/generative-api-router/internal/validator"
+	"github.com/aashari/go-generative-api-router/internal/config"
+	"github.com/aashari/go-generative-api-router/internal/selector"
+	"github.com/aashari/go-generative-api-router/internal/validator"
 )
 
 // ProxyRequest handles the incoming request, routes it to the appropriate vendor, and forwards the response

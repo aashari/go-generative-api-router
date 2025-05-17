@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aashari/generative-api-router/internal/selector"
+	"github.com/aashari/go-generative-api-router/internal/selector"
 )
 
 // Error types for common API client errors
