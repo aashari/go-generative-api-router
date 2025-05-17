@@ -24,6 +24,7 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	log.Printf("VERBOSE_DEBUG: ProxyRequest - Selected Vendor: '%s', Model: '%s'", selection.Vendor, selection.Model)
 
 	// Read the request body
 	body, err := io.ReadAll(r.Body)

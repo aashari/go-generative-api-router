@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -84,7 +85,11 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 	}
 
 	// Add system_fingerprint if missing (OpenAI compatibility)
-	if _, ok := chunkData["system_fingerprint"]; !ok {
+	sfValue, sfExists := chunkData["system_fingerprint"]
+	if !sfExists || sfValue == nil {
+		chunkData["system_fingerprint"] = "fp_" + generateRandomString(9)
+		// No log here to avoid flooding stream logs, but ensure it's set
+	} else if _, isString := sfValue.(string); !isString {
 		chunkData["system_fingerprint"] = "fp_" + generateRandomString(9)
 	}
 
@@ -254,9 +259,28 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 }
 
 // processResponse processes the API response, ensuring all required fields are present
-func processResponse(responseBody []byte, vendor string) ([]byte, error) {
+func processResponse(responseBody []byte, vendor string, contentEncoding string) ([]byte, error) {
 	if len(responseBody) == 0 {
 		return responseBody, nil
+	}
+
+	// Handle gzip content encoding
+	if contentEncoding == "gzip" {
+		log.Printf("Response is gzip encoded, decompressing...")
+		gzipReader, err := gzip.NewReader(bytes.NewReader(responseBody))
+		if err != nil {
+			log.Printf("Error creating gzip reader: %v", err)
+			return responseBody, fmt.Errorf("error creating gzip reader: %w", err) // Return error
+		}
+		defer gzipReader.Close()
+		
+		decompressedBody, err := io.ReadAll(gzipReader)
+		if err != nil {
+			log.Printf("Error decompressing gzip response: %v", err)
+			return responseBody, fmt.Errorf("error decompressing gzip response: %w", err) // Return error
+		}
+		log.Printf("Successfully decompressed gzip response. Original size: %d, Decompressed size: %d", len(responseBody), len(decompressedBody))
+		responseBody = decompressedBody // Use decompressed body for further processing
 	}
 
 	// Check if response is a single-element array (which happens with Gemini errors)
@@ -291,8 +315,16 @@ func processResponse(responseBody []byte, vendor string) ([]byte, error) {
 	}
 
 	// Add system_fingerprint if missing (OpenAI compatibility)
-	if _, ok := responseData["system_fingerprint"]; !ok {
-		responseData["system_fingerprint"] = "fp_" + generateRandomString(9)
+	systemFingerprintValue, systemFingerprintExists := responseData["system_fingerprint"]
+	if !systemFingerprintExists || systemFingerprintValue == nil {
+		generatedFP := "fp_" + generateRandomString(9)
+		responseData["system_fingerprint"] = generatedFP
+		log.Printf("Generated system_fingerprint because it was missing or null. New value: %s", generatedFP)
+	} else if _, isString := systemFingerprintValue.(string); !isString {
+		// If it exists but is not a string (e.g. some other non-null, non-string type from a vendor)
+		generatedFP := "fp_" + generateRandomString(9)
+		responseData["system_fingerprint"] = generatedFP
+		log.Printf("Replaced non-string system_fingerprint with generated one. New value: %s", generatedFP)
 	}
 
 	// Log the model name for debugging
@@ -493,10 +525,17 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	}
 	defer resp.Body.Close()
 
+	// Store content encoding for later use in processResponse or stream handling
+	contentEncoding := resp.Header.Get("Content-Encoding")
+
 	// Copy response headers before setting status code
 	for k, vs := range resp.Header {
 		// Skip Content-Length header since we're modifying the body
 		if k == "Content-Length" {
+			continue
+		}
+		// If we decompressed gzip, don't pass the original Content-Encoding header from vendor
+		if contentEncoding == "gzip" && k == "Content-Encoding" {
 			continue
 		}
 		for _, v := range vs {
@@ -514,6 +553,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 
 	// Handle the response based on whether it's streaming or not
 	if isStreaming {
+		log.Printf("VERBOSE_DEBUG: SendRequest - Streaming - Vendor passed for processing: '%s'", selection.Vendor)
 		// For streaming responses, we need a special handling
 		reader := bufio.NewReader(resp.Body)
 		
@@ -551,6 +591,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 			}
 		}
 	} else {
+		log.Printf("VERBOSE_DEBUG: SendRequest - Non-Streaming - Vendor passed for processing: '%s'", selection.Vendor)
 		// For non-streaming responses, read, process, and then write
 		responseBody, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -559,7 +600,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		}
 
 		// Process the response to ensure IDs are present
-		modifiedResponse, err := processResponse(responseBody, selection.Vendor)
+		modifiedResponse, err := processResponse(responseBody, selection.Vendor, contentEncoding)
 		if err != nil {
 			log.Printf("Error processing response: %v", err)
 			w.Write(responseBody) // Write original response if processing fails
