@@ -27,7 +27,7 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendo
 
 ### Prerequisites
 
-- Go 1.22 or higher
+- Go 1.24.3 or higher
 - API keys for OpenAI and/or Google Gemini
 
 ### Installation
