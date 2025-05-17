@@ -128,12 +128,19 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 
 						// Check if "id" field exists and what its value is
 						toolCallID, idExists := toolCallMap["id"]
-						log.Printf("Stream chunk tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
+						log.Printf("Tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
 						
 						// Force override for Gemini vendor or if ID is missing/empty
-						if vendor == "gemini" || !idExists || toolCallID == nil || toolCallID == "" {
+						if vendor == "gemini" {
+							// Always generate a new ID for Gemini responses regardless of current value
 							newID := "call_" + generateRandomString(16)
-							log.Printf("Generated new tool call ID for stream chunk (%s): %s", vendor, newID)
+							log.Printf("FORCING new tool call ID for Gemini vendor: %s (was: %v)", newID, toolCallID)
+							toolCallMap["id"] = newID
+							toolCalls[j] = toolCallMap
+						} else if !idExists || toolCallID == nil || toolCallID == "" {
+							// For other vendors, only generate if missing/empty
+							newID := "call_" + generateRandomString(16)
+							log.Printf("Generated new tool call ID for %s: %s", vendor, newID)
 							toolCallMap["id"] = newID
 							toolCalls[j] = toolCallMap
 						}
@@ -167,12 +174,19 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 
 						// Check if "id" field exists and what its value is
 						toolCallID, idExists := toolCallMap["id"]
-						log.Printf("Stream chunk message tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
+						log.Printf("Tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
 						
 						// Force override for Gemini vendor or if ID is missing/empty
-						if vendor == "gemini" || !idExists || toolCallID == nil || toolCallID == "" {
+						if vendor == "gemini" {
+							// Always generate a new ID for Gemini responses regardless of current value
 							newID := "call_" + generateRandomString(16)
-							log.Printf("Generated new tool call ID for stream chunk message (%s): %s", vendor, newID)
+							log.Printf("FORCING new tool call ID for Gemini vendor: %s (was: %v)", newID, toolCallID)
+							toolCallMap["id"] = newID
+							toolCalls[j] = toolCallMap
+						} else if !idExists || toolCallID == nil || toolCallID == "" {
+							// For other vendors, only generate if missing/empty
+							newID := "call_" + generateRandomString(16)
+							log.Printf("Generated new tool call ID for %s: %s", vendor, newID)
 							toolCallMap["id"] = newID
 							toolCalls[j] = toolCallMap
 						}
@@ -346,7 +360,14 @@ func processResponse(responseBody []byte, vendor string) ([]byte, error) {
 						log.Printf("Tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
 						
 						// Force override for Gemini vendor or if ID is missing/empty
-						if vendor == "gemini" || !idExists || toolCallID == nil || toolCallID == "" {
+						if vendor == "gemini" {
+							// Always generate a new ID for Gemini responses regardless of current value
+							newID := "call_" + generateRandomString(16)
+							log.Printf("FORCING new tool call ID for Gemini vendor: %s (was: %v)", newID, toolCallID)
+							toolCallMap["id"] = newID
+							toolCalls[j] = toolCallMap
+						} else if !idExists || toolCallID == nil || toolCallID == "" {
+							// For other vendors, only generate if missing/empty
 							newID := "call_" + generateRandomString(16)
 							log.Printf("Generated new tool call ID for %s: %s", vendor, newID)
 							toolCallMap["id"] = newID
