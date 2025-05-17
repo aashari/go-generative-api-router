@@ -88,10 +88,10 @@ func (a *App) HealthHandler(w http.ResponseWriter, r *http.Request) {
 // ChatCompletionsHandler handles the chat completions endpoint
 func (a *App) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received request to /chat/completions from %s", r.RemoteAddr)
-	
+
 	// Optional vendor filter via query parameter
 	vendorFilter := r.URL.Query().Get("vendor")
-	
+
 	// Filter credentials and models if vendor is specified
 	creds := a.Credentials
 	models := a.VendorModels
@@ -99,7 +99,7 @@ func (a *App) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Filtering by vendor: %s", vendorFilter)
 		creds = filterCredentialsByVendor(creds, vendorFilter)
 		models = filterModelsByVendor(models, vendorFilter)
-		
+
 		// Check if we have credentials and models for this vendor
 		if len(creds) == 0 {
 			http.Error(w, fmt.Sprintf("No credentials available for vendor: %s", vendorFilter), http.StatusBadRequest)
@@ -110,7 +110,7 @@ func (a *App) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	
+
 	proxy.ProxyRequest(w, r, creds, models, a.APIClient, a.ModelSelector)
 }
 
@@ -159,4 +159,4 @@ func (a *App) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write(jsonResp)
-} 
+}

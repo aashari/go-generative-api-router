@@ -26,7 +26,7 @@ func ValidateAndModifyRequest(body []byte, model string) ([]byte, error) {
 	if err := validateToolChoice(requestData); err != nil {
 		return nil, err
 	}
-	
+
 	// Validate stream if present
 	if err := validateStream(requestData); err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func ValidateAndModifyRequest(body []byte, model string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode modified request: %v", err)
 	}
-	
+
 	return modifiedBody, nil
 }
 
@@ -59,19 +59,19 @@ func validateTools(requestData map[string]interface{}) error {
 		// Tools field is optional
 		return nil
 	}
-	
+
 	toolsArr, ok := tools.([]interface{})
 	if !ok {
 		return fmt.Errorf("invalid 'tools' format: must be an array")
 	}
-	
+
 	for _, tool := range toolsArr {
 		toolMap, ok := tool.(map[string]interface{})
 		if !ok || toolMap["type"] != "function" || toolMap["function"] == nil {
 			return fmt.Errorf("invalid 'tools' format: each tool must have type 'function' and a 'function' object")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -82,7 +82,7 @@ func validateToolChoice(requestData map[string]interface{}) error {
 		// Tool choice field is optional
 		return nil
 	}
-	
+
 	switch v := toolChoice.(type) {
 	case string:
 		if v != "none" && v != "auto" && v != "required" {
@@ -95,7 +95,7 @@ func validateToolChoice(requestData map[string]interface{}) error {
 	default:
 		return fmt.Errorf("invalid 'tool_choice': must be a string or function object")
 	}
-	
+
 	return nil
 }
 
@@ -108,4 +108,4 @@ func validateStream(requestData map[string]interface{}) error {
 		}
 	}
 	return nil
-} 
+}

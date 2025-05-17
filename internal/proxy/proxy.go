@@ -49,9 +49,9 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 			http.Error(w, "Internal configuration error: Unknown vendor", http.StatusBadRequest)
 			return
 		}
-		
+
 		// For other network errors
 		http.Error(w, "Failed to communicate with upstream service: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-} 
+}

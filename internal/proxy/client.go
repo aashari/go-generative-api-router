@@ -20,7 +20,7 @@ var (
 
 // APIClient handles communication with vendor APIs
 type APIClient struct {
-	BaseURLs map[string]string
+	BaseURLs   map[string]string
 	httpClient *http.Client
 }
 
@@ -104,4 +104,4 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	}
 
 	return nil
-} 
+}

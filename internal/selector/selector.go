@@ -34,10 +34,10 @@ func (s *RandomSelector) Select(creds []config.Credential, models []config.Vendo
 	if len(creds) == 0 {
 		return nil, fmt.Errorf("no credentials available")
 	}
-	
+
 	selectedCred := creds[s.rng.Intn(len(creds))]
 	vendor := selectedCred.Platform
-	
+
 	log.Printf("Randomly selected credential for vendor: %s", vendor)
 
 	// Filter models for the selected vendor
@@ -47,7 +47,7 @@ func (s *RandomSelector) Select(creds []config.Credential, models []config.Vendo
 			vendorModels = append(vendorModels, m)
 		}
 	}
-	
+
 	if len(vendorModels) == 0 {
 		return nil, fmt.Errorf("no models available for vendor: %s", vendor)
 	}
@@ -55,9 +55,9 @@ func (s *RandomSelector) Select(creds []config.Credential, models []config.Vendo
 	// Randomly select a model for the vendor
 	selectedModel := vendorModels[s.rng.Intn(len(vendorModels))]
 	model := selectedModel.Model
-	
+
 	log.Printf("Randomly selected model: %s for vendor: %s", model, vendor)
-	
+
 	return &VendorSelection{
 		Vendor:     vendor,
 		Model:      model,
@@ -68,4 +68,4 @@ func (s *RandomSelector) Select(creds []config.Credential, models []config.Vendo
 // Selector interface for different selection strategies
 type Selector interface {
 	Select(creds []config.Credential, models []config.VendorModel) (*VendorSelection, error)
-} 
+}
