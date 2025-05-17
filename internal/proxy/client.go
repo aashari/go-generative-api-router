@@ -122,7 +122,9 @@ func processStreamChunk(chunk []byte) []byte {
 
 						// Check and generate tool call ID if missing
 						if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
-							toolCallMap["id"] = "call_" + generateRandomString(16)
+							newID := "call_" + generateRandomString(16)
+							log.Printf("Generated new tool call ID: %s", newID)
+							toolCallMap["id"] = newID
 							toolCalls[j] = toolCallMap
 						}
 					}
@@ -150,7 +152,9 @@ func processStreamChunk(chunk []byte) []byte {
 
 						// Check and generate tool call ID if missing
 						if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
-							toolCallMap["id"] = "call_" + generateRandomString(16)
+							newID := "call_" + generateRandomString(16)
+							log.Printf("Generated new tool call ID: %s", newID)
+							toolCallMap["id"] = newID
 							toolCalls[j] = toolCallMap
 						}
 					}
@@ -323,7 +327,9 @@ func processResponse(responseBody []byte) ([]byte, error) {
 
 						// Check and generate tool call ID if missing
 						if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
-							toolCallMap["id"] = "call_" + generateRandomString(16)
+							newID := "call_" + generateRandomString(16)
+							log.Printf("Generated new tool call ID: %s", newID)
+							toolCallMap["id"] = newID
 							toolCalls[j] = toolCallMap
 						}
 					}
