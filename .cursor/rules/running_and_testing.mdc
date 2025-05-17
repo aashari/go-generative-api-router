@@ -1,0 +1,183 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Running and Testing Guide for Generative API Router
+
+This guide provides step-by-step instructions for running and testing the Generative API Router service.
+
+## Setup and Configuration
+
+1. **Clone and Navigate**:
+   ```bash
+   git clone https://github.com/aashari/go-generative-api-router.git
+   cd go-generative-api-router
+   ```
+
+2. **Configure Credentials**:
+   - Copy the example credentials file:
+     ```bash
+     cp credentials.json.example credentials.json
+     ```
+   - Edit [credentials.json](mdc:credentials.json) with valid API keys:
+     ```json
+     [
+       {
+         "platform": "openai",
+         "type": "api-key",
+         "value": "sk-your-openai-key"
+       },
+       {
+         "platform": "gemini",
+         "type": "api-key",
+         "value": "your-gemini-key"
+       }
+     ]
+     ```
+
+3. **Configure Models**:
+   - Edit [models.json](mdc:models.json) to specify which models you want to use:
+     ```json
+     [
+       {
+         "vendor": "gemini",
+         "model": "gemini-2.0-flash"
+       },
+       {
+         "vendor": "openai",
+         "model": "gpt-4o"
+       }
+     ]
+     ```
+
+## Running the Service
+
+### Locally with Go
+
+1. **Install Dependencies**:
+   ```bash
+   go mod tidy
+   ```
+
+2. **Run the Server**:
+   ```bash
+   go run ./cmd/server
+   ```
+   - The server will start on port `:8082` by default
+   - Check for successful initialization in the logs
+
+### Using Docker
+
+1. **Build and Run with Docker Compose**:
+   ```bash
+   docker-compose up --build
+   ```
+
+2. **Run as a Background Service**:
+   ```bash
+   docker-compose up -d
+   ```
+
+## Testing the Service
+
+### Basic Tests
+
+1. **Health Check**:
+   ```bash
+   curl -X GET http://localhost:8082/health
+   ```
+   - Expected: `OK` with status code 200
+
+2. **List Available Models**:
+   ```bash
+   curl -X GET http://localhost:8082/models | jq
+   ```
+   - Lists all configured models in OpenAI-compatible format
+
+3. **Basic Chat Completion**:
+   ```bash
+   curl -X POST http://localhost:8082/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}' | jq
+   ```
+   - Verify that the response includes:
+     - A proper `"id"` field with `"chatcmpl-"` prefix
+     - Content in the expected format
+     - A valid `"model"` field showing which model was selected
+
+### Advanced Testing
+
+1. **Streaming Response Test**:
+   ```bash
+   curl -X POST http://localhost:8082/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{"model": "any-model", "messages": [{"role": "user", "content": "Count from 1 to 5"}], "stream": true}' | cat
+   ```
+   - Verify that responses come as Server-Sent Events with `data:` prefix
+   - Check each chunk has a consistent `"id"` field
+   - Confirm the stream ends with `data: [DONE]`
+
+2. **Tool Calling Test**:
+   ```bash
+   curl -X POST http://localhost:8082/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{"model": "any-model", "messages": [{"role": "user", "content": "What is the weather in Boston?"}], "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get weather information for a location", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "City name"}}, "required": ["location"]}}}], "tool_choice": "auto"}' | jq
+   ```
+   - Verify that tool calls include a proper `"id"` field with `"call_"` prefix
+   - Check tool call arguments and function name are correctly formatted
+
+3. **Vendor-Specific Testing**:
+   ```bash
+   curl -X POST "http://localhost:8082/chat/completions?vendor=openai" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}' | jq
+   ```
+   ```bash
+   curl -X POST "http://localhost:8082/chat/completions?vendor=gemini" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}' | jq
+   ```
+   - Verify that each vendor properly responds with their model
+
+## Troubleshooting
+
+1. **Port Conflicts**:
+   - Check if port 8082 is already in use:
+     ```bash
+     lsof -i :8082
+     ```
+   - Kill conflicting processes:
+     ```bash
+     kill -9 <PID>
+     ```
+
+2. **Connection Refused Errors**:
+   - Ensure the server has fully started before sending requests
+   - Wait a few seconds after starting the server
+
+3. **Invalid API Key Errors**:
+   - Verify your API keys in [credentials.json](mdc:credentials.json) are valid and current
+   - Check vendor-specific error messages in the response
+
+4. **Request Validation Errors**:
+   - Ensure your request has the required `"messages"` field
+   - Check that tools and tool_choice are properly formatted
+
+5. **Server Crashes**:
+   - Check the server logs for error messages
+   - Ensure credentials.json and models.json are valid JSON files
+
+## Stopping the Service
+
+### Locally:
+```bash
+# If running in foreground, press Ctrl+C
+# If running in background:
+pkill -f "server$"
+```
+
+### Docker:
+```bash
+docker-compose down
+```
