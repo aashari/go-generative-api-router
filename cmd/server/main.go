@@ -7,6 +7,26 @@ import (
 	"github.com/aashari/go-generative-api-router/internal/app"
 )
 
+// @title           Generative API Router
+// @version         1.0
+// @description     A router for generative AI models with OpenAI-compatible API.
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   API Support
+// @contact.url    https://github.com/aashari/go-generative-api-router
+// @contact.email  support@yourcompany.com
+
+// @license.name  MIT
+// @license.url   https://opensource.org/licenses/MIT
+
+// @host      0.0.0.0:8082
+// @BasePath  /
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and the API key value.
+
 // CORSMiddleware adds CORS headers to allow cross-origin requests
 func CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,18 +53,15 @@ func main() {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
 
-	mux := http.NewServeMux()
-
-	// Register handlers from the app
-	mux.HandleFunc("/health", app.HealthHandler)
-	mux.HandleFunc("/chat/completions", app.ChatCompletionsHandler)
-	mux.HandleFunc("/models", app.ModelsHandler)
+	// Get router with all routes configured
+	handler := app.SetupRoutes()
 
 	// Apply CORS middleware
-	corsHandler := CORSMiddleware(mux)
+	corsHandler := CORSMiddleware(handler)
 
-	log.Println("Server starting on :8082")
-	err = http.ListenAndServe(":8082", corsHandler)
+	log.Println("Server starting on 0.0.0.0:8082")
+	log.Println("Swagger documentation available at http://localhost:8082/swagger/index.html")
+	err = http.ListenAndServe("0.0.0.0:8082", corsHandler)
 	if err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}

@@ -36,6 +36,7 @@ credentials.json
 
 # Logs
 *.log
+server.log
 
 # Build related
 bin/

@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"time"
 
+	_ "github.com/aashari/go-generative-api-router/docs" // This is necessary for Swagger documentation
 	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/proxy"
 	"github.com/aashari/go-generative-api-router/internal/selector"
+	httpSwagger "github.com/swaggo/http-swagger" // http-swagger middleware
 )
 
 // App centralizes the application's dependencies and configuration
@@ -79,6 +81,13 @@ func filterModelsByVendor(models []config.VendorModel, vendor string) []config.V
 }
 
 // HealthHandler handles the health check endpoint
+// @Summary      Health check endpoint
+// @Description  Returns "OK" if the service is running properly
+// @Tags         health
+// @Accept       json
+// @Produce      plain
+// @Success      200  {string}  string  "OK"
+// @Router       /health [get]
 func (a *App) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Health check endpoint hit")
 	w.WriteHeader(http.StatusOK)
@@ -86,6 +95,19 @@ func (a *App) HealthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ChatCompletionsHandler handles the chat completions endpoint
+// @Summary      Chat completions API
+// @Description  Routes chat completion requests to different language model providers
+// @Tags         chat
+// @Accept       json
+// @Produce      json
+// @Param        vendor  query     string                 false  "Optional vendor to target (e.g., 'openai', 'gemini')"
+// @Param        request body      ChatCompletionRequest  true   "Chat completion request in OpenAI-compatible format"
+// @Security     BearerAuth
+// @Success      200     {object}  ChatCompletionResponse "OpenAI-compatible chat completion response"
+// @Failure      400     {object}  ErrorResponse          "Bad request error"
+// @Failure      401     {object}  ErrorResponse          "Unauthorized error"
+// @Failure      500     {object}  ErrorResponse          "Internal server error"
+// @Router       /chat/completions [post]
 func (a *App) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received request to /chat/completions from %s", r.RemoteAddr)
 
@@ -115,6 +137,14 @@ func (a *App) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ModelsHandler handles the models endpoint
+// @Summary      List available models
+// @Description  Returns a list of available language models in OpenAI-compatible format
+// @Tags         models
+// @Accept       json
+// @Produce      json
+// @Param        vendor  query     string         false  "Optional vendor to filter models (e.g., 'openai', 'gemini')"
+// @Success      200     {object}  ModelsResponse "List of available models"
+// @Router       /models [get]
 func (a *App) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -159,4 +189,19 @@ func (a *App) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write(jsonResp)
+}
+
+// SetupRoutes configures all routes for the application
+func (a *App) SetupRoutes() http.Handler {
+	mux := http.NewServeMux()
+
+	// Register API handlers
+	mux.HandleFunc("/health", a.HealthHandler)
+	mux.HandleFunc("/chat/completions", a.ChatCompletionsHandler)
+	mux.HandleFunc("/models", a.ModelsHandler)
+	
+	// Serve Swagger UI
+	mux.Handle("/swagger/", httpSwagger.WrapHandler)
+
+	return mux
 }
