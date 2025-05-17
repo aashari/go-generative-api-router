@@ -1,149 +1,166 @@
 # Generative API Router
 
-A Go microservice acting as a universal API gateway that transparently proxies OpenAI-compatible API calls to various AI vendors, including OpenAI and Google's Gemini. This router simplifies integration by providing a unified and consistent API interface, intelligently routing requests based on your configuration.
-
----
+A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendors (OpenAI, Gemini) using configurable selection strategies. Supports vendor filtering, streaming responses, and tool calling while maintaining transparent request/response handling.
 
 ## Features
 
-* **Unified API Endpoint**: Offers an OpenAI-compatible API through endpoints (`/chat/completions` and `/models`).
-* **Intelligent Vendor and Model Selection**:
-
-  * Automatically selects credentials and models defined in configuration.
-  * Allows explicit vendor selection via query parameter (`?vendor=openai` or `?vendor=gemini`).
-* **Streaming Responses**: Seamlessly supports streaming (`"stream": true`) from AI vendors.
-* **Transparent Proxying**: Passes headers, request bodies, and responses without alteration (excluding the model selection).
-* **Tool Calling Support**: Validates and proxies advanced features like function calling.
-* **Flexible Configuration**: Easily manage API keys and models through JSON files (`credentials.json` and `models.json`).
-* **Docker-ready**: Containerized deployment made simple.
-* **Health Checks**: Includes a straightforward `/health` endpoint.
-
----
+- **Multi-Vendor Support**: Routes requests to OpenAI or Gemini using OpenAI API compatibility
+- **Random Selection**: Automatically selects from configured vendors and models
+- **Vendor Filtering**: Supports explicit vendor selection via `?vendor=` query parameter
+- **Transparent Proxy**: Maintains all original request/response data (except the intentional model override)
+- **Streaming Support**: Properly handles streamed responses from both vendors
+- **Tool Calling**: Supports function calling for AI tool use with proper validation
+- **Modular Design**: Clean separation of concerns with selector, validator, and client components
+- **Configuration Driven**: Easily configure available models and credentials via JSON files
 
 ## Setup
 
-### Step 1: Clone the Repository
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/aashari/generative-api-router.git
+   cd generative-api-router
+   ```
 
-```bash
-git clone https://github.com/aashari/generative-api-router.git
-cd generative-api-router
-```
+2. **Configure Credentials**:
+   Copy the example file and edit with valid API keys:
+   ```bash
+   cp credentials.json.example credentials.json
+   ```
+   
+   Then edit `credentials.json` with valid API keys:
+   ```json
+   [
+     {
+       "platform": "openai",
+       "type": "api-key",
+       "value": "your-openai-key"
+     },
+     {
+       "platform": "gemini",
+       "type": "api-key",
+       "value": "your-gemini-key"
+     }
+   ]
+   ```
 
-### Step 2: Install Dependencies
+3. **Configure Models**:
+   Edit `models.json` to define which vendor-model pairs can be randomly selected:
+   ```json
+   [
+     {
+       "vendor": "gemini",
+       "model": "gemini-1.5-flash"
+     },
+     {
+       "vendor": "openai",
+       "model": "gpt-4o"
+     }
+   ]
+   ```
 
-Ensure you have [Go 1.22+ installed](https://go.dev/doc/install).
+4. **Run Locally**:
+   ```bash
+   go mod tidy
+   go run ./cmd/server
+   ```
 
-### Step 3: Configure Credentials
-
-Create and populate `credentials.json`:
-
-```bash
-cp credentials.json.example credentials.json
-```
-
-Fill in your API keys:
-
-```json
-[
-  { "platform": "openai", "type": "api-key", "value": "your-openai-key" },
-  { "platform": "gemini", "type": "api-key", "value": "your-gemini-key" }
-]
-```
-
-### Step 4: Define Models
-
-Update `models.json` with available vendor-model pairs:
-
-```json
-[
-  {"vendor": "gemini", "model": "gemini-2.5-flash-preview-04-17"},
-  {"vendor": "gemini", "model": "gemini-2.5-pro-preview-05-06"},
-  {"vendor": "openai", "model": "gpt-4o"}
-]
-```
-
-### Step 5: Run Locally
-
-**Directly**
-
-```bash
-go mod tidy
-go run ./cmd/server/main.go
-```
-
-The service will run at `http://localhost:8082`.
-
-**Using Docker**
-
-```bash
-docker-compose up --build
-```
-
----
+5. **Docker Support**:
+   ```bash
+   docker-compose up --build
+   ```
 
 ## API Endpoints
 
-### Chat Completions
-
-Send requests to `/chat/completions`. The router internally selects the model:
-
-```bash
-curl -X POST http://localhost:8082/chat/completions \
--H "Content-Type: application/json" \
--d '{"model": "ignored", "messages": [{"role": "user", "content": "Hello!"}]}'
-```
-
-#### Streaming
-
-Enable streaming responses:
-
-```bash
-curl -X POST http://localhost:8082/chat/completions \
--H "Content-Type: application/json" \
--d '{"model": "ignored", "messages": [{"role": "user", "content": "Stream test"}], "stream": true}'
-```
-
-### Available Models
-
-Retrieve available models from `/models`:
-
-```bash
-curl -X GET http://localhost:8082/models
-```
-
-Filter by vendor:
-
-```bash
-curl -X GET "http://localhost:8082/models?vendor=openai"
-```
-
 ### Health Check
+```
+GET /health
+```
 
-Check service status:
+### Models Listing
+```
+GET /models
+GET /models?vendor=openai
+```
 
+Returns a list of available models in OpenAI-compatible format.
+
+### Chat Completions
+```
+POST /chat/completions
+POST /chat/completions?vendor=gemini
+```
+
+Send OpenAI-compatible requests to generate completions from either vendor.
+
+#### Stream Support
+```json
+{
+  "model": "any-model",
+  "messages": [{"role": "user", "content": "Hello"}],
+  "stream": true
+}
+```
+
+#### Tool Calling
+```json
+{
+  "model": "any-model",
+  "messages": [{"role": "user", "content": "What's the weather?"}],
+  "tools": [{
+    "type": "function",
+    "function": {
+      "name": "get_weather",
+      "description": "Get weather information",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "location": {"type": "string"}
+        },
+        "required": ["location"]
+      }
+    }
+  }],
+  "tool_choice": "auto"
+}
+```
+
+## Architecture
+
+The project follows a modular design with clear separation of concerns:
+
+- **App**: Central configuration and HTTP handlers
+- **Selector**: Vendor and model selection strategies
+- **Validator**: Request validation and modification
+- **Proxy Client**: Communication with LLM vendor APIs
+- **Config**: Configuration management
+
+## Development
+
+### Building
+```bash
+go build -o generative-api-router ./cmd/server
+```
+
+### Testing
+Test basic functionality:
 ```bash
 curl -X GET http://localhost:8082/health
+curl -X GET http://localhost:8082/models
+curl -X POST http://localhost:8082/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
----
+## Security Notes
 
-## Security Recommendations
+- The current implementation stores API keys in plain text in `credentials.json`. 
+- For production environments, consider using environment variables or a secret management solution.
+- The `credentials.json` file is included in `.gitignore` to prevent accidentally committing API keys.
 
-* Avoid storing sensitive API keys in plaintext. Use environment variables or dedicated secrets management solutions.
-* By default, `credentials.json` is excluded from version control.
+## License
 
----
+MIT
 
-## Troubleshooting
+## Acknowledgments
 
-* **401 Unauthorized**: Verify your API keys.
-* **400 Bad Request**: Check your request formatting and parameters.
-* **Streaming Issues**: Confirm vendor support and ensure proper headers (`Transfer-Encoding: chunked`) are set.
-
----
-
-## Future Enhancements
-
-* Additional OpenAI endpoints (`/embeddings`).
-* Advanced routing strategies (weighted, latency-based).
-* Improved observability and metrics integration.
+This project was inspired by the need for a unified interface to multiple LLM providers.
