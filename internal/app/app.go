@@ -200,13 +200,14 @@ func (a *App) SetupRoutes() http.Handler {
 	mux.HandleFunc("/chat/completions", a.ChatCompletionsHandler)
 	mux.HandleFunc("/models", a.ModelsHandler)
 	
-	// Serve Swagger UI with specific configuration
-	mux.Handle("/swagger/", httpSwagger.Handler(
-		httpSwagger.URL("/swagger/doc.json"), // The URL pointing to API definition
-		httpSwagger.DeepLinking(true),
-		httpSwagger.DocExpansion("none"),
-		httpSwagger.DomID("swagger-ui"),
-	))
+	// Serve Swagger UI with specific configuration - using WrapHandler for better compatibility
+	swaggerOpts := httpSwagger.SwaggerUIOpts{
+		URL: "doc.json",
+		DeepLinking: true,
+		DocExpansion: "none",
+		DomID: "swagger-ui",
+	}
+	mux.Handle("/swagger/", httpSwagger.WrapHandler(swaggerOpts))
 
 	return mux
 }
