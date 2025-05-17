@@ -76,21 +76,44 @@ func processStreamChunk(chunk []byte) []byte {
 	if id, ok := chunkData["id"]; !ok || id == nil || id == "" {
 		chunkData["id"] = "chatcmpl-" + generateRandomString(10)
 	}
+	
+	// Add service_tier if missing (OpenAI compatibility)
+	if _, ok := chunkData["service_tier"]; !ok {
+		chunkData["service_tier"] = "default"
+	}
 
-	// Process tool calls in the delta if present
-	choices, ok := chunkData["choices"].([]interface{})
-	if ok && len(choices) > 0 {
+	// Add system_fingerprint if missing (OpenAI compatibility)
+	if _, ok := chunkData["system_fingerprint"]; !ok {
+		chunkData["system_fingerprint"] = "fp_" + generateRandomString(9)
+	}
+
+	// Process choices if present
+	if choices, ok := chunkData["choices"].([]interface{}); ok && len(choices) > 0 {
 		for i, choice := range choices {
 			choiceMap, ok := choice.(map[string]interface{})
 			if !ok {
 				continue
 			}
 
-			// First check for delta for streaming responses
-			delta, hasDelta := choiceMap["delta"].(map[string]interface{})
-			if hasDelta {
-				toolCalls, hasToolCalls := delta["tool_calls"].([]interface{})
-				if hasToolCalls && len(toolCalls) > 0 {
+			// Add logprobs if missing
+			if _, ok := choiceMap["logprobs"]; !ok {
+				choiceMap["logprobs"] = nil
+			}
+
+			// Check for delta (streaming) or message (first chunk)
+			if delta, ok := choiceMap["delta"].(map[string]interface{}); ok {
+				// Add annotations array if missing in delta
+				if _, ok := delta["annotations"]; !ok {
+					delta["annotations"] = []interface{}{}
+				}
+				
+				// Add refusal if missing in delta
+				if _, ok := delta["refusal"]; !ok {
+					delta["refusal"] = nil
+				}
+			
+				// Process tool_calls if present
+				if toolCalls, ok := delta["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
 					for j, toolCall := range toolCalls {
 						toolCallMap, ok := toolCall.(map[string]interface{})
 						if !ok {
@@ -104,34 +127,76 @@ func processStreamChunk(chunk []byte) []byte {
 						}
 					}
 					delta["tool_calls"] = toolCalls
-					choiceMap["delta"] = delta
 				}
-			} else {
-				// Check message for non-streaming or first chunk responses
-				message, hasMessage := choiceMap["message"].(map[string]interface{})
-				if hasMessage {
-					toolCalls, hasToolCalls := message["tool_calls"].([]interface{})
-					if hasToolCalls && len(toolCalls) > 0 {
-						for j, toolCall := range toolCalls {
-							toolCallMap, ok := toolCall.(map[string]interface{})
-							if !ok {
-								continue
-							}
-
-							// Check and generate tool call ID if missing
-							if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
-								toolCallMap["id"] = "call_" + generateRandomString(16)
-								toolCalls[j] = toolCallMap
-							}
+				choiceMap["delta"] = delta
+			} else if message, ok := choiceMap["message"].(map[string]interface{}); ok {
+				// Add annotations array if missing
+				if _, ok := message["annotations"]; !ok {
+					message["annotations"] = []interface{}{}
+				}
+				
+				// Add refusal if missing
+				if _, ok := message["refusal"]; !ok {
+					message["refusal"] = nil
+				}
+			
+				// Process tool_calls if present
+				if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
+					for j, toolCall := range toolCalls {
+						toolCallMap, ok := toolCall.(map[string]interface{})
+						if !ok {
+							continue
 						}
-						message["tool_calls"] = toolCalls
-						choiceMap["message"] = message
+
+						// Check and generate tool call ID if missing
+						if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
+							toolCallMap["id"] = "call_" + generateRandomString(16)
+							toolCalls[j] = toolCallMap
+						}
 					}
+					message["tool_calls"] = toolCalls
 				}
+				choiceMap["message"] = message
 			}
+			
 			choices[i] = choiceMap
 		}
 		chunkData["choices"] = choices
+	}
+	
+	// Add usage information for the first chunk if needed
+	// First chunk is usually identified by delta containing role field
+	isFirstChunk := false
+	if choices, ok := chunkData["choices"].([]interface{}); ok && len(choices) > 0 {
+		if choiceMap, ok := choices[0].(map[string]interface{}); ok {
+			if delta, ok := choiceMap["delta"].(map[string]interface{}); ok {
+				if _, ok := delta["role"]; ok {
+					isFirstChunk = true
+				}
+			}
+		}
+	}
+	
+	if isFirstChunk {
+		// Add usage if missing
+		_, hasUsage := chunkData["usage"]
+		if !hasUsage {
+			chunkData["usage"] = map[string]interface{}{
+				"prompt_tokens": 0,
+				"completion_tokens": 0,
+				"total_tokens": 0,
+				"prompt_tokens_details": map[string]interface{}{
+					"cached_tokens": 0,
+					"audio_tokens": 0,
+				},
+				"completion_tokens_details": map[string]interface{}{
+					"reasoning_tokens": 0,
+					"audio_tokens": 0,
+					"accepted_prediction_tokens": 0,
+					"rejected_prediction_tokens": 0,
+				},
+			}
+		}
 	}
 
 	// Encode the modified chunk
@@ -150,6 +215,21 @@ func processResponse(responseBody []byte) ([]byte, error) {
 		return responseBody, nil
 	}
 
+	// Check if response is a single-element array (which happens with Gemini errors)
+	if bytes.HasPrefix(bytes.TrimSpace(responseBody), []byte("[")) {
+		var arrayData []interface{}
+		if err := json.Unmarshal(responseBody, &arrayData); err == nil {
+			// If it's a single element array, unwrap it to be consistent with OpenAI
+			if len(arrayData) == 1 {
+				// Convert the single element back to JSON
+				unwrappedData, err := json.Marshal(arrayData[0])
+				if err == nil {
+					responseBody = unwrappedData
+				}
+			}
+		}
+	}
+
 	var responseData map[string]interface{}
 	if err := json.Unmarshal(responseBody, &responseData); err != nil {
 		return responseBody, nil // Return original response if it's not valid JSON
@@ -160,42 +240,152 @@ func processResponse(responseBody []byte) ([]byte, error) {
 		responseData["id"] = "chatcmpl-" + generateRandomString(10)
 	}
 
-	// Process tool calls if present
-	choices, ok := responseData["choices"].([]interface{})
-	if ok && len(choices) > 0 {
+	// Add service_tier if missing (OpenAI compatibility)
+	if _, ok := responseData["service_tier"]; !ok {
+		responseData["service_tier"] = "default"
+	}
+
+	// Add system_fingerprint if missing (OpenAI compatibility)
+	if _, ok := responseData["system_fingerprint"]; !ok {
+		responseData["system_fingerprint"] = "fp_" + generateRandomString(9)
+	}
+
+	// Check if this is an error response and ensure it has the OpenAI-compatible structure
+	if errorData, hasError := responseData["error"].(map[string]interface{}); hasError {
+		// Add usage field to error responses if missing
+		if _, hasUsage := responseData["usage"]; !hasUsage {
+			responseData["usage"] = map[string]interface{}{
+				"prompt_tokens": 0,
+				"completion_tokens": 0,
+				"total_tokens": 0,
+				"prompt_tokens_details": map[string]interface{}{
+					"cached_tokens": 0,
+					"audio_tokens": 0,
+				},
+				"completion_tokens_details": map[string]interface{}{
+					"reasoning_tokens": 0,
+					"audio_tokens": 0,
+					"accepted_prediction_tokens": 0,
+					"rejected_prediction_tokens": 0,
+				},
+			}
+		}
+
+		// Ensure OpenAI-compatible error fields
+		if _, ok := errorData["type"]; !ok {
+			if code, hasCode := errorData["code"]; hasCode {
+				// Convert the code to a string type if needed
+				errorType := fmt.Sprintf("%v", code)
+				errorData["type"] = errorType + "_error"
+			} else {
+				errorData["type"] = "api_error"
+			}
+		}
+
+		if _, ok := errorData["param"]; !ok {
+			errorData["param"] = nil
+		}
+
+		responseData["error"] = errorData
+		
+		// Process choices and other fields only if this is not an error response
+	} else if choices, ok := responseData["choices"].([]interface{}); ok && len(choices) > 0 {
 		for i, choice := range choices {
 			choiceMap, ok := choice.(map[string]interface{})
 			if !ok {
 				continue
 			}
-
-			message, ok := choiceMap["message"].(map[string]interface{})
-			if !ok {
-				continue
+			
+			// Add logprobs if missing
+			if _, ok := choiceMap["logprobs"]; !ok {
+				choiceMap["logprobs"] = nil
 			}
 
-			toolCalls, ok := message["tool_calls"].([]interface{})
-			if !ok {
-				continue
-			}
-
-			for j, toolCall := range toolCalls {
-				toolCallMap, ok := toolCall.(map[string]interface{})
-				if !ok {
-					continue
+			// Process message if present
+			if message, ok := choiceMap["message"].(map[string]interface{}); ok {
+				// Add annotations array if missing
+				if _, ok := message["annotations"]; !ok {
+					message["annotations"] = []interface{}{}
 				}
-
-				// Check and generate tool call ID if missing
-				if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
-					toolCallMap["id"] = "call_" + generateRandomString(16)
-					toolCalls[j] = toolCallMap
+				
+				// Add refusal if missing
+				if _, ok := message["refusal"]; !ok {
+					message["refusal"] = nil
 				}
+				
+				// Handle tool_calls if present
+				if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
+					for j, toolCall := range toolCalls {
+						toolCallMap, ok := toolCall.(map[string]interface{})
+						if !ok {
+							continue
+						}
+
+						// Check and generate tool call ID if missing
+						if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
+							toolCallMap["id"] = "call_" + generateRandomString(16)
+							toolCalls[j] = toolCallMap
+						}
+					}
+					message["tool_calls"] = toolCalls
+				}
+				
+				choiceMap["message"] = message
 			}
-			message["tool_calls"] = toolCalls
-			choiceMap["message"] = message
+			
 			choices[i] = choiceMap
 		}
 		responseData["choices"] = choices
+	}
+
+	// Ensure usage field is present with all required subfields
+	if usage, ok := responseData["usage"].(map[string]interface{}); ok {
+		// Make sure all required usage fields are present
+		if _, ok := usage["prompt_tokens"]; !ok {
+			usage["prompt_tokens"] = 0
+		}
+		if _, ok := usage["completion_tokens"]; !ok {
+			usage["completion_tokens"] = 0
+		}
+		if _, ok := usage["total_tokens"]; !ok {
+			usage["total_tokens"] = 0
+		}
+		
+		// Add token details subfields if not present (OpenAI compatibility)
+		if _, ok := usage["prompt_tokens_details"]; !ok {
+			usage["prompt_tokens_details"] = map[string]interface{}{
+				"cached_tokens": 0,
+				"audio_tokens": 0,
+			}
+		}
+		
+		if _, ok := usage["completion_tokens_details"]; !ok {
+			usage["completion_tokens_details"] = map[string]interface{}{
+				"reasoning_tokens": 0,
+				"audio_tokens": 0,
+				"accepted_prediction_tokens": 0,
+				"rejected_prediction_tokens": 0,
+			}
+		}
+		
+		responseData["usage"] = usage
+	} else {
+		// If usage is completely missing, add a placeholder with default values
+		responseData["usage"] = map[string]interface{}{
+			"prompt_tokens": 0,
+			"completion_tokens": 0,
+			"total_tokens": 0,
+			"prompt_tokens_details": map[string]interface{}{
+				"cached_tokens": 0,
+				"audio_tokens": 0,
+			},
+			"completion_tokens_details": map[string]interface{}{
+				"reasoning_tokens": 0,
+				"audio_tokens": 0,
+				"accepted_prediction_tokens": 0,
+				"rejected_prediction_tokens": 0,
+			},
+		}
 	}
 
 	// Encode the modified response
@@ -252,6 +442,10 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 
 	// Copy response headers before setting status code
 	for k, vs := range resp.Header {
+		// Skip Content-Length header since we're modifying the body
+		if k == "Content-Length" {
+			continue
+		}
 		for _, v := range vs {
 			w.Header().Add(k, v)
 		}
@@ -294,88 +488,10 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 					continue
 				}
 				
-				// Extract the JSON part
-				jsonData := line[6:]
-				var chunkData map[string]interface{}
-				
-				if err := json.Unmarshal(bytes.TrimSpace(jsonData), &chunkData); err != nil {
-					// If not valid JSON, write as-is
-					w.Write(line)
-					continue
-				}
-				
-				// Add IDs where needed
-				
-				// Check and generate chat completion ID if missing
-				if id, ok := chunkData["id"]; !ok || id == nil || id == "" {
-					chunkData["id"] = "chatcmpl-" + generateRandomString(10)
-				}
-				
-				// Process tool calls in choices
-				if choices, ok := chunkData["choices"].([]interface{}); ok {
-					for i, choice := range choices {
-						choiceMap, ok := choice.(map[string]interface{})
-						if !ok {
-							continue
-						}
-						
-						// Check delta first (used in streaming)
-						if delta, ok := choiceMap["delta"].(map[string]interface{}); ok {
-							if toolCalls, ok := delta["tool_calls"].([]interface{}); ok {
-								for j, toolCall := range toolCalls {
-									toolCallMap, ok := toolCall.(map[string]interface{})
-									if !ok {
-										continue
-									}
-									
-									// Generate ID if missing
-									if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
-										toolCallMap["id"] = "call_" + generateRandomString(16)
-										toolCalls[j] = toolCallMap
-									}
-								}
-								delta["tool_calls"] = toolCalls
-							}
-							choiceMap["delta"] = delta
-						}
-						
-						// Also check message (used in first chunk sometimes)
-						if message, ok := choiceMap["message"].(map[string]interface{}); ok {
-							if toolCalls, ok := message["tool_calls"].([]interface{}); ok {
-								for j, toolCall := range toolCalls {
-									toolCallMap, ok := toolCall.(map[string]interface{})
-									if !ok {
-										continue
-									}
-									
-									// Generate ID if missing
-									if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
-										toolCallMap["id"] = "call_" + generateRandomString(16)
-										toolCalls[j] = toolCallMap
-									}
-								}
-								message["tool_calls"] = toolCalls
-							}
-							choiceMap["message"] = message
-						}
-						
-						choices[i] = choiceMap
-					}
-					chunkData["choices"] = choices
-				}
-				
-				// Encode back to JSON
-				modifiedJSON, err := json.Marshal(chunkData)
-				if err != nil {
-					// If error, send original
-					w.Write(line)
-					continue
-				}
-				
-				// Write modified line
-				w.Write([]byte("data: "))
-				w.Write(modifiedJSON)
-				w.Write([]byte("\n\n"))
+				// Use our processStreamChunk function to handle all the modifications
+				// This ensures consistency with our standalone function
+				modifiedLine := processStreamChunk(line)
+				w.Write(modifiedLine)
 			} else {
 				// For non-data lines, pass through unchanged
 				w.Write(line)

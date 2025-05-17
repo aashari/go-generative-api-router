@@ -90,3 +90,7 @@ This guide provides instructions and tips for developing, testing, and maintaini
 *   **Curl Command Formatting**: Ensure JSON payloads in `curl -d` arguments are properly quoted and escaped, especially when using multi-line JSON. Single-line JSON with escaped quotes is often safer in scripts.
 *   **Background Processes**: When starting the server with `&`, ensure it's managed correctly (e.g., `pkill -f <binary_name>` to stop it).
 *   **Error Message Reliance**: Avoid relying on exact string matching for error messages (e.g., `err.Error()[:7] == "unknown"`). Use typed errors (`errors.Is()`) for more robust error handling, as implemented for `ErrUnknownVendor`.
+
+---
+
+Important: you can't read the `credentials.json` using `read_file` tool, you can use `run_terminal_cmd` to `cat credentials.json` instead
