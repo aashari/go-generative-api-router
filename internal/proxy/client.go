@@ -53,7 +53,7 @@ func generateRandomString(length int) string {
 }
 
 // processStreamChunk processes a single chunk of a streaming response
-func processStreamChunk(chunk []byte) []byte {
+func processStreamChunk(chunk []byte, vendor string) []byte {
 	// Handle empty chunks or non-data chunks
 	if len(chunk) == 0 || !bytes.HasPrefix(chunk, []byte("data: ")) {
 		return chunk
@@ -69,6 +69,7 @@ func processStreamChunk(chunk []byte) []byte {
 	
 	var chunkData map[string]interface{}
 	if err := json.Unmarshal(jsonData, &chunkData); err != nil {
+		log.Printf("Error unmarshaling stream chunk: %v", err)
 		return chunk // Return original chunk if it's not valid JSON
 	}
 
@@ -89,9 +90,11 @@ func processStreamChunk(chunk []byte) []byte {
 
 	// Process choices if present
 	if choices, ok := chunkData["choices"].([]interface{}); ok && len(choices) > 0 {
+		log.Printf("Processing %d choices in stream chunk", len(choices))
 		for i, choice := range choices {
 			choiceMap, ok := choice.(map[string]interface{})
 			if !ok {
+				log.Printf("Stream chunk choice %d is not a map", i)
 				continue
 			}
 
@@ -102,6 +105,7 @@ func processStreamChunk(chunk []byte) []byte {
 
 			// Check for delta (streaming) or message (first chunk)
 			if delta, ok := choiceMap["delta"].(map[string]interface{}); ok {
+				log.Printf("Processing delta in stream chunk choice %d", i)
 				// Add annotations array if missing in delta
 				if _, ok := delta["annotations"]; !ok {
 					delta["annotations"] = []interface{}{}
@@ -114,24 +118,33 @@ func processStreamChunk(chunk []byte) []byte {
 			
 				// Process tool_calls if present
 				if toolCalls, ok := delta["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
+					log.Printf("Processing %d tool calls in stream chunk delta", len(toolCalls))
 					for j, toolCall := range toolCalls {
 						toolCallMap, ok := toolCall.(map[string]interface{})
 						if !ok {
+							log.Printf("Stream chunk tool call %d is not a map", j)
 							continue
 						}
 
-						// Check and generate tool call ID if missing
-						if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
+						// Check if "id" field exists and what its value is
+						toolCallID, idExists := toolCallMap["id"]
+						log.Printf("Stream chunk tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
+						
+						// Force override for Gemini vendor or if ID is missing/empty
+						if vendor == "gemini" || !idExists || toolCallID == nil || toolCallID == "" {
 							newID := "call_" + generateRandomString(16)
-							log.Printf("Generated new tool call ID: %s", newID)
+							log.Printf("Generated new tool call ID for stream chunk (%s): %s", vendor, newID)
 							toolCallMap["id"] = newID
 							toolCalls[j] = toolCallMap
 						}
 					}
 					delta["tool_calls"] = toolCalls
+				} else {
+					log.Printf("No tool calls found in stream chunk delta")
 				}
 				choiceMap["delta"] = delta
 			} else if message, ok := choiceMap["message"].(map[string]interface{}); ok {
+				log.Printf("Processing message in stream chunk choice %d", i)
 				// Add annotations array if missing
 				if _, ok := message["annotations"]; !ok {
 					message["annotations"] = []interface{}{}
@@ -144,28 +157,40 @@ func processStreamChunk(chunk []byte) []byte {
 			
 				// Process tool_calls if present
 				if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
+					log.Printf("Processing %d tool calls in stream chunk message", len(toolCalls))
 					for j, toolCall := range toolCalls {
 						toolCallMap, ok := toolCall.(map[string]interface{})
 						if !ok {
+							log.Printf("Stream chunk message tool call %d is not a map", j)
 							continue
 						}
 
-						// Check and generate tool call ID if missing
-						if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
+						// Check if "id" field exists and what its value is
+						toolCallID, idExists := toolCallMap["id"]
+						log.Printf("Stream chunk message tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
+						
+						// Force override for Gemini vendor or if ID is missing/empty
+						if vendor == "gemini" || !idExists || toolCallID == nil || toolCallID == "" {
 							newID := "call_" + generateRandomString(16)
-							log.Printf("Generated new tool call ID: %s", newID)
+							log.Printf("Generated new tool call ID for stream chunk message (%s): %s", vendor, newID)
 							toolCallMap["id"] = newID
 							toolCalls[j] = toolCallMap
 						}
 					}
 					message["tool_calls"] = toolCalls
+				} else {
+					log.Printf("No tool calls found in stream chunk message")
 				}
 				choiceMap["message"] = message
+			} else {
+				log.Printf("No delta or message found in stream chunk choice %d", i)
 			}
 			
 			choices[i] = choiceMap
 		}
 		chunkData["choices"] = choices
+	} else {
+		log.Printf("No choices found in stream chunk")
 	}
 	
 	// Add usage information for the first chunk if needed
@@ -206,6 +231,7 @@ func processStreamChunk(chunk []byte) []byte {
 	// Encode the modified chunk
 	modifiedData, err := json.Marshal(chunkData)
 	if err != nil {
+		log.Printf("Error marshaling modified stream chunk: %v", err)
 		return chunk // Return original chunk if marshal fails
 	}
 
@@ -214,7 +240,7 @@ func processStreamChunk(chunk []byte) []byte {
 }
 
 // processResponse processes the API response, ensuring all required fields are present
-func processResponse(responseBody []byte) ([]byte, error) {
+func processResponse(responseBody []byte, vendor string) ([]byte, error) {
 	if len(responseBody) == 0 {
 		return responseBody, nil
 	}
@@ -236,6 +262,7 @@ func processResponse(responseBody []byte) ([]byte, error) {
 
 	var responseData map[string]interface{}
 	if err := json.Unmarshal(responseBody, &responseData); err != nil {
+		log.Printf("Error unmarshaling response: %v", err)
 		return responseBody, nil // Return original response if it's not valid JSON
 	}
 
@@ -254,36 +281,20 @@ func processResponse(responseBody []byte) ([]byte, error) {
 		responseData["system_fingerprint"] = "fp_" + generateRandomString(9)
 	}
 
-	// Check if this is an error response and ensure it has the OpenAI-compatible structure
-	if errorData, hasError := responseData["error"].(map[string]interface{}); hasError {
-		// Add usage field to error responses if missing
-		if _, hasUsage := responseData["usage"]; !hasUsage {
-			responseData["usage"] = map[string]interface{}{
-				"prompt_tokens": 0,
-				"completion_tokens": 0,
-				"total_tokens": 0,
-				"prompt_tokens_details": map[string]interface{}{
-					"cached_tokens": 0,
-					"audio_tokens": 0,
-				},
-				"completion_tokens_details": map[string]interface{}{
-					"reasoning_tokens": 0,
-					"audio_tokens": 0,
-					"accepted_prediction_tokens": 0,
-					"rejected_prediction_tokens": 0,
-				},
-			}
-		}
+	// Log the model name for debugging
+	if model, ok := responseData["model"].(string); ok {
+		log.Printf("Processing response from model: %s (vendor: %s)", model, vendor)
+	}
 
-		// Ensure OpenAI-compatible error fields
-		if _, ok := errorData["type"]; !ok {
-			if code, hasCode := errorData["code"]; hasCode {
-				// Convert the code to a string type if needed
-				errorType := fmt.Sprintf("%v", code)
-				errorData["type"] = errorType + "_error"
-			} else {
-				errorData["type"] = "api_error"
-			}
+	// Check if this is an error response
+	if errorData, ok := responseData["error"].(map[string]interface{}); ok {
+		// Process error fields only if this is an error response
+		if code, ok := errorData["code"]; ok {
+			// Convert the code to a string type if needed
+			errorType := fmt.Sprintf("%v", code)
+			errorData["type"] = errorType + "_error"
+		} else {
+			errorData["type"] = "api_error"
 		}
 
 		if _, ok := errorData["param"]; !ok {
@@ -294,9 +305,11 @@ func processResponse(responseBody []byte) ([]byte, error) {
 		
 		// Process choices and other fields only if this is not an error response
 	} else if choices, ok := responseData["choices"].([]interface{}); ok && len(choices) > 0 {
+		log.Printf("Processing %d choices", len(choices))
 		for i, choice := range choices {
 			choiceMap, ok := choice.(map[string]interface{})
 			if !ok {
+				log.Printf("Choice %d is not a map", i)
 				continue
 			}
 			
@@ -307,6 +320,7 @@ func processResponse(responseBody []byte) ([]byte, error) {
 
 			// Process message if present
 			if message, ok := choiceMap["message"].(map[string]interface{}); ok {
+				log.Printf("Processing message in choice %d", i)
 				// Add annotations array if missing
 				if _, ok := message["annotations"]; !ok {
 					message["annotations"] = []interface{}{}
@@ -319,24 +333,34 @@ func processResponse(responseBody []byte) ([]byte, error) {
 				
 				// Handle tool_calls if present
 				if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
+					log.Printf("Processing %d tool calls in choice %d", len(toolCalls), i)
 					for j, toolCall := range toolCalls {
 						toolCallMap, ok := toolCall.(map[string]interface{})
 						if !ok {
+							log.Printf("Tool call %d is not a map", j)
 							continue
 						}
 
-						// Check and generate tool call ID if missing
-						if toolCallID, ok := toolCallMap["id"]; !ok || toolCallID == nil || toolCallID == "" {
+						// Check if "id" field exists and what its value is
+						toolCallID, idExists := toolCallMap["id"]
+						log.Printf("Tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
+						
+						// Force override for Gemini vendor or if ID is missing/empty
+						if vendor == "gemini" || !idExists || toolCallID == nil || toolCallID == "" {
 							newID := "call_" + generateRandomString(16)
-							log.Printf("Generated new tool call ID: %s", newID)
+							log.Printf("Generated new tool call ID for %s: %s", vendor, newID)
 							toolCallMap["id"] = newID
 							toolCalls[j] = toolCallMap
 						}
 					}
 					message["tool_calls"] = toolCalls
+				} else {
+					log.Printf("No tool calls found in message for choice %d", i)
 				}
 				
 				choiceMap["message"] = message
+			} else {
+				log.Printf("No message found in choice %d", i)
 			}
 			
 			choices[i] = choiceMap
@@ -397,6 +421,7 @@ func processResponse(responseBody []byte) ([]byte, error) {
 	// Encode the modified response
 	modifiedResponseBody, err := json.Marshal(responseData)
 	if err != nil {
+		log.Printf("Error marshaling modified response: %v", err)
 		return responseBody, nil // Return original response if marshal fails
 	}
 
@@ -497,7 +522,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 				
 				// Use our processStreamChunk function to handle all the modifications
 				// This ensures consistency with our standalone function
-				modifiedLine := processStreamChunk(line)
+				modifiedLine := processStreamChunk(line, selection.Vendor)
 				w.Write(modifiedLine)
 			} else {
 				// For non-data lines, pass through unchanged
@@ -513,7 +538,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		}
 
 		// Process the response to ensure IDs are present
-		modifiedResponse, err := processResponse(responseBody)
+		modifiedResponse, err := processResponse(responseBody, selection.Vendor)
 		if err != nil {
 			log.Printf("Error processing response: %v", err)
 			w.Write(responseBody) // Write original response if processing fails
