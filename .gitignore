@@ -47,3 +47,4 @@ tmp/
 .DS_Store
 Thumbs.db 
 repomix-output.xml
+deploy.sh
