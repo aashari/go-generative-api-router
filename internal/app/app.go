@@ -205,7 +205,7 @@ func (a *App) SetupRoutes() http.Handler {
 		httpSwagger.URL("/swagger/doc.json"),  // The URL pointing to API definition
 		httpSwagger.DeepLinking(true),
 		httpSwagger.DocExpansion("none"),
-		httpSwagger.DomID("swagger-ui")
+		httpSwagger.DomID("swagger-ui"),
 	))
 
 	return mux
