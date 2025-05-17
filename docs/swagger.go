@@ -13,7 +13,7 @@ package docs
 // @license.name  MIT
 // @license.url   https://opensource.org/licenses/MIT
 
-// @host      0.0.0.0:8082
+// @host      genapi.aduh.xyz
 // @BasePath  /
 
 // @securityDefinitions.apikey BearerAuth

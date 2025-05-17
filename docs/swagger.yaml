@@ -154,7 +154,7 @@ definitions:
         example: 30
         type: integer
     type: object
-host: 0.0.0.0:8082
+host: genapi.aduh.xyz
 info:
   contact:
     email: support@yourcompany.com

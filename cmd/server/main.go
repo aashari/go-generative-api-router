@@ -19,7 +19,7 @@ import (
 // @license.name  MIT
 // @license.url   https://opensource.org/licenses/MIT
 
-// @host      0.0.0.0:8082
+// @host      genapi.aduh.xyz
 // @BasePath  /
 
 // @securityDefinitions.apikey BearerAuth
@@ -60,7 +60,7 @@ func main() {
 	corsHandler := CORSMiddleware(handler)
 
 	log.Println("Server starting on 0.0.0.0:8082")
-	log.Println("Swagger documentation available at http://localhost:8082/swagger/index.html")
+	log.Println("Swagger documentation available at https://genapi.aduh.xyz/swagger/index.html")
 	err = http.ListenAndServe("0.0.0.0:8082", corsHandler)
 	if err != nil {
 		log.Fatalf("Server failed: %v", err)

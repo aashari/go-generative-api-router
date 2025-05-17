@@ -6,6 +6,7 @@ RUN GOOS=linux go build -o generative-api-router ./cmd/server
 FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/generative-api-router .
+COPY --from=builder /app/docs ./docs
 COPY credentials.json .
 COPY models.json .
 EXPOSE 8082
