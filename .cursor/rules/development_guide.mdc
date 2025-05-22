@@ -3,11 +3,6 @@ description:
 globs: 
 alwaysApply: true
 ---
----
-description: 
-globs: 
-alwaysApply: false
----
 # Generative API Router Development Guide
 
 This guide provides instructions and tips for developing, testing, and maintaining the Generative API Router project.
