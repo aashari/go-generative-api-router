@@ -199,10 +199,10 @@ func (a *App) SetupRoutes() http.Handler {
 	mux.HandleFunc("/health", a.HealthHandler)
 	mux.HandleFunc("/v1/chat/completions", a.ChatCompletionsHandler)
 	mux.HandleFunc("/v1/models", a.ModelsHandler)
-	
+
 	// Serve Swagger UI with proper configuration
 	mux.Handle("/swagger/", httpSwagger.Handler(
-		httpSwagger.URL("/swagger/doc.json"),  // The URL pointing to API definition
+		httpSwagger.URL("/swagger/doc.json"), // The URL pointing to API definition
 		httpSwagger.DeepLinking(true),
 		httpSwagger.DocExpansion("none"),
 		httpSwagger.DomID("swagger-ui"),

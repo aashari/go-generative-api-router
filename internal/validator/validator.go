@@ -6,30 +6,37 @@ import (
 )
 
 // ValidateAndModifyRequest validates the request and modifies it with the selected model
-func ValidateAndModifyRequest(body []byte, model string) ([]byte, error) {
+// Returns the modified body and the original model value from the request
+func ValidateAndModifyRequest(body []byte, model string) ([]byte, string, error) {
 	var requestData map[string]interface{}
 	if err := json.Unmarshal(body, &requestData); err != nil {
-		return nil, fmt.Errorf("invalid request format: %v", err)
+		return nil, "", fmt.Errorf("invalid request format: %v", err)
 	}
 
 	// Validate messages exist
 	if err := validateMessages(requestData); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Validate tools if present
 	if err := validateTools(requestData); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Validate tool_choice if present
 	if err := validateToolChoice(requestData); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Validate stream if present
 	if err := validateStream(requestData); err != nil {
-		return nil, err
+		return nil, "", err
+	}
+
+	// Extract the original model before replacing it
+	originalModel, _ := requestData["model"].(string)
+	if originalModel == "" {
+		originalModel = "any-model" // Default if no model provided
 	}
 
 	// Replace the model with our selected one
@@ -38,10 +45,10 @@ func ValidateAndModifyRequest(body []byte, model string) ([]byte, error) {
 	// Re-encode the modified request
 	modifiedBody, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encode modified request: %v", err)
+		return nil, "", fmt.Errorf("failed to encode modified request: %v", err)
 	}
 
-	return modifiedBody, nil
+	return modifiedBody, originalModel, nil
 }
 
 // validateMessages checks if the messages field exists

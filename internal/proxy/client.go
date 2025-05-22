@@ -54,7 +54,7 @@ func generateRandomString(length int) string {
 }
 
 // processStreamChunk processes a single chunk of a streaming response
-func processStreamChunk(chunk []byte, vendor string) []byte {
+func processStreamChunk(chunk []byte, vendor string, originalModel string) []byte {
 	// Handle empty chunks or non-data chunks
 	if len(chunk) == 0 || !bytes.HasPrefix(chunk, []byte("data: ")) {
 		return chunk
@@ -67,7 +67,7 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 
 	// Extract the JSON portion from the chunk
 	jsonData := chunk[6:] // Skip "data: " prefix
-	
+
 	var chunkData map[string]interface{}
 	if err := json.Unmarshal(jsonData, &chunkData); err != nil {
 		log.Printf("Error unmarshaling stream chunk: %v", err)
@@ -78,7 +78,7 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 	if id, ok := chunkData["id"]; !ok || id == nil || id == "" {
 		chunkData["id"] = "chatcmpl-" + generateRandomString(10)
 	}
-	
+
 	// Add service_tier if missing (OpenAI compatibility)
 	if _, ok := chunkData["service_tier"]; !ok {
 		chunkData["service_tier"] = "default"
@@ -91,6 +91,11 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 		// No log here to avoid flooding stream logs, but ensure it's set
 	} else if _, isString := sfValue.(string); !isString {
 		chunkData["system_fingerprint"] = "fp_" + generateRandomString(9)
+	}
+
+	// Override the model field with the original model requested by the client
+	if originalModel != "" {
+		chunkData["model"] = originalModel
 	}
 
 	// Process choices if present
@@ -115,12 +120,12 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 				if _, ok := delta["annotations"]; !ok {
 					delta["annotations"] = []interface{}{}
 				}
-				
+
 				// Add refusal if missing in delta
 				if _, ok := delta["refusal"]; !ok {
 					delta["refusal"] = nil
 				}
-			
+
 				// Process tool_calls if present
 				if toolCalls, ok := delta["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
 					log.Printf("Processing %d tool calls in stream chunk delta", len(toolCalls))
@@ -134,7 +139,7 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 						// Check if "id" field exists and what its value is
 						toolCallID, idExists := toolCallMap["id"]
 						log.Printf("Tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
-						
+
 						// Force override for Gemini vendor or if ID is missing/empty
 						if vendor == "gemini" {
 							// Always generate a new ID for Gemini responses regardless of current value
@@ -161,12 +166,12 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 				if _, ok := message["annotations"]; !ok {
 					message["annotations"] = []interface{}{}
 				}
-				
+
 				// Add refusal if missing
 				if _, ok := message["refusal"]; !ok {
 					message["refusal"] = nil
 				}
-			
+
 				// Process tool_calls if present
 				if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
 					log.Printf("Processing %d tool calls in stream chunk message", len(toolCalls))
@@ -180,7 +185,7 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 						// Check if "id" field exists and what its value is
 						toolCallID, idExists := toolCallMap["id"]
 						log.Printf("Tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
-						
+
 						// Force override for Gemini vendor or if ID is missing/empty
 						if vendor == "gemini" {
 							// Always generate a new ID for Gemini responses regardless of current value
@@ -204,14 +209,14 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 			} else {
 				log.Printf("No delta or message found in stream chunk choice %d", i)
 			}
-			
+
 			choices[i] = choiceMap
 		}
 		chunkData["choices"] = choices
 	} else {
 		log.Printf("No choices found in stream chunk")
 	}
-	
+
 	// Add usage information for the first chunk if needed
 	// First chunk is usually identified by delta containing role field
 	isFirstChunk := false
@@ -224,22 +229,22 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 			}
 		}
 	}
-	
+
 	if isFirstChunk {
 		// Add usage if missing
 		_, hasUsage := chunkData["usage"]
 		if !hasUsage {
 			chunkData["usage"] = map[string]interface{}{
-				"prompt_tokens": 0,
+				"prompt_tokens":     0,
 				"completion_tokens": 0,
-				"total_tokens": 0,
+				"total_tokens":      0,
 				"prompt_tokens_details": map[string]interface{}{
 					"cached_tokens": 0,
-					"audio_tokens": 0,
+					"audio_tokens":  0,
 				},
 				"completion_tokens_details": map[string]interface{}{
-					"reasoning_tokens": 0,
-					"audio_tokens": 0,
+					"reasoning_tokens":           0,
+					"audio_tokens":               0,
 					"accepted_prediction_tokens": 0,
 					"rejected_prediction_tokens": 0,
 				},
@@ -259,7 +264,7 @@ func processStreamChunk(chunk []byte, vendor string) []byte {
 }
 
 // processResponse processes the API response, ensuring all required fields are present
-func processResponse(responseBody []byte, vendor string, contentEncoding string) ([]byte, error) {
+func processResponse(responseBody []byte, vendor string, contentEncoding string, originalModel string) ([]byte, error) {
 	if len(responseBody) == 0 {
 		return responseBody, nil
 	}
@@ -273,7 +278,7 @@ func processResponse(responseBody []byte, vendor string, contentEncoding string)
 			return responseBody, fmt.Errorf("error creating gzip reader: %w", err) // Return error
 		}
 		defer gzipReader.Close()
-		
+
 		decompressedBody, err := io.ReadAll(gzipReader)
 		if err != nil {
 			log.Printf("Error decompressing gzip response: %v", err)
@@ -327,9 +332,15 @@ func processResponse(responseBody []byte, vendor string, contentEncoding string)
 		log.Printf("Replaced non-string system_fingerprint with generated one. New value: %s", generatedFP)
 	}
 
-	// Log the model name for debugging
+	// Log the actual model used and replace it with the original model
 	if model, ok := responseData["model"].(string); ok {
-		log.Printf("Processing response from model: %s (vendor: %s)", model, vendor)
+		log.Printf("Processing response from actual model: %s (vendor: %s), will be presented as: %s",
+			model, vendor, originalModel)
+	}
+
+	// Override the model field with the original model requested by the client
+	if originalModel != "" {
+		responseData["model"] = originalModel
 	}
 
 	// Check if this is an error response
@@ -348,7 +359,7 @@ func processResponse(responseBody []byte, vendor string, contentEncoding string)
 		}
 
 		responseData["error"] = errorData
-		
+
 		// Process choices and other fields only if this is not an error response
 	} else if choices, ok := responseData["choices"].([]interface{}); ok && len(choices) > 0 {
 		log.Printf("Processing %d choices", len(choices))
@@ -358,7 +369,7 @@ func processResponse(responseBody []byte, vendor string, contentEncoding string)
 				log.Printf("Choice %d is not a map", i)
 				continue
 			}
-			
+
 			// Add logprobs if missing
 			if _, ok := choiceMap["logprobs"]; !ok {
 				choiceMap["logprobs"] = nil
@@ -371,12 +382,12 @@ func processResponse(responseBody []byte, vendor string, contentEncoding string)
 				if _, ok := message["annotations"]; !ok {
 					message["annotations"] = []interface{}{}
 				}
-				
+
 				// Add refusal if missing
 				if _, ok := message["refusal"]; !ok {
 					message["refusal"] = nil
 				}
-				
+
 				// Handle tool_calls if present
 				if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
 					log.Printf("Processing %d tool calls in choice %d", len(toolCalls), i)
@@ -390,7 +401,7 @@ func processResponse(responseBody []byte, vendor string, contentEncoding string)
 						// Check if "id" field exists and what its value is
 						toolCallID, idExists := toolCallMap["id"]
 						log.Printf("Tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
-						
+
 						// Force override for Gemini vendor or if ID is missing/empty
 						if vendor == "gemini" {
 							// Always generate a new ID for Gemini responses regardless of current value
@@ -410,12 +421,12 @@ func processResponse(responseBody []byte, vendor string, contentEncoding string)
 				} else {
 					log.Printf("No tool calls found in message for choice %d", i)
 				}
-				
+
 				choiceMap["message"] = message
 			} else {
 				log.Printf("No message found in choice %d", i)
 			}
-			
+
 			choices[i] = choiceMap
 		}
 		responseData["choices"] = choices
@@ -433,38 +444,38 @@ func processResponse(responseBody []byte, vendor string, contentEncoding string)
 		if _, ok := usage["total_tokens"]; !ok {
 			usage["total_tokens"] = 0
 		}
-		
+
 		// Add token details subfields if not present (OpenAI compatibility)
 		if _, ok := usage["prompt_tokens_details"]; !ok {
 			usage["prompt_tokens_details"] = map[string]interface{}{
 				"cached_tokens": 0,
-				"audio_tokens": 0,
+				"audio_tokens":  0,
 			}
 		}
-		
+
 		if _, ok := usage["completion_tokens_details"]; !ok {
 			usage["completion_tokens_details"] = map[string]interface{}{
-				"reasoning_tokens": 0,
-				"audio_tokens": 0,
+				"reasoning_tokens":           0,
+				"audio_tokens":               0,
 				"accepted_prediction_tokens": 0,
 				"rejected_prediction_tokens": 0,
 			}
 		}
-		
+
 		responseData["usage"] = usage
 	} else {
 		// If usage is completely missing, add a placeholder with default values
 		responseData["usage"] = map[string]interface{}{
-			"prompt_tokens": 0,
+			"prompt_tokens":     0,
 			"completion_tokens": 0,
-			"total_tokens": 0,
+			"total_tokens":      0,
 			"prompt_tokens_details": map[string]interface{}{
 				"cached_tokens": 0,
-				"audio_tokens": 0,
+				"audio_tokens":  0,
 			},
 			"completion_tokens_details": map[string]interface{}{
-				"reasoning_tokens": 0,
-				"audio_tokens": 0,
+				"reasoning_tokens":           0,
+				"audio_tokens":               0,
 				"accepted_prediction_tokens": 0,
 				"rejected_prediction_tokens": 0,
 			},
@@ -482,7 +493,7 @@ func processResponse(responseBody []byte, vendor string, contentEncoding string)
 }
 
 // SendRequest sends a request to the vendor API and streams the response back
-func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selection *selector.VendorSelection, modifiedBody []byte) error {
+func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selection *selector.VendorSelection, modifiedBody []byte, originalModel string) error {
 	baseURL, ok := c.BaseURLs[selection.Vendor]
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrUnknownVendor, selection.Vendor)
@@ -494,7 +505,8 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	if err := json.Unmarshal(modifiedBody, &requestData); err == nil {
 		if stream, ok := requestData["stream"].(bool); ok && stream {
 			isStreaming = true
-			log.Printf("Initiating streaming from vendor %s, model %s", selection.Vendor, selection.Model)
+			log.Printf("Initiating streaming from vendor %s, model %s, will be presented as %s",
+				selection.Vendor, selection.Model, originalModel)
 		}
 	}
 
@@ -556,7 +568,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		log.Printf("VERBOSE_DEBUG: SendRequest - Streaming - Vendor passed for processing: '%s'", selection.Vendor)
 		// For streaming responses, we need a special handling
 		reader := bufio.NewReader(resp.Body)
-		
+
 		for {
 			// Read a line up to \n
 			line, err := reader.ReadBytes('\n')
@@ -566,13 +578,13 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 				}
 				break
 			}
-			
+
 			// Skip empty lines
 			if len(bytes.TrimSpace(line)) == 0 {
 				w.Write(line)
 				continue
 			}
-			
+
 			// Process data lines
 			if bytes.HasPrefix(line, []byte("data: ")) {
 				// Check if it's the [DONE] marker
@@ -580,10 +592,10 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 					w.Write(line)
 					continue
 				}
-				
+
 				// Use our processStreamChunk function to handle all the modifications
 				// This ensures consistency with our standalone function
-				modifiedLine := processStreamChunk(line, selection.Vendor)
+				modifiedLine := processStreamChunk(line, selection.Vendor, originalModel)
 				w.Write(modifiedLine)
 			} else {
 				// For non-data lines, pass through unchanged
@@ -600,7 +612,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		}
 
 		// Process the response to ensure IDs are present
-		modifiedResponse, err := processResponse(responseBody, selection.Vendor, contentEncoding)
+		modifiedResponse, err := processResponse(responseBody, selection.Vendor, contentEncoding, originalModel)
 		if err != nil {
 			log.Printf("Error processing response: %v", err)
 			w.Write(responseBody) // Write original response if processing fails

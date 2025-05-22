@@ -35,14 +35,16 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 	r.Body.Close()
 
 	// Validate and modify request
-	modifiedBody, err := validator.ValidateAndModifyRequest(body, selection.Model)
+	modifiedBody, originalModel, err := validator.ValidateAndModifyRequest(body, selection.Model)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	log.Printf("VERBOSE_DEBUG: ProxyRequest - Original requested model: '%s', will route to: '%s'", originalModel, selection.Model)
+
 	// Use the provided API client
-	err = apiClient.SendRequest(w, r, selection, modifiedBody)
+	err = apiClient.SendRequest(w, r, selection, modifiedBody, originalModel)
 	if err != nil {
 		// Check for specific error types
 		if errors.Is(err, ErrUnknownVendor) {
