@@ -17,5 +17,15 @@ COPY --from=builder /app/generative-api-router .
 COPY --from=builder /app/docs ./docs
 COPY credentials.json .
 COPY models.json .
+
+# Set environment variable to force Go's standard logger to use UTC time and include microseconds
+ENV TZ=UTC
+
+# Ensure logs are sent to stdout/stderr for CloudWatch collection
+ENV GLOG_logtostderr=1
+
+# Expose the application port
 EXPOSE 8082
+
+# Run the application
 CMD ["./generative-api-router"] 
