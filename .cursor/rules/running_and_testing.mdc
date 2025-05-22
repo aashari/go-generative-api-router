@@ -63,9 +63,12 @@ This guide provides step-by-step instructions for running and testing the Genera
 2. **Run the Server**:
    ```bash
    go run ./cmd/server
+   # OR for background execution and logging:
+   # ./server > server.log 2>&1 &
    ```
-   - The server will start on port `:8082` by default
-   - Check for successful initialization in the logs
+   - The server will start on port `:8082` by default.
+   - Check for successful initialization in the logs (e.g., `tail -f server.log` if running in background).
+   - **Important**: Wait a few seconds (e.g., `sleep 3`) after starting the server before sending requests to avoid "Connection refused" errors.
 
 ### Using Docker
 
@@ -85,96 +88,107 @@ This guide provides step-by-step instructions for running and testing the Genera
 
 1. **Health Check**:
    ```bash
-   curl -X GET http://localhost:8082/health
+   curl -X GET http://localhost:8082/health | cat
    ```
    - Expected: `OK` with status code 200
 
 2. **List Available Models**:
    ```bash
-   curl -X GET http://localhost:8082/v1/models | jq
+   curl -X GET http://localhost:8082/v1/models | jq | cat
    ```
    - Lists all configured models in OpenAI-compatible format
 
 3. **Basic Chat Completion**:
    ```bash
-   curl -X POST http://localhost:8082/v1/chat/completions \
-     -H "Content-Type: application/json" \
-     -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}' | jq
+   curl -X POST http://localhost:8082/v1/chat/completions \\
+     -H "Content-Type: application/json" \\
+     -d \'{\"model\": \"any-model-name-you-like\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}]}\' | jq | cat
    ```
    - Verify that the response includes:
-     - A proper `"id"` field with `"chatcmpl-"` prefix
+     - A proper `\"id\"` field with `\"chatcmpl-\"` prefix
      - Content in the expected format
-     - A valid `"model"` field showing which model was selected
+     - The `\"model\"` field in the response should match the `\"model\"` field sent in the request (e.g., `\"any-model-name-you-like\"`).
+   - **Log Check**: Verify server logs (e.g., `grep \"VERBOSE_DEBUG: ProxyRequest\" server.log | tail -n 1`) show the requested model and the actual model selected by the router. Example:
+     `VERBOSE_DEBUG: ProxyRequest - Original requested model: 'any-model-name-you-like', will route to: 'actual-selected-model'`
+   - Also check for `Processing response from actual model:` log line.
 
 ### Advanced Testing
 
 1. **Streaming Response Test**:
    ```bash
-   curl -X POST http://localhost:8082/v1/chat/completions \
-     -H "Content-Type: application/json" \
-     -d '{"model": "any-model", "messages": [{"role": "user", "content": "Count from 1 to 5"}], "stream": true}' | cat
+   curl -X POST http://localhost:8082/v1/chat/completions \\
+     -H "Content-Type: application/json" \\
+     -d \'{\"model\": \"my-streaming-test-model\", \"messages\": [{\"role\": \"user\", \"content\": \"Count from 1 to 3\"}], \"stream\": true}\' | cat
    ```
-   - Verify that responses come as Server-Sent Events with `data:` prefix
-   - Check each chunk has a consistent `"id"` field
-   - Confirm the stream ends with `data: [DONE]`
+   - Verify that responses come as Server-Sent Events with `data:` prefix.
+   - Check each chunk has a consistent `\"id\"` field.
+   - **Crucially, verify each data chunk's `\"model\"` field matches the requested model (e.g., `\"my-streaming-test-model\"`).**
+   - Confirm the stream ends with `data: [DONE]`.
+   - **Log Check**: Verify server logs for entries like `Initiating streaming from vendor ... will be presented as my-streaming-test-model`.
 
 2. **Tool Calling Test**:
    ```bash
-   curl -X POST http://localhost:8082/v1/chat/completions \
-     -H "Content-Type: application/json" \
-     -d '{"model": "any-model", "messages": [{"role": "user", "content": "What is the weather in Boston?"}], "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get weather information for a location", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "City name"}}, "required": ["location"]}}}], "tool_choice": "auto"}' | jq
+   curl -X POST http://localhost:8082/v1/chat/completions \\
+     -H "Content-Type: application/json" \\
+     -d \'{\"model\": \"tool-test-model\", \"messages\": [{\"role\": \"user\", \"content\": \"What is the weather in Boston?\"}], \"tools\": [{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get weather information for a location\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}], \"tool_choice\": \"auto\"}\' | jq | cat
    ```
-   - Verify that tool calls include a proper `"id"` field with `"call_"` prefix
-   - Check tool call arguments and function name are correctly formatted
+   - Verify that tool calls include a proper `\"id\"` field with `\"call_\"` prefix.
+   - Check tool call arguments and function name are correctly formatted.
+   - Ensure the `\"model\"` field in the response matches `\"tool-test-model\"`.
+   - **Log Check**: Verify server logs for original vs. actual model routing.
 
 3. **Vendor-Specific Testing**:
    ```bash
-   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" \
-     -H "Content-Type: application/json" \
-     -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}' | jq
+   curl -X POST \"http://localhost:8082/v1/chat/completions?vendor=openai\" \\
+     -H \"Content-Type: application/json\" \\
+     -d \'{\"model\": \"specific-vendor-openai-model\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello from OpenAI test\"}]}\' | jq | cat
    ```
    ```bash
-   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" \
-     -H "Content-Type: application/json" \
-     -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}' | jq
+   curl -X POST \"http://localhost:8082/v1/chat/completions?vendor=gemini\" \\
+     -H \"Content-Type: application/json\" \\
+     -d \'{\"model\": \"specific-vendor-gemini-model\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello from Gemini test\"}]}\' | jq | cat
    ```
-   - Verify that each vendor properly responds with their model
+   - Verify that each vendor properly responds.
+   - Ensure the `\"model\"` field in each response matches what was sent in the request for that vendor.
+   - **Log Check**: Verify server logs for vendor-specific routing and model name handling.
 
 ## Troubleshooting
 
 1. **Port Conflicts**:
    - Check if port 8082 is already in use:
      ```bash
-     lsof -i :8082
+     lsof -i :8082 | cat
      ```
    - Kill conflicting processes:
      ```bash
-     kill -9 <PID>
+     kill -9 <PID> # Use with caution
      ```
 
 2. **Connection Refused Errors**:
-   - Ensure the server has fully started before sending requests
-   - Wait a few seconds after starting the server
+   - Ensure the server has fully started before sending requests.
+   - **Wait a few seconds** (e.g., `sleep 3`) after starting the server.
 
 3. **Invalid API Key Errors**:
-   - Verify your API keys in [credentials.json](mdc:credentials.json) are valid and current
-   - Check vendor-specific error messages in the response
+   - Verify your API keys in `credentials.json` are valid and current.
+   - Check vendor-specific error messages in the response.
 
 4. **Request Validation Errors**:
-   - Ensure your request has the required `"messages"` field
-   - Check that tools and tool_choice are properly formatted
+   - Ensure your request has the required `\"messages\"` field.
+   - Check that tools and tool_choice are properly formatted.
 
 5. **Server Crashes**:
-   - Check the server logs for error messages
-   - Ensure credentials.json and models.json are valid JSON files
+   - Check the server logs for error messages (e.g., `tail server.log`).
+   - Ensure `credentials.json` and `models.json` are valid JSON files.
 
 ## Stopping the Service
 
 ### Locally:
 ```bash
 # If running in foreground, press Ctrl+C
-# If running in background:
-pkill -f "server$"
+# If running in background (more specific to avoid killing other 'server' processes):
+pgrep -f "^./server$" | xargs kill -9 || echo "Server not found or already stopped"
+# Alternatively:
+# pkill -f "^./server$"
 ```
 
 ### Docker:
