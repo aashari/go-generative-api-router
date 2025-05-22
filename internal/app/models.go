@@ -6,29 +6,29 @@ type ChatCompletionRequest struct {
 	Model    string    `json:"model" example:"gpt-4o"`
 	Stream   bool      `json:"stream,omitempty" example:"false"`
 	// Added OpenAI-compatible fields
-	MaxTokens        int                     `json:"max_tokens,omitempty" example:"100"`
-	Temperature      float64                 `json:"temperature,omitempty" example:"0.7"`
-	TopP             float64                 `json:"top_p,omitempty" example:"1"`
-	N                int                     `json:"n,omitempty" example:"1"`
-	Stop             []string                `json:"stop,omitempty"`
-	PresencePenalty  float64                 `json:"presence_penalty,omitempty" example:"0"`
-	FrequencyPenalty float64                 `json:"frequency_penalty,omitempty" example:"0"`
-	LogitBias        map[string]float64      `json:"logit_bias,omitempty"`
-	User             string                  `json:"user,omitempty" example:"user-123"`
-	Functions        []FunctionDefinition    `json:"functions,omitempty"`
-	FunctionCall     string                  `json:"function_call,omitempty" example:"auto"`
-	Tools            []Tool                  `json:"tools,omitempty"`
-	ToolChoice       string                  `json:"tool_choice,omitempty" example:"auto"`
-	ResponseFormat   map[string]string       `json:"response_format,omitempty"`
+	MaxTokens        int                  `json:"max_tokens,omitempty" example:"100"`
+	Temperature      float64              `json:"temperature,omitempty" example:"0.7"`
+	TopP             float64              `json:"top_p,omitempty" example:"1"`
+	N                int                  `json:"n,omitempty" example:"1"`
+	Stop             []string             `json:"stop,omitempty"`
+	PresencePenalty  float64              `json:"presence_penalty,omitempty" example:"0"`
+	FrequencyPenalty float64              `json:"frequency_penalty,omitempty" example:"0"`
+	LogitBias        map[string]float64   `json:"logit_bias,omitempty"`
+	User             string               `json:"user,omitempty" example:"user-123"`
+	Functions        []FunctionDefinition `json:"functions,omitempty"`
+	FunctionCall     string               `json:"function_call,omitempty" example:"auto"`
+	Tools            []Tool               `json:"tools,omitempty"`
+	ToolChoice       string               `json:"tool_choice,omitempty" example:"auto"`
+	ResponseFormat   map[string]string    `json:"response_format,omitempty"`
 }
 
 // Message represents a chat message
 type Message struct {
-	Role    string                 `json:"role" example:"user"`
-	Content string                 `json:"content" example:"Hello, how are you?"`
-	Name    string                 `json:"name,omitempty" example:"John"`
-	ToolCalls []ToolCall           `json:"tool_calls,omitempty"`
-	ToolCallID string              `json:"tool_call_id,omitempty"`
+	Role       string     `json:"role" example:"user"`
+	Content    string     `json:"content" example:"Hello, how are you?"`
+	Name       string     `json:"name,omitempty" example:"John"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
 // FunctionDefinition represents an available function definition
@@ -65,10 +65,10 @@ type ChatCompletionResponse struct {
 
 // Choice represents a completion choice
 type Choice struct {
-	Index        int         `json:"index" example:"0"`
-	Message      Message     `json:"message"`
-	LogProbs     string      `json:"logprobs" example:"null"`
-	FinishReason string      `json:"finish_reason" example:"stop"`
+	Index        int     `json:"index" example:"0"`
+	Message      Message `json:"message"`
+	LogProbs     string  `json:"logprobs" example:"null"`
+	FinishReason string  `json:"finish_reason" example:"stop"`
 }
 
 // Usage represents token usage information
@@ -97,10 +97,10 @@ type ErrorResponse struct {
 
 // ErrorInfo contains details about an error
 type ErrorInfo struct {
-	Message string      `json:"message" example:"Invalid model specified"`
-	Type    string      `json:"type" example:"invalid_request_error"`
-	Param   string      `json:"param" example:"model"`
-	Code    string      `json:"code,omitempty" example:"invalid_model"`
+	Message string `json:"message" example:"Invalid model specified"`
+	Type    string `json:"type" example:"invalid_request_error"`
+	Param   string `json:"param" example:"model"`
+	Code    string `json:"code,omitempty" example:"invalid_model"`
 }
 
 // ModelsResponse represents the response from the models endpoint
@@ -115,4 +115,4 @@ type Model struct {
 	Object  string `json:"object" example:"model"`
 	Created int64  `json:"created" example:"1677610602"`
 	OwnedBy string `json:"owned_by" example:"openai"`
-} 
+}
