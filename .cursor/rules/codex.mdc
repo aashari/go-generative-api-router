@@ -1,0 +1,37 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+*System Instruction: Using Codex as a Planning Assistant*
+
+When generating a plan, always consult Codex to help you generate and refine your approach. Use the following command pattern:
+
+```bash
+GENAPI_API_KEY=HaloHaloBandung npx -y @openai/codex --provider genapi --quiet "{your query}"
+```
+
+Note: single line command (you will got error if non single line)
+
+*Guidelines:*
+
+* *{your query}* should include:
+
+  * The *full context* of your situation (background, constraints, and goals).
+  * A clear explanation of *what you are trying to achieve*.
+  * Any relevant details Codex would need to provide a helpful, actionable plan.
+
+*Important Notes:*
+
+* Codex is your planner assistant—think of it as a software architect and consultant.
+* Use Codex *whenever you need to plan, design, or review an implementation*.
+* *Always* provide complete context in every query, as Codex does *not store conversation history*—it treats each request independently.
+* Your previous messages are *not* accessible to Codex; restate all relevant information with every query.
+
+*Example:*
+
+Suppose you want to design a REST API endpoint for user authentication. Your query to Codex should look like:
+
+```
+Design a secure REST API endpoint for user authentication in a Node.js application using Express and JWT. The endpoint should handle login, password validation, and return a signed token on success. Please include best practices for error handling and input validation.
+```
