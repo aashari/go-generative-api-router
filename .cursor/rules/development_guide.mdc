@@ -9,17 +9,25 @@ This guide provides instructions and tips for developing, testing, and maintaini
 
 ## Project Structure
 
-- **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server. ([cmd/server/main.go](mdc:cmd/server/main.go))
-- **`internal/app/app.go`**: Centralizes application configuration and dependencies. ([internal/app/app.go](mdc:internal/app/app.go))
-- **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication. ([internal/proxy/proxy.go](mdc:internal/proxy/proxy.go))
-- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs. ([internal/proxy/client.go](mdc:internal/proxy/client.go))
-- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models. ([internal/selector/selector.go](mdc:internal/selector/selector.go))
-- **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request. ([internal/validator/validator.go](mdc:internal/validator/validator.go))
-- **`internal/config/config.go`**: Loads and manages configuration from JSON files. ([internal/config/config.go](mdc:internal/config/config.go))
-- **`credentials.json`**: Stores API keys for different vendors (ensure this is gitignored). ([credentials.json.example](mdc:credentials.json.example))
-- **`models.json`**: Defines the available models and their vendors. ([models.json](mdc:models.json))
-- **`Dockerfile`**: For building the Docker image. ([Dockerfile](mdc:Dockerfile))
-- **`docker-compose.yml`**: For running the service with Docker Compose. ([docker-compose.yml](mdc:docker-compose.yml))
+- **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server. ([cmd/server/main.go](mdc:generative-api-router/cmd/server/main.go))
+- **`internal/app/app.go`**: Centralizes application configuration and dependencies (reduced to 64 lines after Phase 2 refactoring). ([internal/app/app.go](mdc:generative-api-router/internal/app/app.go))
+- **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication. ([internal/proxy/proxy.go](mdc:generative-api-router/internal/proxy/proxy.go))
+- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs. ([internal/proxy/client.go](mdc:generative-api-router/internal/proxy/client.go))
+- **`internal/proxy/response_processor.go`**: Processes non-streaming responses from vendors. ([internal/proxy/response_processor.go](mdc:generative-api-router/internal/proxy/response_processor.go))
+- **`internal/proxy/stream_processor.go`**: Handles streaming responses from vendors. ([internal/proxy/stream_processor.go](mdc:generative-api-router/internal/proxy/stream_processor.go))
+- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models. ([internal/selector/selector.go](mdc:generative-api-router/internal/selector/selector.go))
+- **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request. ([internal/validator/validator.go](mdc:generative-api-router/internal/validator/validator.go))
+- **`internal/config/config.go`**: Loads and manages configuration from JSON files. ([internal/config/config.go](mdc:generative-api-router/internal/config/config.go))
+- **`internal/config/validation.go`**: Validates credentials and model configurations. ([internal/config/validation.go](mdc:generative-api-router/internal/config/validation.go))
+- **`internal/handlers/api_handlers.go`**: HTTP handlers for health, chat completions, and models endpoints. ([internal/handlers/api_handlers.go](mdc:generative-api-router/internal/handlers/api_handlers.go))
+- **`internal/errors/errors.go`**: Standardized error types and JSON error responses. ([internal/errors/errors.go](mdc:generative-api-router/internal/errors/errors.go))
+- **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor. ([internal/filter/utils.go](mdc:generative-api-router/internal/filter/utils.go))
+- **`internal/monitoring/metrics.go`**: Metrics collection, middleware, and monitoring endpoints. ([internal/monitoring/metrics.go](mdc:generative-api-router/internal/monitoring/metrics.go))
+- **`internal/router/routes.go`**: Centralized route setup with middleware integration. ([internal/router/routes.go](mdc:generative-api-router/internal/router/routes.go))
+- **`credentials.json`**: Stores API keys for different vendors (ensure this is gitignored). ([credentials.json.example](mdc:generative-api-router/credentials.json.example))
+- **`models.json`**: Defines the available models and their vendors. ([models.json](mdc:generative-api-router/models.json))
+- **`Dockerfile`**: For building the Docker image. ([Dockerfile](mdc:generative-api-router/Dockerfile))
+- **`docker-compose.yml`**: For running the service with Docker Compose. ([docker-compose.yml](mdc:generative-api-router/docker-compose.yml))
 
 ## Development
 
@@ -36,6 +44,31 @@ This guide provides instructions and tips for developing, testing, and maintaini
 ## Testing
 
 **Key Principle**: This service acts as a *transparent proxy* with a key modification. The router selects an actual vendor/model based on its internal logic (e.g., random selection, vendor filter). The `model` field in the request to the downstream vendor is overridden with this *actual selected model*. However, the `model` field in the final response back to the client is modified to reflect the *original model name the client sent in its initial request*. All other request and response data (headers, body structure excluding the model field, status code) from the vendor **must** be passed *exactly* to the client, and vice-versa. Changes must not interfere with this.
+
+### Running Tests
+
+The project includes comprehensive test coverage for all packages:
+
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with verbose output
+go test -v ./...
+
+# Run tests for a specific package
+go test ./internal/handlers
+```
+
+Test files are available for:
+- `internal/app/app_test.go` - Application initialization tests
+- `internal/config/validation_test.go` - Configuration validation tests
+- `internal/errors/errors_test.go` - Error handling tests
+- `internal/filter/utils_test.go` - Filter utility tests
+- `internal/handlers/api_handlers_test.go` - HTTP handler tests
+- `internal/monitoring/metrics_test.go` - Metrics collection tests
+
+### Manual Testing
 
 1.  **Prerequisites for Testing**:
     *   **Kill Existing Processes**: Before starting a new server instance for testing, ensure no other instance is running on the same port (typically `:8082`).
@@ -68,9 +101,12 @@ This guide provides instructions and tips for developing, testing, and maintaini
 
 ## Maintenance
 
-*   **Dependencies**: Run `go mod tidy` periodically to clean up dependencies.
+*   **Dependencies**: Run `go mod tidy` periodically to clean up dependencies. Key dependencies include:
+    *   `github.com/stretchr/testify` v1.10.0 - Testing assertions
+    *   `github.com/go-playground/validator/v10` v10.26.0 - Struct validation
 *   **Configuration Updates**: API keys (`credentials.json`) and model lists (`models.json`) can be updated without code changes. Restart the server for changes to take effect.
 *   **Logging**: Review logs for errors or unexpected behavior. The server logs selected vendors/models for each request, the original requested model, and how the response model is being presented. Key log lines for debugging model handling include `VERBOSE_DEBUG: ProxyRequest - Original requested model:`, `VERBOSE_DEBUG: ProxyRequest - Selected Vendor:`, and `Processing response from actual model: ... will be presented as:`.
+*   **Monitoring**: Access metrics at `/metrics` endpoint for request counts, durations, and error rates. The service also includes pprof endpoints for profiling.
 
 ## Common Pitfalls & Lessons Learned
 

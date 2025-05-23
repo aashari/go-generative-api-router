@@ -20,7 +20,7 @@ This guide provides step-by-step instructions for running and testing the Genera
      ```bash
      cp credentials.json.example credentials.json
      ```
-   - Edit [credentials.json](mdc:credentials.json) with valid API keys:
+   - Edit [credentials.json](mdc:generative-api-router/credentials.json) with valid API keys:
      ```json
      [
        {
@@ -37,7 +37,7 @@ This guide provides step-by-step instructions for running and testing the Genera
      ```
 
 3. **Configure Models**:
-   - Edit [models.json](mdc:models.json) to specify which models you want to use:
+   - Edit [models.json](mdc:generative-api-router/models.json) to specify which models you want to use:
      ```json
      [
        {
@@ -82,6 +82,44 @@ This guide provides step-by-step instructions for running and testing the Genera
    docker-compose up -d
    ```
 
+## Running Tests
+
+The project includes comprehensive test coverage added in Phase 2:
+
+### Unit Tests
+
+1. **Run All Tests**:
+   ```bash
+   go test ./...
+   ```
+
+2. **Run Tests with Coverage**:
+   ```bash
+   go test -cover ./...
+   ```
+
+3. **Run Specific Package Tests**:
+   ```bash
+   # Test handlers
+   go test ./internal/handlers
+   
+   # Test with verbose output
+   go test -v ./internal/errors
+   ```
+
+4. **Run Tests with Race Detection**:
+   ```bash
+   go test -race ./...
+   ```
+
+### Test Dependencies
+
+The project uses:
+- `github.com/stretchr/testify` v1.10.0 - For assertions and test suites
+- `github.com/go-playground/validator/v10` v10.26.0 - For struct validation
+
+Note: Some tests may skip if `credentials.json` is not present, which is expected behavior.
+
 ## Testing the Service
 
 ### Basic Tests
@@ -111,6 +149,16 @@ This guide provides step-by-step instructions for running and testing the Genera
    - **Log Check**: Verify server logs (e.g., `grep \"VERBOSE_DEBUG: ProxyRequest\" server.log | tail -n 1`) show the requested model and the actual model selected by the router. Example:
      `VERBOSE_DEBUG: ProxyRequest - Original requested model: 'any-model-name-you-like', will route to: 'actual-selected-model'`
    - Also check for `Processing response from actual model:` log line.
+
+4. **Metrics Endpoint**:
+   ```bash
+   curl -X GET http://localhost:8082/metrics | cat
+   ```
+   - Returns Prometheus-formatted metrics including:
+     - `http_requests_total` - Total request count by endpoint and status
+     - `http_request_duration_seconds` - Request duration histogram
+     - `vendor_requests_total` - Requests per vendor
+     - `vendor_errors_total` - Errors per vendor
 
 ### Advanced Testing
 
@@ -152,6 +200,26 @@ This guide provides step-by-step instructions for running and testing the Genera
    - Ensure the `\"model\"` field in each response matches what was sent in the request for that vendor.
    - **Log Check**: Verify server logs for vendor-specific routing and model name handling.
 
+4. **Error Response Testing**:
+   ```bash
+   # Test missing messages field (validation error)
+   curl -X POST http://localhost:8082/v1/chat/completions \\
+     -H "Content-Type: application/json" \\
+     -d \'{\"model\": \"test-model\"}\' | jq | cat
+   ```
+   - Expected: Standardized error response with:
+     - `error.type` - Error category (e.g., "invalid_request_error")
+     - `error.message` - Human-readable error message
+     - HTTP status code 400
+
+   ```bash
+   # Test with invalid JSON
+   curl -X POST http://localhost:8082/v1/chat/completions \\
+     -H "Content-Type: application/json" \\
+     -d \'invalid json\' | jq | cat
+   ```
+   - Expected: JSON parsing error with proper error structure
+
 ## Troubleshooting
 
 1. **Port Conflicts**:
@@ -175,6 +243,7 @@ This guide provides step-by-step instructions for running and testing the Genera
 4. **Request Validation Errors**:
    - Ensure your request has the required `\"messages\"` field.
    - Check that tools and tool_choice are properly formatted.
+   - The service now provides detailed validation error messages in a standardized format.
 
 5. **Server Crashes**:
    - Check the server logs for error messages (e.g., `tail server.log`).
