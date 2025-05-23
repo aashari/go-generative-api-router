@@ -554,7 +554,6 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		// Set essential SSE headers first
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Transfer-Encoding", "chunked")
 	}
 
 	// Whitelist approach: Only copy specific headers we want to pass through
@@ -571,7 +570,6 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		"access-control-allow-headers": true,
 		"access-control-expose-headers": true,
 		"server-timing":             true,
-		"transfer-encoding":         true,  // Added for streaming support
 	}
 
 	// Copy only whitelisted response headers
@@ -579,7 +577,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		lowerK := strings.ToLower(k)
 		
 		// Skip these headers for streaming responses
-		if isStreaming && (lowerK == "content-type" || lowerK == "content-length" || lowerK == "transfer-encoding") {
+		if isStreaming && (lowerK == "content-type" || lowerK == "content-length") {
 			continue
 		}
 		
