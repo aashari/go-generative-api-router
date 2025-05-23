@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import sys
+import os
 
 def analyze_json_structure(data, path=""):
     """Recursively analyze the structure of JSON data"""
@@ -40,14 +41,20 @@ def compare_structures(real_data, router_data):
     print(f"{'Field Path':<40} {'Real API':<25} {'Router API':<25} {'Match'}")
     print("-" * 95)
     
+    matches = 0
+    total = len(all_keys)
+    
     for key in sorted(all_keys):
         real_info = real_structure.get(key, {"type": "MISSING", "value": None})
         router_info = router_structure.get(key, {"type": "MISSING", "value": None})
         
         match = "✓" if real_info["type"] == router_info["type"] else "✗"
+        if match == "✓":
+            matches += 1
         
         print(f"{key:<40} {real_info['type']:<25} {router_info['type']:<25} {match}")
     
+    print(f"\nStructure Match Score: {matches}/{total} ({matches/total*100:.1f}%)")
     print("\n" + "=" * 80)
     print("FIELD VALUE COMPARISON (for non-content fields)")
     print("=" * 80)
@@ -60,14 +67,22 @@ def compare_structures(real_data, router_data):
         router_val = router_structure.get(field, {}).get("value", "MISSING")
         match = "✓" if real_val == router_val else "✗"
         print(f"{field:<40} {str(real_val):<25} {str(router_val):<25} {match}")
+    
+    return matches == total
 
-def analyze_streaming_format(filename):
+def analyze_streaming_format(filename, base_dir=""):
     """Analyze streaming response format"""
+    filepath = os.path.join(base_dir, filename) if base_dir else filename
+    
     print(f"\n{'='*80}")
     print(f"STREAMING FORMAT ANALYSIS: {filename}")
     print(f"{'='*80}")
     
-    with open(filename, 'r') as f:
+    if not os.path.exists(filepath):
+        print(f"❌ File not found: {filepath}")
+        return False
+    
+    with open(filepath, 'r') as f:
         lines = f.readlines()
     
     data_lines = [line for line in lines if line.startswith('data: ')]
@@ -91,37 +106,125 @@ def analyze_streaming_format(filename):
         except Exception as e:
             print(f"  Error parsing first chunk: {e}")
     
-    # Check for consistency in chunk IDs
+    # Check for consistency in chunk IDs (check more chunks for better analysis)
     ids = []
-    for line in data_lines[:5]:  # Check first 5 chunks
+    timestamps = []
+    fingerprints = []
+    
+    for line in data_lines[:10]:  # Check first 10 chunks instead of 5
         try:
             chunk = json.loads(line[6:])
             ids.append(chunk.get('id'))
+            timestamps.append(chunk.get('created'))
+            fingerprints.append(chunk.get('system_fingerprint'))
         except:
             pass
     
-    print(f"\nID consistency in first 5 chunks:")
-    print(f"  Unique IDs: {len(set(ids))}")
-    print(f"  IDs: {ids}")
+    print(f"\nConsistency Analysis (first {len(ids)} chunks):")
+    print(f"  ID consistency: {'✅' if len(set(ids)) <= 1 else '❌'} ({len(set(ids))} unique IDs)")
+    print(f"  Timestamp consistency: {'✅' if len(set(timestamps)) <= 1 else '❌'} ({len(set(timestamps))} unique timestamps)")
+    print(f"  Fingerprint consistency: {'✅' if len(set(fingerprints)) <= 1 else '❌'} ({len(set(fingerprints))} unique fingerprints)")
+    
+    if ids:
+        print(f"  Sample values:")
+        print(f"    ID: {ids[0]}")
+        print(f"    Timestamp: {timestamps[0]}")
+        print(f"    Fingerprint: {fingerprints[0]}")
+    
+    return True
+
+def find_response_files():
+    """Find response files in project structure"""
+    # Try current directory first
+    current_dir = "."
+    
+    # Try project root (go up two levels from tests/analysis)
+    project_root = "../../"
+    
+    search_paths = [current_dir, project_root]
+    
+    file_map = {
+        'openai_non_streaming': ['openai_non_streaming_response.json'],
+        'router_non_streaming': ['router_non_streaming_response.json'],
+        'openai_streaming': ['openai_streaming_response.txt'],
+        'router_streaming': ['router_streaming_response_fixed.txt', 'router_streaming_response.txt'],
+    }
+    
+    found_files = {}
+    
+    for file_type, possible_names in file_map.items():
+        for search_path in search_paths:
+            for filename in possible_names:
+                filepath = os.path.join(search_path, filename)
+                if os.path.exists(filepath):
+                    found_files[file_type] = filepath
+                    break
+            if file_type in found_files:
+                break
+    
+    return found_files
 
 if __name__ == "__main__":
+    print("🔍 OPENAI API COMPATIBILITY ANALYSIS")
+    print("="*80)
+    
+    # Find available response files
+    found_files = find_response_files()
+    
+    if not found_files:
+        print("❌ No response files found. Please ensure test files exist.")
+        print("\nExpected files:")
+        print("  - openai_non_streaming_response.json")
+        print("  - router_non_streaming_response.json") 
+        print("  - openai_streaming_response.txt (optional)")
+        print("  - router_streaming_response_fixed.txt (optional)")
+        sys.exit(1)
+    
+    print(f"✅ Found {len(found_files)} test files")
+    for file_type, filepath in found_files.items():
+        print(f"  {file_type}: {filepath}")
+    
     # Compare non-streaming responses
-    try:
-        with open('openai_non_streaming_response.json', 'r') as f:
-            real_data = json.load(f)
-        
-        with open('router_non_streaming_response.json', 'r') as f:
-            router_data = json.load(f)
-        
-        compare_structures(real_data, router_data)
-        
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-        print("Make sure both response files exist")
+    if 'openai_non_streaming' in found_files and 'router_non_streaming' in found_files:
+        try:
+            with open(found_files['openai_non_streaming'], 'r') as f:
+                real_data = json.load(f)
+            
+            with open(found_files['router_non_streaming'], 'r') as f:
+                router_data = json.load(f)
+            
+            structure_match = compare_structures(real_data, router_data)
+            
+        except Exception as e:
+            print(f"❌ Error comparing non-streaming responses: {e}")
+            structure_match = False
+    else:
+        print("⚠️ Skipping non-streaming comparison - missing files")
+        structure_match = None
     
     # Analyze streaming formats
-    try:
-        analyze_streaming_format('openai_streaming_response.txt')
-        analyze_streaming_format('router_streaming_response_fixed.txt')
-    except FileNotFoundError as e:
-        print(f"Error analyzing streaming: {e}") 
+    streaming_analyzed = False
+    for file_type in ['openai_streaming', 'router_streaming']:
+        if file_type in found_files:
+            base_dir = os.path.dirname(found_files[file_type])
+            filename = os.path.basename(found_files[file_type])
+            if analyze_streaming_format(filename, base_dir):
+                streaming_analyzed = True
+    
+    # Final assessment
+    print(f"\n{'🎯 FINAL ASSESSMENT'}")
+    print("="*80)
+    
+    if structure_match is not None:
+        print(f"✅ Non-streaming structure match: {'PASS' if structure_match else 'FAIL'}")
+    else:
+        print(f"⚠️ Non-streaming structure match: SKIPPED")
+    
+    print(f"✅ Streaming format analysis: {'COMPLETED' if streaming_analyzed else 'SKIPPED'}")
+    
+    if structure_match:
+        print(f"\n🎉 Router responses match OpenAI API structure!")
+    elif structure_match is False:
+        print(f"\n⚠️ Structure differences found - review output above")
+    else:
+        print(f"\n📋 Analysis completed with available files") 

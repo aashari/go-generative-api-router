@@ -13,40 +13,116 @@ python3 compare_responses.py
 ```
 
 **Features:**
-- Compares non-streaming JSON response structures
-- Analyzes streaming response formats and consistency
-- Validates field types and presence
-- Checks ID consistency in streaming responses
+- ✅ **Auto-discovery**: Automatically finds response files in project structure
+- ✅ **Structure Analysis**: Compares non-streaming JSON response structures with scoring
+- ✅ **Streaming Analysis**: Analyzes streaming response formats and consistency
+- ✅ **ID Consistency**: Validates ID/timestamp/fingerprint consistency in streaming responses (critical for OpenAI compatibility)
+- ✅ **Enhanced Reporting**: Clear visual indicators and percentage scores
 
 ### `comprehensive_comparison.py`
 Advanced vendor compatibility verification tool that performs exhaustive testing across all vendor combinations.
 
 **Usage:**
 ```bash
+# Basic usage (auto-finds files in project root)
 python3 comprehensive_comparison.py
+
+# Specify custom data directory
+python3 comprehensive_comparison.py --data-dir /path/to/test/files
+
+# Enable verbose output
+python3 comprehensive_comparison.py --verbose
 ```
 
 **Features:**
-- Cross-vendor response structure comparison (vendor=openai vs vendor=gemini)
-- Streaming consistency analysis (ID, timestamp, fingerprint)
-- Tool calling compatibility verification
-- Model name preservation validation
-- Comprehensive compatibility scoring
+- ✅ **Cross-vendor Testing**: Compares vendor=openai vs vendor=gemini responses
+- ✅ **Streaming Consistency**: Analyzes ID, timestamp, fingerprint consistency across all chunks
+- ✅ **Tool Calling Support**: Verification for both basic and tool-calling scenarios
+- ✅ **Model Name Preservation**: Validates transparency requirement (model field reflection)
+- ✅ **Comprehensive Scoring**: Overall compatibility percentage with detailed breakdown
+- ✅ **CI/CD Ready**: Exit codes for automated testing integration
+- ✅ **Flexible File Discovery**: Supports multiple file naming patterns
 
 ## Test Data Requirements
 
-Both tools expect certain response files to be present in the root directory:
-- `openai_non_streaming_response.json`
-- `router_non_streaming_response.json`
-- `openai_streaming_response.txt`
-- `router_streaming_response_fixed.txt`
-- And vendor-specific test files for comprehensive analysis
+The tools automatically search for response files in the following order:
+1. Current directory
+2. Project root (`../../` from tests/analysis)
+
+### Supported File Patterns
+
+**Non-streaming responses:**
+- `openai_non_streaming_response.json` or `test_openai_nonstreaming.json`
+- `router_non_streaming_response.json` or `router_non_streaming_test.json`
+- `test_gemini_nonstreaming.json`
+
+**Streaming responses (optional):**
+- `openai_streaming_response.txt` or `test_openai_streaming.txt`
+- `router_streaming_response_fixed.txt` or `router_streaming_response.txt`
+- `test_gemini_streaming.txt`
+- `test_openai_tools_streaming.txt`
+- `test_gemini_tools_streaming.txt`
+
+## Exit Codes (comprehensive_comparison.py)
+
+- `0`: Perfect compatibility (100% score)
+- `1`: Good compatibility with minor issues (80%+ score)
+- `2`: Significant compatibility issues found (<80% score)
+- `3`: No tests could be performed (missing files)
+
+## Critical Issues Detected
+
+These tools specifically detect the streaming consistency issue that was solved:
+
+**Before Fix:**
+```
+❌ ID consistency: FAIL (5 unique IDs across chunks)
+❌ Timestamp consistency: FAIL (5 unique timestamps across chunks)
+❌ Fingerprint consistency: FAIL (5 unique fingerprints across chunks)
+```
+
+**After Fix:**
+```
+✅ ID consistency: PASS (1 unique ID across chunks)
+✅ Timestamp consistency: PASS (1 unique timestamp across chunks)  
+✅ Fingerprint consistency: PASS (1 unique fingerprint across chunks)
+```
 
 ## Purpose
 
 These tools ensure that:
-1. The router maintains 100% OpenAI API compatibility
-2. Both vendor=openai and vendor=gemini produce identical response structures
-3. Streaming responses maintain consistent IDs, timestamps, and fingerprints
-4. All advanced features (tool calling, error handling) work correctly
-5. Model name transparency is preserved across all vendors 
+1. ✅ **100% OpenAI API Compatibility**: The router maintains perfect structural compatibility
+2. ✅ **Vendor Parity**: Both vendor=openai and vendor=gemini produce identical response structures
+3. ✅ **Streaming Consistency**: All streaming chunks maintain consistent conversation-level metadata
+4. ✅ **Advanced Features**: Tool calling, error handling, and all OpenAI features work correctly
+5. ✅ **Model Transparency**: Original requested model names are preserved in responses
+
+## Integration Examples
+
+### CI/CD Pipeline
+```bash
+# In your CI script
+python3 comprehensive_comparison.py --data-dir ./test-data/
+exit_code=$?
+
+if [ $exit_code -eq 0 ]; then
+    echo "✅ Perfect OpenAI compatibility achieved"
+elif [ $exit_code -eq 1 ]; then
+    echo "⚠️ Minor compatibility issues detected"
+    # Maybe continue but log warning
+else
+    echo "❌ Significant compatibility issues found"
+    exit 1
+fi
+```
+
+### Manual Testing
+```bash
+# Quick compatibility check
+python3 compare_responses.py
+
+# Full vendor compatibility verification
+python3 comprehensive_comparison.py
+
+# Test with custom directory
+python3 comprehensive_comparison.py --data-dir ../test-responses/ 
