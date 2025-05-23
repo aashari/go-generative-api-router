@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/selector"
@@ -569,6 +570,19 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		}
 		// If we decompressed gzip, don't pass the original Content-Encoding header from vendor
 		if contentEncoding == "gzip" && k == "Content-Encoding" {
+			continue
+		}
+		// Skip vendor-specific headers that shouldn't be passed through
+		lowerK := strings.ToLower(k)
+		if lowerK == "set-cookie" || 
+		   strings.HasPrefix(lowerK, "openai-") || 
+		   strings.HasPrefix(lowerK, "anthropic-") || 
+		   strings.HasPrefix(lowerK, "x-ratelimit-") ||
+		   lowerK == "cf-ray" ||
+		   lowerK == "cf-cache-status" ||
+		   lowerK == "x-envoy-upstream-service-time" ||
+		   lowerK == "strict-transport-security" ||
+		   lowerK == "alt-svc" {
 			continue
 		}
 		for _, v := range vs {
