@@ -10,8 +10,8 @@ import (
 
 // AppConfig represents the complete application configuration
 type AppConfig struct {
-	Credentials  []Credential   `validate:"required,min=1,dive"`
-	VendorModels []VendorModel  `validate:"required,min=1,dive"`
+	Credentials  []Credential  `validate:"required,min=1,dive"`
+	VendorModels []VendorModel `validate:"required,min=1,dive"`
 }
 
 // Credential validation tags
@@ -220,4 +220,4 @@ func formatFieldError(e validator.FieldError) string {
 	default:
 		return fmt.Sprintf("field '%s' failed validation: %s", e.Field(), e.Tag())
 	}
-} 
+}

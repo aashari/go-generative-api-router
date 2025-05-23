@@ -78,7 +78,7 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 		return responseBody, fmt.Errorf("error decompressing gzip response: %w", err)
 	}
 
-	log.Printf("Successfully decompressed gzip response. Original size: %d, Decompressed size: %d", 
+	log.Printf("Successfully decompressed gzip response. Original size: %d, Decompressed size: %d",
 		len(responseBody), len(decompressedBody))
 	return decompressedBody, nil
 }
@@ -204,7 +204,7 @@ func processChoices(choices []interface{}, vendor string) {
 // processMessage processes a message within a choice
 func processMessage(message map[string]interface{}, vendor string) {
 	log.Printf("Processing message")
-	
+
 	// Add annotations array if missing
 	if _, ok := message["annotations"]; !ok {
 		message["annotations"] = []interface{}{}
@@ -275,4 +275,4 @@ func normalizeUsageField(responseData map[string]interface{}) {
 			},
 		}
 	}
-} 
+}

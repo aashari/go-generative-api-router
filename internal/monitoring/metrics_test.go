@@ -235,4 +235,4 @@ func TestGetMetrics(t *testing.T) {
 	metrics := GetMetrics()
 	require.NotNil(t, metrics)
 	assert.Equal(t, globalMetrics, metrics)
-} 
+}

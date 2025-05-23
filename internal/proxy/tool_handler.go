@@ -44,4 +44,4 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 	}
 
 	return toolCalls
-} 
+}

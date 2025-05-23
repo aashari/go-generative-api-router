@@ -22,4 +22,4 @@ func ModelsByVendor(models []config.VendorModel, vendor string) []config.VendorM
 		}
 	}
 	return result
-} 
+}
