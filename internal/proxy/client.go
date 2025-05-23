@@ -561,8 +561,6 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	// Whitelist approach: Only copy specific headers we want to pass through
 	allowedHeaders := map[string]bool{
 		"date":                      true,
-		"server":                    true,
-		"vary":                       true,
 		"x-request-id":              true,
 		"x-content-type-options":    true,
 		"x-frame-options":           true,
@@ -571,8 +569,6 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		"access-control-allow-methods": true,
 		"access-control-allow-headers": true,
 		"access-control-expose-headers": true,
-		"server-timing":             true,
-		"connection":                true,  // Added for keep-alive support
 	}
 
 	// Copy only whitelisted response headers
