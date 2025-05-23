@@ -109,12 +109,31 @@ func (c *APIClient) setupRequest(r *http.Request, selection *selector.VendorSele
 
 // setupResponseHeaders configures response headers
 func (c *APIClient) setupResponseHeaders(w http.ResponseWriter, resp *http.Response, isStreaming bool) {
-	// Set headers for streaming BEFORE writing status code
+	// First, copy headers from the vendor response to the client response
+	// This ensures we forward important headers but skip those we handle
+	for k, vs := range resp.Header {
+		// Skip headers that should be handled by the proxy
+		// - Transfer-Encoding: We handle the transfer encoding
+		// - Content-Length: We set our own after processing
+		// - Content-Type: We set based on streaming mode
+		// - Content-Encoding: We handle decompression in ProcessResponse
+		if k == "Transfer-Encoding" || k == "Content-Length" || k == "Content-Type" || k == "Content-Encoding" {
+			continue
+		}
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
+
+	// Now set our specific headers based on streaming mode
 	if isStreaming {
 		// Set essential SSE headers
 		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
+	} else {
+		// For non-streaming responses, set proper JSON content type
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}
 
 	// Set X-Request-ID header
