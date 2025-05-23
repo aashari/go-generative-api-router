@@ -547,6 +547,11 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 
 	// Store content encoding for later use in processResponse or stream handling
 	contentEncoding := resp.Header.Get("Content-Encoding")
+	
+	// Log content encoding for debugging
+	if contentEncoding != "" {
+		log.Printf("Response has Content-Encoding: %s for vendor: %s, streaming: %v", contentEncoding, selection.Vendor, isStreaming)
+	}
 
 	// Set headers for streaming BEFORE writing status code
 	if isStreaming {
@@ -581,8 +586,21 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	// Handle the response based on whether it's streaming or not
 	if isStreaming {
 		log.Printf("VERBOSE_DEBUG: SendRequest - Streaming - Vendor passed for processing: '%s'", selection.Vendor)
-		// For streaming responses, we need a special handling
-		reader := bufio.NewReader(resp.Body)
+		
+		// Create the appropriate reader based on content encoding
+		var reader *bufio.Reader
+		if contentEncoding == "gzip" {
+			log.Printf("Streaming response is gzip encoded, creating gzip reader")
+			gzipReader, err := gzip.NewReader(resp.Body)
+			if err != nil {
+				log.Printf("Error creating gzip reader for streaming: %v", err)
+				return fmt.Errorf("error creating gzip reader for streaming: %w", err)
+			}
+			defer gzipReader.Close()
+			reader = bufio.NewReader(gzipReader)
+		} else {
+			reader = bufio.NewReader(resp.Body)
+		}
 
 		for {
 			// Read a line up to \n
