@@ -3,35 +3,58 @@ description:
 globs: 
 alwaysApply: true
 ---
-*System Instruction: Using Codex as a Planning Assistant*
+**System Instruction: Using Codex as a Planning & Verification Assistant**
 
-When generating a plan, always consult Codex to help you generate and refine your approach. Use the following command pattern:
+Whenever you need to generate a plan, design, or review an implementation, use Codex as your trusted planner and verifier. Always follow this procedure and command pattern:
 
 ```bash
 GENAPI_API_KEY=HaloHaloBandung npx -y @openai/codex --provider genapi --quiet "{your query}"
 ```
 
-Note: single line command (you will got error if non single line)
+> _Note: Always use a single-line command (multi-line input will cause an error)._
 
-*Guidelines:*
+**How to Compose Your Codex Query**
 
-* *{your query}* should include:
+- Include the _full context_ (background, all relevant constraints, project goals, and any changes made so far).
+- Clearly state _what you want to achieve or verify_.
+- Always specify:
 
-  * The *full context* of your situation (background, constraints, and goals).
-  * A clear explanation of *what you are trying to achieve*.
-  * Any relevant details Codex would need to provide a helpful, actionable plan.
+  - The files or areas affected.
+  - Any specific steps Codex should take to **verify** the outcome (such as checking file diffs, running unit/integration tests, or validating build output).
+  - Explicitly request Codex to _not_ declare a task finished until it confirms (via its analysis or test results) that the intended outcome is correct and complete.
 
-*Important Notes:*
+**Codex Must:**
 
-* Codex is your planner assistant—think of it as a software architect and consultant.
-* Use Codex *whenever you need to plan, design, or review an implementation*.
-* *Always* provide complete context in every query, as Codex does *not store conversation history*—it treats each request independently.
-* Your previous messages are *not* accessible to Codex; restate all relevant information with every query.
+- Check its own work, reviewing file changes and, where possible, running linter, build, and test commands.
+- Only state “work is complete” when:
 
-*Example:*
+  - All changes are implemented _and_
+  - All relevant verifications (diffs, linter, build, tests, etc.) pass without errors or regressions.
 
-Suppose you want to design a REST API endpoint for user authentication. Your query to Codex should look like:
+- If Codex finds issues, it should automatically suggest the next actions to resolve them, repeating until validation succeeds.
+
+**Important Reminders:**
+
+- Codex is your _planning and verification partner_, acting as an expert architect and reviewer.
+- _Always restate all relevant context and requirements_ in each query (Codex does not remember previous prompts).
+- Whenever you request Codex to plan or execute work, require it to:
+
+  1. **Plan** the steps,
+  2. **Execute** the plan,
+  3. **Verify** via diffs and tests,
+  4. **Report** findings,
+  5. _Loop_ back if anything is missing or failing.
+
+**Example Query**
+
+If you want to implement and verify a new REST API endpoint for user authentication, your query should look like:
 
 ```
-Design a secure REST API endpoint for user authentication in a Node.js application using Express and JWT. The endpoint should handle login, password validation, and return a signed token on success. Please include best practices for error handling and input validation.
+Design and implement a secure REST API endpoint for user authentication in a Node.js application using Express and JWT. The endpoint must handle login, password validation, and return a signed token on success. After implementation, check the relevant files for changes, run `bun run lint`, `bun run build`, and all existing tests. Only declare the work complete if all steps pass. If any errors or test failures are found, explain and suggest further actions.
 ```
+
+**Summary**
+
+- _Never_ stop the workflow until Codex confirms, through checks and tests, that the outcome is as intended.
+- Require Codex to always check file changes and run tests/builds after any modification.
+- Every query must be explicit, self-contained, and verification-driven.
