@@ -12,7 +12,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/selector"
@@ -549,69 +548,22 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	// Store content encoding for later use in processResponse or stream handling
 	contentEncoding := resp.Header.Get("Content-Encoding")
 
-	// Set headers for streaming BEFORE copying vendor headers
+	// Set headers for streaming BEFORE writing status code
 	if isStreaming {
-		// Set essential SSE headers first
+		// Set essential SSE headers
 		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 		// Don't explicitly set Transfer-Encoding, let Go handle it
 	}
 
-	// Whitelist approach: Only copy specific headers we want to pass through
-	allowedHeaders := map[string]bool{
-		"date":                      true,
-		"x-request-id":              true,
-		"x-content-type-options":    true,
-		"x-frame-options":           true,
-		"x-xss-protection":          true,
-		"access-control-allow-origin": true,
-		"access-control-allow-methods": true,
-		"access-control-allow-headers": true,
-		"access-control-expose-headers": true,
-	}
+	// Set X-Request-ID header (generate if missing)
+	requestID := "req_" + generateRandomString(16)
+	w.Header().Set("X-Request-ID", requestID)
+	log.Printf("Generated X-Request-ID: %s", requestID)
 
-	// Copy only whitelisted response headers
-	for k, vs := range resp.Header {
-		lowerK := strings.ToLower(k)
-		
-		// Skip these headers for streaming responses
-		if isStreaming && (lowerK == "content-type" || lowerK == "content-length" || lowerK == "connection") {
-			continue
-		}
-		
-		// Skip Content-Length since we're modifying the body
-		if lowerK == "content-length" {
-			continue
-		}
-		
-		// Skip Content-Encoding if we decompressed
-		if contentEncoding == "gzip" && lowerK == "content-encoding" {
-			continue
-		}
-		
-		// Only copy whitelisted headers
-		if allowedHeaders[lowerK] {
-			for _, v := range vs {
-				w.Header().Add(k, v)
-			}
-		}
-	}
-
-	// Ensure X-Request-ID header exists (generate if missing)
-	if w.Header().Get("X-Request-ID") == "" {
-		requestID := "req_" + generateRandomString(16)
-		w.Header().Set("X-Request-ID", requestID)
-		log.Printf("Generated X-Request-ID: %s", requestID)
-	}
-
-	// Ensure Access-Control-Expose-Headers includes X-Request-ID
-	exposeHeaders := w.Header().Get("Access-Control-Expose-Headers")
-	if exposeHeaders == "" {
-		w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
-	} else if !strings.Contains(strings.ToLower(exposeHeaders), "x-request-id") {
-		w.Header().Set("Access-Control-Expose-Headers", exposeHeaders + ", X-Request-ID")
-	}
+	// CORS headers are already set by the middleware in main.go
+	// We don't need to set them again here
 
 	// Now write status code after headers
 	w.WriteHeader(resp.StatusCode)
