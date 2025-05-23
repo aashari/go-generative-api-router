@@ -11,8 +11,13 @@ import (
 	"github.com/aashari/go-generative-api-router/internal/validator"
 )
 
+// APIClientInterface defines the interface for API clients
+type APIClientInterface interface {
+	SendRequest(w http.ResponseWriter, r *http.Request, selection *selector.VendorSelection, modifiedBody []byte, originalModel string) error
+}
+
 // ProxyRequest handles the incoming request, routes it to the appropriate vendor, and forwards the response
-func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credential, models []config.VendorModel, apiClient *APIClient, modelSelector selector.Selector) {
+func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credential, models []config.VendorModel, apiClient APIClientInterface, modelSelector selector.Selector) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
