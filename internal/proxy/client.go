@@ -600,6 +600,21 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		}
 	}
 
+	// Ensure X-Request-ID header exists (generate if missing)
+	if w.Header().Get("X-Request-ID") == "" {
+		requestID := "req_" + generateRandomString(16)
+		w.Header().Set("X-Request-ID", requestID)
+		log.Printf("Generated X-Request-ID: %s", requestID)
+	}
+
+	// Ensure Access-Control-Expose-Headers includes X-Request-ID
+	exposeHeaders := w.Header().Get("Access-Control-Expose-Headers")
+	if exposeHeaders == "" {
+		w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
+	} else if !strings.Contains(strings.ToLower(exposeHeaders), "x-request-id") {
+		w.Header().Set("Access-Control-Expose-Headers", exposeHeaders + ", X-Request-ID")
+	}
+
 	// Now write status code after headers
 	w.WriteHeader(resp.StatusCode)
 
