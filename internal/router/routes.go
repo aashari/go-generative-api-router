@@ -33,4 +33,4 @@ func SetupRoutes(apiHandlers *handlers.APIHandlers) http.Handler {
 
 	// Wrap with metrics middleware
 	return monitoring.MetricsMiddleware(mux)
-} 
+}

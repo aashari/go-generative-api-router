@@ -153,7 +153,7 @@ func (sp *StreamProcessor) processStreamChoices(chunkData map[string]interface{}
 // processStreamDelta processes delta content in streaming response
 func (sp *StreamProcessor) processStreamDelta(delta map[string]interface{}) {
 	log.Printf("Processing delta in stream chunk")
-	
+
 	// Add annotations array if missing in delta
 	if _, ok := delta["annotations"]; !ok {
 		delta["annotations"] = []interface{}{}
@@ -177,7 +177,7 @@ func (sp *StreamProcessor) processStreamDelta(delta map[string]interface{}) {
 // processStreamMessage processes message content in streaming response
 func (sp *StreamProcessor) processStreamMessage(message map[string]interface{}) {
 	log.Printf("Processing message in stream chunk")
-	
+
 	// Add annotations array if missing
 	if _, ok := message["annotations"]; !ok {
 		message["annotations"] = []interface{}{}
@@ -246,4 +246,4 @@ func (sp *StreamProcessor) reconstructSSE(chunkData map[string]interface{}) []by
 
 	// Reconstruct the chunk with "data: " prefix
 	return []byte("data: " + string(modifiedData) + "\n\n")
-} 
+}

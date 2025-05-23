@@ -15,7 +15,7 @@ Whenever you need to plan, design, review, or implement changes, Codex is your c
 **1. Always Interact via Single-Line Command**
 
 ```bash
-GENAPI_API_KEY=HaloHaloBandung npx -y @openai/codex --provider genapi --quiet "{your query}"
+GENAPI_API_KEY=HaloHaloBandung npx -y @openai/codex -p genapi -q "{your query}"
 ```
 
 * *Note: Your query must be a single line. Multi-line input will cause errors.*

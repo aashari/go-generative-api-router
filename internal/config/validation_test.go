@@ -60,7 +60,7 @@ func TestValidateConfiguration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateConfiguration(tt.credentials, tt.models)
-			
+
 			if tt.expectError {
 				assert.NotNil(t, err)
 				assert.Equal(t, tt.errorType, err.Type)
@@ -131,7 +131,7 @@ func TestValidateCredentials(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateCredentials(tt.credentials)
-			
+
 			if tt.expectError {
 				assert.NotNil(t, err)
 				assert.Equal(t, errors.ErrorTypeConfiguration, err.Type)
@@ -180,7 +180,7 @@ func TestValidateVendorModels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateVendorModels(tt.models)
-			
+
 			if tt.expectError {
 				assert.NotNil(t, err)
 				assert.Equal(t, errors.ErrorTypeConfiguration, err.Type)
@@ -211,7 +211,7 @@ func TestValidateAPIKeyFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateAPIKeyFormat(tt.platform, tt.apiKey)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
@@ -271,7 +271,7 @@ func TestValidateBusinessRules(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateBusinessRules(tt.credentials, tt.models)
-			
+
 			if tt.expectError {
 				assert.NotNil(t, err)
 				assert.Equal(t, errors.ErrorTypeConfiguration, err.Type)
@@ -280,4 +280,4 @@ func TestValidateBusinessRules(t *testing.T) {
 			}
 		})
 	}
-} 
+}

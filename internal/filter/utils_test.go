@@ -53,7 +53,7 @@ func TestCredentialsByVendor(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := CredentialsByVendor(tt.credentials, tt.vendor)
 			assert.Len(t, result, tt.expected)
-			
+
 			// Verify all returned credentials match the vendor
 			for _, cred := range result {
 				assert.Equal(t, tt.vendor, cred.Platform)
@@ -108,11 +108,11 @@ func TestModelsByVendor(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ModelsByVendor(tt.models, tt.vendor)
 			assert.Len(t, result, tt.expected)
-			
+
 			// Verify all returned models match the vendor
 			for _, model := range result {
 				assert.Equal(t, tt.vendor, model.Vendor)
 			}
 		})
 	}
-} 
+}

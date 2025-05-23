@@ -13,7 +13,7 @@ import (
 
 func TestNewAPIError(t *testing.T) {
 	err := NewAPIError(ErrorTypeValidation, "test message")
-	
+
 	assert.Equal(t, ErrorTypeValidation, err.Type)
 	assert.Equal(t, "test message", err.Message)
 	assert.Empty(t, err.Code)
@@ -22,7 +22,7 @@ func TestNewAPIError(t *testing.T) {
 
 func TestNewAPIErrorWithCode(t *testing.T) {
 	err := NewAPIErrorWithCode(ErrorTypeValidation, "test message", "TEST_CODE")
-	
+
 	assert.Equal(t, ErrorTypeValidation, err.Type)
 	assert.Equal(t, "test message", err.Message)
 	assert.Equal(t, "TEST_CODE", err.Code)
@@ -31,7 +31,7 @@ func TestNewAPIErrorWithCode(t *testing.T) {
 
 func TestNewAPIErrorWithDetails(t *testing.T) {
 	err := NewAPIErrorWithDetails(ErrorTypeValidation, "test message", "detailed info")
-	
+
 	assert.Equal(t, ErrorTypeValidation, err.Type)
 	assert.Equal(t, "test message", err.Message)
 	assert.Empty(t, err.Code)
@@ -40,7 +40,7 @@ func TestNewAPIErrorWithDetails(t *testing.T) {
 
 func TestAPIErrorImplementsError(t *testing.T) {
 	err := NewAPIError(ErrorTypeValidation, "test message")
-	
+
 	// Should implement error interface
 	var _ error = err
 	assert.Equal(t, "test message", err.Error())
@@ -87,16 +87,16 @@ func TestHandleError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			
+
 			HandleError(w, tt.err, tt.statusCode)
-			
+
 			assert.Equal(t, tt.expectedStatus, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
-			
+
 			var response ErrorResponse
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			require.NoError(t, err)
-			
+
 			assert.Equal(t, tt.expectedType, response.Error.Type)
 			assert.NotEmpty(t, response.Error.Message)
 		})
@@ -123,7 +123,7 @@ func TestInferErrorType(t *testing.T) {
 		t.Run(fmt.Sprintf("status_%d", tt.statusCode), func(t *testing.T) {
 			err := fmt.Errorf("test error")
 			apiErr := inferErrorType(err, tt.statusCode)
-			
+
 			assert.Equal(t, tt.expectedType, apiErr.Type)
 			assert.Equal(t, "test error", apiErr.Message)
 		})
@@ -148,7 +148,7 @@ func TestConvenienceConstructors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.constructor("test message")
-			
+
 			assert.Equal(t, tt.expectedType, err.Type)
 			assert.Equal(t, "test message", err.Message)
 		})
@@ -170,7 +170,7 @@ func TestValidateRequired(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateRequired(tt.value, tt.fieldName)
-			
+
 			if tt.expectErr {
 				assert.NotNil(t, err)
 				assert.Equal(t, ErrorTypeValidation, err.Type)
@@ -199,7 +199,7 @@ func TestValidateNonEmpty(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateNonEmpty(tt.slice, tt.fieldName)
-			
+
 			if tt.expectErr {
 				assert.NotNil(t, err)
 				assert.Equal(t, ErrorTypeValidation, err.Type)
@@ -209,4 +209,4 @@ func TestValidateNonEmpty(t *testing.T) {
 			}
 		})
 	}
-} 
+}

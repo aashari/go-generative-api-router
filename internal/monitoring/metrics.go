@@ -11,14 +11,14 @@ import (
 
 // Metrics holds application metrics
 type Metrics struct {
-	mu                    sync.RWMutex
-	RequestCount          int64
-	RequestDuration       time.Duration
-	ErrorCount            int64
-	VendorRequestCounts   map[string]int64
-	ModelRequestCounts    map[string]int64
-	StatusCodeCounts      map[int]int64
-	StartTime             time.Time
+	mu                  sync.RWMutex
+	RequestCount        int64
+	RequestDuration     time.Duration
+	ErrorCount          int64
+	VendorRequestCounts map[string]int64
+	ModelRequestCounts  map[string]int64
+	StatusCodeCounts    map[int]int64
+	StartTime           time.Time
 }
 
 // Global metrics instance
@@ -91,16 +91,16 @@ func (m *Metrics) GetStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"uptime_seconds":        uptime.Seconds(),
-		"total_requests":        m.RequestCount,
-		"total_errors":          m.ErrorCount,
-		"average_duration_ms":   avgDuration.Milliseconds(),
-		"requests_per_second":   float64(m.RequestCount) / uptime.Seconds(),
-		"error_rate":           float64(m.ErrorCount) / float64(m.RequestCount),
-		"vendor_requests":      vendorCounts,
-		"model_requests":       modelCounts,
-		"status_code_counts":   statusCounts,
-		"start_time":           m.StartTime.Format(time.RFC3339),
+		"uptime_seconds":      uptime.Seconds(),
+		"total_requests":      m.RequestCount,
+		"total_errors":        m.ErrorCount,
+		"average_duration_ms": avgDuration.Milliseconds(),
+		"requests_per_second": float64(m.RequestCount) / uptime.Seconds(),
+		"error_rate":          float64(m.ErrorCount) / float64(m.RequestCount),
+		"vendor_requests":     vendorCounts,
+		"model_requests":      modelCounts,
+		"status_code_counts":  statusCounts,
+		"start_time":          m.StartTime.Format(time.RFC3339),
 	}
 }
 
@@ -122,7 +122,7 @@ func (m *Metrics) Reset() {
 func MetricsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		
+
 		// Create a response writer wrapper to capture status code
 		wrapper := &responseWriterWrapper{
 			ResponseWriter: w,
@@ -135,7 +135,7 @@ func MetricsMiddleware(next http.Handler) http.Handler {
 		// Record metrics
 		duration := time.Since(start)
 		vendor := r.URL.Query().Get("vendor")
-		
+
 		// Try to extract model from request (this is a simplified approach)
 		model := extractModelFromRequest(r)
 
@@ -185,9 +185,9 @@ func SetupPprofRoutes(mux *http.ServeMux) {
 // MetricsHandler returns current metrics as JSON
 func MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	stats := globalMetrics.GetStats()
-	
+
 	// Simple JSON encoding (you could use json.Marshal for more complex cases)
 	response := "{\n"
 	response += "  \"uptime_seconds\": " + strconv.FormatFloat(stats["uptime_seconds"].(float64), 'f', 2, 64) + ",\n"
@@ -198,7 +198,7 @@ func MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	response += "  \"error_rate\": " + strconv.FormatFloat(stats["error_rate"].(float64), 'f', 4, 64) + ",\n"
 	response += "  \"start_time\": \"" + stats["start_time"].(string) + "\"\n"
 	response += "}"
-	
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(response))
-} 
+}

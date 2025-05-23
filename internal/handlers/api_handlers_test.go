@@ -48,7 +48,7 @@ func TestModelsHandler(t *testing.T) {
 		{Vendor: "openai", Model: "gpt-4"},
 		{Vendor: "gemini", Model: "gemini-pro"},
 	}
-	
+
 	handlers := &APIHandlers{
 		VendorModels: models,
 	}
@@ -60,7 +60,7 @@ func TestModelsHandler(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
-	
+
 	// Check that response contains JSON
 	body := w.Body.String()
 	assert.Contains(t, body, "gpt-4")
@@ -73,7 +73,7 @@ func TestModelsHandlerWithVendorFilter(t *testing.T) {
 		{Vendor: "openai", Model: "gpt-4"},
 		{Vendor: "gemini", Model: "gemini-pro"},
 	}
-	
+
 	handlers := &APIHandlers{
 		VendorModels: models,
 	}
@@ -84,9 +84,9 @@ func TestModelsHandlerWithVendorFilter(t *testing.T) {
 	handlers.ModelsHandler(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	
+
 	// Check that response contains only OpenAI model
 	body := w.Body.String()
 	assert.Contains(t, body, "gpt-4")
 	assert.NotContains(t, body, "gemini-pro")
-} 
+}

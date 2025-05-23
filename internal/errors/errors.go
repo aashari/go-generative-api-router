@@ -70,7 +70,7 @@ func HandleError(w http.ResponseWriter, err error, statusCode int) {
 	w.WriteHeader(statusCode)
 
 	var apiError *APIError
-	
+
 	// Check if it's already an APIError
 	if ae, ok := err.(*APIError); ok {
 		apiError = ae
@@ -80,7 +80,7 @@ func HandleError(w http.ResponseWriter, err error, statusCode int) {
 	}
 
 	response := ErrorResponse{Error: *apiError}
-	
+
 	if jsonBytes, jsonErr := json.Marshal(response); jsonErr == nil {
 		w.Write(jsonBytes)
 	} else {
@@ -96,7 +96,7 @@ func HandleError(w http.ResponseWriter, err error, statusCode int) {
 // inferErrorType attempts to infer the error type based on the error message and status code
 func inferErrorType(err error, statusCode int) *APIError {
 	message := err.Error()
-	
+
 	switch statusCode {
 	case http.StatusBadRequest:
 		return NewAPIError(ErrorTypeValidation, message)
@@ -177,4 +177,4 @@ func ValidateNonEmpty(slice interface{}, fieldName string) *APIError {
 		return NewValidationError(fmt.Sprintf("Field '%s' has invalid type", fieldName))
 	}
 	return nil
-} 
+}

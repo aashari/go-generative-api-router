@@ -35,4 +35,4 @@ func SystemFingerprint() string {
 // RequestID generates a request ID with format: req_{16chars}
 func RequestID() string {
 	return "req_" + generateRandomString(16)
-} 
+}
