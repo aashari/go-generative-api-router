@@ -3,164 +3,302 @@ package app
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
-	"github.com/aashari/go-generative-api-router/internal/config"
-	"github.com/aashari/go-generative-api-router/internal/filter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewApp(t *testing.T) {
-	tests := []struct {
-		name        string
-		expectError bool
-		description string
-	}{
-		{
-			name:        "successful_initialization",
-			expectError: false,
-			description: "Should successfully initialize app with valid config files",
-		},
+func TestNewApp_Success(t *testing.T) {
+	// Create temporary test files
+	credsContent := `[
+		{"platform": "openai", "type": "api-key", "value": "test-key"},
+		{"platform": "gemini", "type": "api-key", "value": "test-key-2"}
+	]`
+	modelsContent := `[
+		{"vendor": "openai", "model": "gpt-4"},
+		{"vendor": "gemini", "model": "gemini-pro"}
+	]`
+
+	// Create temp credentials file
+	credsFile, err := os.CreateTemp("", "credentials*.json")
+	require.NoError(t, err)
+	defer os.Remove(credsFile.Name())
+	_, err = credsFile.WriteString(credsContent)
+	require.NoError(t, err)
+	credsFile.Close()
+
+	// Create temp models file
+	modelsFile, err := os.CreateTemp("", "models*.json")
+	require.NoError(t, err)
+	defer os.Remove(modelsFile.Name())
+	_, err = modelsFile.WriteString(modelsContent)
+	require.NoError(t, err)
+	modelsFile.Close()
+
+	// Temporarily rename the files to match expected names
+	originalCredsPath := "credentials.json"
+	originalModelsPath := "models.json"
+	
+	// Backup original files if they exist
+	credsBackup := false
+	if _, err := os.Stat(originalCredsPath); err == nil {
+		os.Rename(originalCredsPath, originalCredsPath+".bak")
+		credsBackup = true
+	}
+	modelsBackup := false
+	if _, err := os.Stat(originalModelsPath); err == nil {
+		os.Rename(originalModelsPath, originalModelsPath+".bak")
+		modelsBackup = true
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			app, err := NewApp()
+	// Copy temp files to expected locations
+	os.Link(credsFile.Name(), originalCredsPath)
+	os.Link(modelsFile.Name(), originalModelsPath)
+	defer func() {
+		os.Remove(originalCredsPath)
+		os.Remove(originalModelsPath)
+		if credsBackup {
+			os.Rename(originalCredsPath+".bak", originalCredsPath)
+		}
+		if modelsBackup {
+			os.Rename(originalModelsPath+".bak", originalModelsPath)
+		}
+	}()
 
-			if tt.expectError {
-				assert.Error(t, err)
-				assert.Nil(t, app)
-			} else {
-				// Note: This test will fail if credentials.json or models.json are missing
-				// In a real scenario, we'd mock the config loading
-				if err != nil {
-					t.Skipf("Skipping test due to missing config files: %v", err)
-					return
-				}
-
-				require.NoError(t, err)
-				require.NotNil(t, app)
-				assert.NotNil(t, app.APIClient)
-				assert.NotNil(t, app.ModelSelector)
-				assert.NotNil(t, app.APIHandlers)
-				assert.NotEmpty(t, app.Credentials)
-				assert.NotEmpty(t, app.VendorModels)
-			}
-		})
-	}
+	// Test NewApp
+	app, err := NewApp()
+	require.NoError(t, err)
+	require.NotNil(t, app)
+	
+	assert.NotNil(t, app.APIClient)
+	assert.NotNil(t, app.ModelSelector)
+	assert.NotNil(t, app.APIHandlers)
+	assert.Len(t, app.Credentials, 2)
+	assert.Len(t, app.VendorModels, 2)
 }
 
-func TestHealthHandler(t *testing.T) {
-	app, err := NewApp()
-	if err != nil {
-		t.Skipf("Skipping test due to missing config files: %v", err)
-		return
+func TestNewApp_MissingCredentialsFile(t *testing.T) {
+	// Temporarily rename credentials.json if it exists
+	originalPath := "credentials.json"
+	backupPath := originalPath + ".test_backup"
+	
+	if _, err := os.Stat(originalPath); err == nil {
+		os.Rename(originalPath, backupPath)
+		defer os.Rename(backupPath, originalPath)
 	}
 
+	app, err := NewApp()
+	assert.Error(t, err)
+	assert.Nil(t, app)
+	assert.Contains(t, err.Error(), "failed to load credentials")
+}
+
+func TestNewApp_InvalidCredentialsJSON(t *testing.T) {
+	// Create invalid JSON file
+	invalidContent := `{invalid json`
+	
+	// Backup and create test file
+	originalPath := "credentials.json"
+	backupPath := originalPath + ".test_backup"
+	
+	if _, err := os.Stat(originalPath); err == nil {
+		os.Rename(originalPath, backupPath)
+		defer os.Rename(backupPath, originalPath)
+	}
+
+	err := os.WriteFile(originalPath, []byte(invalidContent), 0644)
+	require.NoError(t, err)
+	defer os.Remove(originalPath)
+
+	app, err := NewApp()
+	assert.Error(t, err)
+	assert.Nil(t, app)
+	assert.Contains(t, err.Error(), "failed to load credentials")
+}
+
+func TestNewApp_MissingModelsFile(t *testing.T) {
+	// Create valid credentials file
+	credsContent := `[{"platform": "openai", "type": "api-key", "value": "test-key"}]`
+	
+	// Backup original files
+	credsPath := "credentials.json"
+	modelsPath := "models.json"
+	credsBackup := false
+	modelsBackup := false
+	
+	if _, err := os.Stat(credsPath); err == nil {
+		os.Rename(credsPath, credsPath+".bak")
+		credsBackup = true
+	}
+	if _, err := os.Stat(modelsPath); err == nil {
+		os.Rename(modelsPath, modelsPath+".bak")
+		modelsBackup = true
+	}
+	
+	defer func() {
+		os.Remove(credsPath)
+		if credsBackup {
+			os.Rename(credsPath+".bak", credsPath)
+		}
+		if modelsBackup {
+			os.Rename(modelsPath+".bak", modelsPath)
+		}
+	}()
+
+	// Create credentials file
+	err := os.WriteFile(credsPath, []byte(credsContent), 0644)
+	require.NoError(t, err)
+
+	// Ensure models.json doesn't exist
+	os.Remove(modelsPath)
+
+	app, err := NewApp()
+	assert.Error(t, err)
+	assert.Nil(t, app)
+	assert.Contains(t, err.Error(), "failed to load vendor models")
+}
+
+func TestNewApp_ValidationError(t *testing.T) {
+	// Create credentials and models that will fail validation
+	// (models reference vendors without credentials)
+	credsContent := `[{"platform": "openai", "type": "api-key", "value": "test-key"}]`
+	modelsContent := `[
+		{"vendor": "openai", "model": "gpt-4"},
+		{"vendor": "anthropic", "model": "claude-3"}
+	]`
+
+	// Backup and create test files
+	credsPath := "credentials.json"
+	modelsPath := "models.json"
+	credsBackup := false
+	modelsBackup := false
+	
+	if _, err := os.Stat(credsPath); err == nil {
+		os.Rename(credsPath, credsPath+".bak")
+		credsBackup = true
+	}
+	if _, err := os.Stat(modelsPath); err == nil {
+		os.Rename(modelsPath, modelsPath+".bak") 
+		modelsBackup = true
+	}
+	
+	defer func() {
+		os.Remove(credsPath)
+		os.Remove(modelsPath)
+		if credsBackup {
+			os.Rename(credsPath+".bak", credsPath)
+		}
+		if modelsBackup {
+			os.Rename(modelsPath+".bak", modelsPath)
+		}
+	}()
+
+	err := os.WriteFile(credsPath, []byte(credsContent), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(modelsPath, []byte(modelsContent), 0644)
+	require.NoError(t, err)
+
+	app, err := NewApp()
+	assert.Error(t, err)
+	assert.Nil(t, app)
+	assert.Contains(t, err.Error(), "configuration validation failed")
+}
+
+func TestApp_SetupRoutes(t *testing.T) {
+	// Create minimal valid config files
+	credsContent := `[{"platform": "openai", "type": "api-key", "value": "test"}]`
+	modelsContent := `[{"vendor": "openai", "model": "gpt-4"}]`
+
+	// Setup test files
+	credsPath := "credentials.json"
+	modelsPath := "models.json"
+	credsBackup := false
+	modelsBackup := false
+	
+	if _, err := os.Stat(credsPath); err == nil {
+		os.Rename(credsPath, credsPath+".bak")
+		credsBackup = true
+	}
+	if _, err := os.Stat(modelsPath); err == nil {
+		os.Rename(modelsPath, modelsPath+".bak")
+		modelsBackup = true
+	}
+	
+	defer func() {
+		os.Remove(credsPath)
+		os.Remove(modelsPath)
+		if credsBackup {
+			os.Rename(credsPath+".bak", credsPath)
+		}
+		if modelsBackup {
+			os.Rename(modelsPath+".bak", modelsPath)
+		}
+	}()
+
+	err := os.WriteFile(credsPath, []byte(credsContent), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(modelsPath, []byte(modelsContent), 0644)
+	require.NoError(t, err)
+
+	// Create app and test SetupRoutes
+	app, err := NewApp()
+	require.NoError(t, err)
+
+	handler := app.SetupRoutes()
+	assert.NotNil(t, handler)
+
+	// Test that routes are properly configured by hitting health endpoint
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 
-	app.APIHandlers.HealthHandler(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "OK", w.Body.String())
 }
 
-func TestFilterCredentialsByVendor(t *testing.T) {
-	tests := []struct {
-		name        string
-		credentials []config.Credential
-		vendor      string
-		expected    int
-	}{
-		{
-			name: "filter_openai_credentials",
-			credentials: []config.Credential{
-				{Platform: "openai", Type: "api-key", Value: "test1"},
-				{Platform: "gemini", Type: "api-key", Value: "test2"},
-				{Platform: "openai", Type: "api-key", Value: "test3"},
-			},
-			vendor:   "openai",
-			expected: 2,
-		},
-		{
-			name: "filter_gemini_credentials",
-			credentials: []config.Credential{
-				{Platform: "openai", Type: "api-key", Value: "test1"},
-				{Platform: "gemini", Type: "api-key", Value: "test2"},
-			},
-			vendor:   "gemini",
-			expected: 1,
-		},
-		{
-			name: "no_matching_credentials",
-			credentials: []config.Credential{
-				{Platform: "openai", Type: "api-key", Value: "test1"},
-			},
-			vendor:   "anthropic",
-			expected: 0,
-		},
-	}
+func TestNewApp_EmptyCredentials(t *testing.T) {
+	// Create empty credentials and models files
+	credsContent := `[]`
+	modelsContent := `[]`
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := filter.CredentialsByVendor(tt.credentials, tt.vendor)
-			assert.Len(t, result, tt.expected)
-
-			// Verify all returned credentials match the vendor
-			for _, cred := range result {
-				assert.Equal(t, tt.vendor, cred.Platform)
-			}
-		})
+	// Setup test files
+	credsPath := "credentials.json"
+	modelsPath := "models.json"
+	credsBackup := false
+	modelsBackup := false
+	
+	if _, err := os.Stat(credsPath); err == nil {
+		os.Rename(credsPath, credsPath+".bak")
+		credsBackup = true
 	}
+	if _, err := os.Stat(modelsPath); err == nil {
+		os.Rename(modelsPath, modelsPath+".bak")
+		modelsBackup = true
+	}
+	
+	defer func() {
+		os.Remove(credsPath)
+		os.Remove(modelsPath)
+		if credsBackup {
+			os.Rename(credsPath+".bak", credsPath)
+		}
+		if modelsBackup {
+			os.Rename(modelsPath+".bak", modelsPath)
+		}
+	}()
+
+	err := os.WriteFile(credsPath, []byte(credsContent), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(modelsPath, []byte(modelsContent), 0644)
+	require.NoError(t, err)
+
+	app, err := NewApp()
+	assert.Error(t, err)
+	assert.Nil(t, app)
+	assert.Contains(t, err.Error(), "configuration validation failed")
 }
 
-func TestFilterModelsByVendor(t *testing.T) {
-	tests := []struct {
-		name     string
-		models   []config.VendorModel
-		vendor   string
-		expected int
-	}{
-		{
-			name: "filter_openai_models",
-			models: []config.VendorModel{
-				{Vendor: "openai", Model: "gpt-4"},
-				{Vendor: "gemini", Model: "gemini-pro"},
-				{Vendor: "openai", Model: "gpt-3.5-turbo"},
-			},
-			vendor:   "openai",
-			expected: 2,
-		},
-		{
-			name: "filter_gemini_models",
-			models: []config.VendorModel{
-				{Vendor: "openai", Model: "gpt-4"},
-				{Vendor: "gemini", Model: "gemini-pro"},
-			},
-			vendor:   "gemini",
-			expected: 1,
-		},
-		{
-			name: "no_matching_models",
-			models: []config.VendorModel{
-				{Vendor: "openai", Model: "gpt-4"},
-			},
-			vendor:   "anthropic",
-			expected: 0,
-		},
-	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := filter.ModelsByVendor(tt.models, tt.vendor)
-			assert.Len(t, result, tt.expected)
-
-			// Verify all returned models match the vendor
-			for _, model := range result {
-				assert.Equal(t, tt.vendor, model.Vendor)
-			}
-		})
-	}
-}
