@@ -552,8 +552,9 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	// Set headers for streaming BEFORE copying vendor headers
 	if isStreaming {
 		// Set essential SSE headers first
-		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
+		// Don't explicitly set Transfer-Encoding, let Go handle it
 	}
 
 	// Whitelist approach: Only copy specific headers we want to pass through
