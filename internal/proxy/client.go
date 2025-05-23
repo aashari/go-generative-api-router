@@ -558,35 +558,46 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		w.Header().Set("Transfer-Encoding", "chunked")
 	}
 
-	// Copy response headers after setting streaming headers
+	// Whitelist approach: Only copy specific headers we want to pass through
+	allowedHeaders := map[string]bool{
+		"date":                      true,
+		"server":                    true,
+		"vary":                       true,
+		"x-request-id":              true,
+		"x-content-type-options":    true,
+		"x-frame-options":           true,
+		"x-xss-protection":          true,
+		"access-control-allow-origin": true,
+		"access-control-allow-methods": true,
+		"access-control-allow-headers": true,
+		"access-control-expose-headers": true,
+		"server-timing":             true,
+	}
+
+	// Copy only whitelisted response headers
 	for k, vs := range resp.Header {
-		// Skip problematic headers for streaming
-		if isStreaming && (k == "Content-Type" || k == "Content-Length" || k == "Transfer-Encoding") {
-			continue
-		}
-		// Skip Content-Length header since we're modifying the body
-		if k == "Content-Length" {
-			continue
-		}
-		// If we decompressed gzip, don't pass the original Content-Encoding header from vendor
-		if contentEncoding == "gzip" && k == "Content-Encoding" {
-			continue
-		}
-		// Skip vendor-specific headers that shouldn't be passed through
 		lowerK := strings.ToLower(k)
-		if lowerK == "set-cookie" || 
-		   strings.HasPrefix(lowerK, "openai-") || 
-		   strings.HasPrefix(lowerK, "anthropic-") || 
-		   strings.HasPrefix(lowerK, "x-ratelimit-") ||
-		   lowerK == "cf-ray" ||
-		   lowerK == "cf-cache-status" ||
-		   lowerK == "x-envoy-upstream-service-time" ||
-		   lowerK == "strict-transport-security" ||
-		   lowerK == "alt-svc" {
+		
+		// Skip these headers for streaming responses
+		if isStreaming && (lowerK == "content-type" || lowerK == "content-length" || lowerK == "transfer-encoding") {
 			continue
 		}
-		for _, v := range vs {
-			w.Header().Add(k, v)
+		
+		// Skip Content-Length since we're modifying the body
+		if lowerK == "content-length" {
+			continue
+		}
+		
+		// Skip Content-Encoding if we decompressed
+		if contentEncoding == "gzip" && lowerK == "content-encoding" {
+			continue
+		}
+		
+		// Only copy whitelisted headers
+		if allowedHeaders[lowerK] {
+			for _, v := range vs {
+				w.Header().Add(k, v)
+			}
 		}
 	}
 
@@ -632,7 +643,8 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 			if bytes.HasPrefix(line, []byte("data: ")) {
 				// Check if it's the [DONE] marker
 				if bytes.Contains(line, []byte("[DONE]")) {
-					w.Write(line)
+					// Write the [DONE] marker with proper SSE format
+					w.Write([]byte("data: [DONE]\n\n"))
 					if flusher != nil {
 						flusher.Flush()
 					}
@@ -642,6 +654,10 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 				// Use our processStreamChunk function to handle all the modifications
 				// This ensures consistency with our standalone function
 				modifiedLine := processStreamChunk(line, selection.Vendor, originalModel, conversationID, timestamp, systemFingerprint)
+				
+				// The modifiedLine already includes "data: " prefix and double newline suffix
+				// But the 'line' variable includes a trailing newline from ReadBytes('\n')
+				// So we need to write the modified content without the original line's newline
 				w.Write(modifiedLine)
 				
 				// CRITICAL: Flush after each chunk
