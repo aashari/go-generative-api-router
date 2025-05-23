@@ -3,58 +3,93 @@ description:
 globs: 
 alwaysApply: true
 ---
-**System Instruction: Using Codex as a Planning & Verification Assistant**
+## Instruction: Using Codex as a Planning Assistant
 
-Whenever you need to generate a plan, design, or review an implementation, use Codex as your trusted planner and verifier. Always follow this procedure and command pattern:
+**Purpose:**
+Whenever you need to plan, design, review, or implement changes, Codex is your critical peer—serving as planner, reviewer, and software architect. Use Codex not just as a tool executor, but as an expert collaborator whose feedback, verification, and judgment you must actively seek and enforce.
+
+---
+
+### **How to Use Codex in Your Workflow**
+
+**1. Always Interact via Single-Line Command**
 
 ```bash
 GENAPI_API_KEY=HaloHaloBandung npx -y @openai/codex --provider genapi --quiet "{your query}"
 ```
 
-> _Note: Always use a single-line command (multi-line input will cause an error)._
+* *Note: Your query must be a single line. Multi-line input will cause errors.*
 
-**How to Compose Your Codex Query**
+---
 
-- Include the _full context_ (background, all relevant constraints, project goals, and any changes made so far).
-- Clearly state _what you want to achieve or verify_.
-- Always specify:
+**2. How to Compose Your Query to Codex**
 
-  - The files or areas affected.
-  - Any specific steps Codex should take to **verify** the outcome (such as checking file diffs, running unit/integration tests, or validating build output).
-  - Explicitly request Codex to _not_ declare a task finished until it confirms (via its analysis or test results) that the intended outcome is correct and complete.
+Your query to Codex **must always** include:
 
-**Codex Must:**
+* **Full context:**
 
-- Check its own work, reviewing file changes and, where possible, running linter, build, and test commands.
-- Only state “work is complete” when:
+  * Project background and intent
+  * Current state and all relevant constraints
+  * Goals and specific acceptance criteria
 
-  - All changes are implemented _and_
-  - All relevant verifications (diffs, linter, build, tests, etc.) pass without errors or regressions.
+* **Explicit task or question:**
 
-- If Codex finds issues, it should automatically suggest the next actions to resolve them, repeating until validation succeeds.
+  * What you want Codex to plan, review, or verify
+  * The scope (files, components, features, etc.)
 
-**Important Reminders:**
+* **Verification requirements:**
 
-- Codex is your _planning and verification partner_, acting as an expert architect and reviewer.
-- _Always restate all relevant context and requirements_ in each query (Codex does not remember previous prompts).
-- Whenever you request Codex to plan or execute work, require it to:
+  * Require Codex to *never trust or assume*—it must independently verify claims, changes, or plans.
+  * Instruct Codex to check file changes, review code, and always run linter, build, and all relevant tests after any modification.
+  * Demand Codex explicitly *report its findings*—success or failure, with details.
 
-  1. **Plan** the steps,
-  2. **Execute** the plan,
-  3. **Verify** via diffs and tests,
-  4. **Report** findings,
-  5. _Loop_ back if anything is missing or failing.
+* **Quality standards:**
 
-**Example Query**
+  * Codex must enforce DRY (Don’t Repeat Yourself), clean code, clarity, modularity, and industry best practices at every step.
+  * Require Codex to proactively flag code smells, duplication, unclear logic, or maintainability concerns—even if requirements appear satisfied.
+  * Tell Codex to suggest improvements or refactorings for code quality, maintainability, and robustness.
 
-If you want to implement and verify a new REST API endpoint for user authentication, your query should look like:
+* **Critical mindset:**
+
+  * Codex should challenge assumptions, highlight ambiguous or incomplete requirements, and document any risks or uncertainties.
+  * Instruct Codex to halt and ask for missing information if verification is blocked; it must never proceed blindly or declare completion based on unverified assumptions.
+
+* **Never-ending verification loop:**
+
+  * Codex must *not* declare any work complete until all checks pass and the solution meets quality standards.
+  * If any issues or test failures arise, Codex should clearly state next actions, repeat verification after each correction, and only exit this loop when everything is fully and independently validated.
+
+---
+
+**3. Example Query to Codex**
+
+Suppose you want Codex to implement and verify a secure user authentication API. Your query should be:
 
 ```
-Design and implement a secure REST API endpoint for user authentication in a Node.js application using Express and JWT. The endpoint must handle login, password validation, and return a signed token on success. After implementation, check the relevant files for changes, run `bun run lint`, `bun run build`, and all existing tests. Only declare the work complete if all steps pass. If any errors or test failures are found, explain and suggest further actions.
+Design and implement a secure REST API endpoint for user authentication in Node.js with Express and JWT. The endpoint must handle login, password validation, and return a signed token on success. After implementation, check all file changes, run lint, build, and all tests. Enforce DRY and clean code principles. If any errors, test failures, code duplication, or maintainability issues are found, report them and propose improvements. Do not declare work complete until all issues are resolved, all verifications pass, and the solution meets high code quality standards.
 ```
 
-**Summary**
+---
 
-- _Never_ stop the workflow until Codex confirms, through checks and tests, that the outcome is as intended.
-- Require Codex to always check file changes and run tests/builds after any modification.
-- Every query must be explicit, self-contained, and verification-driven.
+**4. Summary Checklist Before Submitting a Query to Codex**
+
+* [ ] Have I included all relevant project context, goals, and constraints?
+* [ ] Did I specify exactly what Codex should plan, review, or verify?
+* [ ] Did I instruct Codex to independently check diffs, run tests, and *not* trust prior results?
+* [ ] Did I make it clear Codex must enforce DRY, clean code, and suggest improvements?
+* [ ] Did I require Codex to document uncertainties and ask for missing info if verification is blocked?
+* [ ] Did I require Codex to loop, never declaring completion until *everything* is fully checked and passes?
+
+---
+
+**5. Tone and Output Expectations**
+
+* Codex is to respond with direct, detailed, and constructive feedback—never shallow approval.
+* Expect Codex to surface edge cases, ambiguities, and make actionable recommendations for improvement.
+* Every output from Codex should clearly state what was checked, what passed/failed, and what to do next.
+
+---
+
+## **In Short**
+
+Treat Codex as a highly critical, detail-oriented peer. Demand that it plans, reviews, verifies, and enforces best practices end-to-end. Codex’s approval is *never* based on assumption—only on complete, independently-verified evidence.
