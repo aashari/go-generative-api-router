@@ -554,7 +554,6 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		// Set essential SSE headers first
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("Transfer-Encoding", "chunked")
 	}
 
@@ -630,15 +629,6 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 				break
 			}
 
-			// Skip empty lines
-			if len(bytes.TrimSpace(line)) == 0 {
-				w.Write(line)
-				if flusher != nil {
-					flusher.Flush()
-				}
-				continue
-			}
-
 			// Process data lines
 			if bytes.HasPrefix(line, []byte("data: ")) {
 				// Check if it's the [DONE] marker
@@ -648,24 +638,42 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 					if flusher != nil {
 						flusher.Flush()
 					}
-					continue
+					// Exit the loop after [DONE] to properly close the connection
+					break
 				}
 
 				// Use our processStreamChunk function to handle all the modifications
 				// This ensures consistency with our standalone function
 				modifiedLine := processStreamChunk(line, selection.Vendor, originalModel, conversationID, timestamp, systemFingerprint)
 				
-				// The modifiedLine already includes "data: " prefix and double newline suffix
-				// But the 'line' variable includes a trailing newline from ReadBytes('\n')
-				// So we need to write the modified content without the original line's newline
+				// Write the modified line which already includes proper SSE formatting
 				w.Write(modifiedLine)
 				
 				// CRITICAL: Flush after each chunk
 				if flusher != nil {
 					flusher.Flush()
 				}
+				
+				// Skip the empty line that follows a data line in SSE format
+				// since processStreamChunk already adds the required newlines
+				nextLine, err := reader.ReadBytes('\n')
+				if err != nil && err != io.EOF {
+					log.Printf("Error reading empty line after data: %v", err)
+				}
+				// If it's not an empty line, we need to process it
+				if len(bytes.TrimSpace(nextLine)) > 0 {
+					// Put it back by creating a new reader with the line prepended
+					remaining, _ := io.ReadAll(reader)
+					reader = bufio.NewReader(io.MultiReader(bytes.NewReader(nextLine), bytes.NewReader(remaining)))
+				}
+			} else if len(bytes.TrimSpace(line)) == 0 {
+				// This is an empty line not following a data line, pass it through
+				w.Write(line)
+				if flusher != nil {
+					flusher.Flush()
+				}
 			} else {
-				// For non-data lines, pass through unchanged
+				// For non-data, non-empty lines, pass through unchanged
 				w.Write(line)
 				if flusher != nil {
 					flusher.Flush()
