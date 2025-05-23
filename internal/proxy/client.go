@@ -53,8 +53,8 @@ func generateRandomString(length int) string {
 	return hex.EncodeToString(bytes)
 }
 
-// processStreamChunk processes a single chunk of a streaming response
-func processStreamChunk(chunk []byte, vendor string, originalModel string) []byte {
+// processStreamChunk processes a single chunk of a streaming response with consistent conversation-level values
+func processStreamChunk(chunk []byte, vendor string, originalModel string, conversationID string, timestamp int64, systemFingerprint string) []byte {
 	// Handle empty chunks or non-data chunks
 	if len(chunk) == 0 || !bytes.HasPrefix(chunk, []byte("data: ")) {
 		return chunk
@@ -74,24 +74,19 @@ func processStreamChunk(chunk []byte, vendor string, originalModel string) []byt
 		return chunk // Return original chunk if it's not valid JSON
 	}
 
-	// Add chat completion ID if missing
-	if id, ok := chunkData["id"]; !ok || id == nil || id == "" {
-		chunkData["id"] = "chatcmpl-" + generateRandomString(10)
-	}
+	// Always use the consistent conversation ID (override vendor-provided ID for transparency)
+	chunkData["id"] = conversationID
+
+	// Always use the consistent timestamp (override vendor-provided timestamp for consistency)
+	chunkData["created"] = timestamp
 
 	// Add service_tier if missing (OpenAI compatibility)
 	if _, ok := chunkData["service_tier"]; !ok {
 		chunkData["service_tier"] = "default"
 	}
 
-	// Add system_fingerprint if missing (OpenAI compatibility)
-	sfValue, sfExists := chunkData["system_fingerprint"]
-	if !sfExists || sfValue == nil {
-		chunkData["system_fingerprint"] = "fp_" + generateRandomString(9)
-		// No log here to avoid flooding stream logs, but ensure it's set
-	} else if _, isString := sfValue.(string); !isString {
-		chunkData["system_fingerprint"] = "fp_" + generateRandomString(9)
-	}
+	// Always use the consistent system fingerprint (override vendor-provided fingerprint for consistency)
+	chunkData["system_fingerprint"] = systemFingerprint
 
 	// Override the model field with the original model requested by the client
 	if originalModel != "" {
@@ -510,6 +505,19 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		}
 	}
 
+	// Generate consistent conversation-level values for streaming responses
+	var conversationID string
+	var timestamp int64
+	var systemFingerprint string
+	
+	if isStreaming {
+		conversationID = "chatcmpl-" + generateRandomString(10)
+		timestamp = time.Now().Unix()
+		systemFingerprint = "fp_" + generateRandomString(9)
+		log.Printf("Generated consistent streaming values: ID=%s, timestamp=%d, fingerprint=%s", 
+			conversationID, timestamp, systemFingerprint)
+	}
+
 	// All vendors use the same OpenAI-compatible endpoint
 	// Do not change this
 	fullURL := baseURL + "/chat/completions"
@@ -595,7 +603,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 
 				// Use our processStreamChunk function to handle all the modifications
 				// This ensures consistency with our standalone function
-				modifiedLine := processStreamChunk(line, selection.Vendor, originalModel)
+				modifiedLine := processStreamChunk(line, selection.Vendor, originalModel, conversationID, timestamp, systemFingerprint)
 				w.Write(modifiedLine)
 			} else {
 				// For non-data lines, pass through unchanged
