@@ -571,6 +571,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		"access-control-allow-headers": true,
 		"access-control-expose-headers": true,
 		"server-timing":             true,
+		"transfer-encoding":         true,  // Added for streaming support
 	}
 
 	// Copy only whitelisted response headers
