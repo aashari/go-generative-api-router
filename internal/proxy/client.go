@@ -115,6 +115,9 @@ func (c *APIClient) setupResponseHeaders(w http.ResponseWriter, resp *http.Respo
 		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
+	} else {
+		// For non-streaming responses, set proper JSON content type
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}
 
 	// Set X-Request-ID header
