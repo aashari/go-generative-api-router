@@ -554,6 +554,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		// Set essential SSE headers first
 		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
 		// Don't explicitly set Transfer-Encoding, let Go handle it
 	}
 
@@ -571,6 +572,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		"access-control-allow-headers": true,
 		"access-control-expose-headers": true,
 		"server-timing":             true,
+		"connection":                true,  // Added for keep-alive support
 	}
 
 	// Copy only whitelisted response headers
@@ -578,7 +580,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		lowerK := strings.ToLower(k)
 		
 		// Skip these headers for streaming responses
-		if isStreaming && (lowerK == "content-type" || lowerK == "content-length") {
+		if isStreaming && (lowerK == "content-type" || lowerK == "content-length" || lowerK == "connection") {
 			continue
 		}
 		
