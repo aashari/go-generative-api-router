@@ -548,8 +548,21 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	// Store content encoding for later use in processResponse or stream handling
 	contentEncoding := resp.Header.Get("Content-Encoding")
 
-	// Copy response headers before setting status code
+	// Set headers for streaming BEFORE copying vendor headers
+	if isStreaming {
+		// Set essential SSE headers first
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("Transfer-Encoding", "chunked")
+	}
+
+	// Copy response headers after setting streaming headers
 	for k, vs := range resp.Header {
+		// Skip problematic headers for streaming
+		if isStreaming && (k == "Content-Type" || k == "Content-Length" || k == "Transfer-Encoding") {
+			continue
+		}
 		// Skip Content-Length header since we're modifying the body
 		if k == "Content-Length" {
 			continue
@@ -563,13 +576,18 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		}
 	}
 
-	// Set Transfer-Encoding explicitly if streaming
-	if isStreaming || resp.Header.Get("Transfer-Encoding") == "chunked" {
-		w.Header().Set("Transfer-Encoding", "chunked")
-	}
-
 	// Now write status code after headers
 	w.WriteHeader(resp.StatusCode)
+
+	// Get flusher for streaming responses
+	var flusher http.Flusher
+	if isStreaming {
+		if f, ok := w.(http.Flusher); ok {
+			flusher = f
+		} else {
+			log.Printf("Warning: ResponseWriter does not support flushing")
+		}
+	}
 
 	// Handle the response based on whether it's streaming or not
 	if isStreaming {
@@ -590,6 +608,9 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 			// Skip empty lines
 			if len(bytes.TrimSpace(line)) == 0 {
 				w.Write(line)
+				if flusher != nil {
+					flusher.Flush()
+				}
 				continue
 			}
 
@@ -598,6 +619,9 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 				// Check if it's the [DONE] marker
 				if bytes.Contains(line, []byte("[DONE]")) {
 					w.Write(line)
+					if flusher != nil {
+						flusher.Flush()
+					}
 					continue
 				}
 
@@ -605,9 +629,17 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 				// This ensures consistency with our standalone function
 				modifiedLine := processStreamChunk(line, selection.Vendor, originalModel, conversationID, timestamp, systemFingerprint)
 				w.Write(modifiedLine)
+				
+				// CRITICAL: Flush after each chunk
+				if flusher != nil {
+					flusher.Flush()
+				}
 			} else {
 				// For non-data lines, pass through unchanged
 				w.Write(line)
+				if flusher != nil {
+					flusher.Flush()
+				}
 			}
 		}
 	} else {
