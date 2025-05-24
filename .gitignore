@@ -1,6 +1,7 @@
 # Binaries and executables
 /generative-api-router
 /server
+build/
 *.exe
 *.exe~
 *.dll
@@ -12,6 +13,7 @@
 
 # Output of the go coverage tool
 *.out
+coverage.html
 
 # Go workspace file
 go.work
@@ -32,24 +34,34 @@ vendor/
 !.env.example
 
 # Credentials (to avoid accidental commit of API keys)
-credentials.json
+configs/credentials.json
+!configs/credentials.json.example
 
 # Logs
 *.log
-server.log
+logs/
 
 # Build related
 bin/
-build/
 dist/
 tmp/
 
 # OS specific
 .DS_Store
 Thumbs.db 
-repomix-output.xml
-deploy.sh
 
-# Test data and responses
+# Project specific
+repomix-output.xml
+deploy.log
+
+# Test data and responses (except fixtures)
 /test_responses/
-*.json
+testdata/fixtures/*.json
+!testdata/fixtures/.gitkeep
+
+# Logs in any location
+server.log
+deploy.log
+
+# Deployment scripts with sensitive information
+scripts/deploy.sh

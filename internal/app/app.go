@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	_ "github.com/aashari/go-generative-api-router/docs" // This is necessary for Swagger documentation
+	_ "github.com/aashari/go-generative-api-router/docs/api" // This is necessary for Swagger documentation
 	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/handlers"
 	"github.com/aashari/go-generative-api-router/internal/proxy"
@@ -25,13 +25,13 @@ type App struct {
 // NewApp creates a new App instance with all dependencies
 func NewApp() (*App, error) {
 	// Load credentials
-	creds, err := config.LoadCredentials("credentials.json")
+	creds, err := config.LoadCredentials("configs/credentials.json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to load credentials: %w", err)
 	}
 
 	// Load vendor-model pairs
-	models, err := config.LoadVendorModels("models.json")
+	models, err := config.LoadVendorModels("configs/models.json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to load vendor models: %w", err)
 	}

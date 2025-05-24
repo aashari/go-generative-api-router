@@ -22,13 +22,16 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendo
 - **Tool Calling**: Supports function calling/tools for AI agents with proper validation
 - **Modular Design**: Clean separation of concerns with selector, validator, and client components
 - **Configuration Driven**: Easily configure available models and credentials via JSON files
+- **Metrics & Monitoring**: Built-in Prometheus metrics and health check endpoints
+- **Comprehensive Testing**: Full test coverage with unit tests for all components
 
 ## Quick Start
 
 ### Prerequisites
 
-- Go 1.24.3 or higher
+- Go 1.21 or higher
 - API keys for OpenAI and/or Google Gemini
+- Make (for build automation)
 
 ### Installation
 
@@ -38,13 +41,17 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendo
    cd go-generative-api-router
    ```
 
-2. **Configure Credentials**:
-   Copy the example file and edit with valid API keys:
+2. **Setup Environment**:
    ```bash
-   cp credentials.json.example credentials.json
+   make setup
    ```
-   
-   Then edit `credentials.json` with valid API keys:
+   This will:
+   - Download Go dependencies
+   - Install development tools
+   - Create `configs/credentials.json` from the example template
+
+3. **Configure Credentials**:
+   Edit `configs/credentials.json` with your API keys:
    ```json
    [
      {
@@ -60,13 +67,13 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendo
    ]
    ```
 
-3. **Configure Models**:
-   Edit `models.json` to define which vendor-model pairs can be selected:
+4. **Configure Models**:
+   Edit `configs/models.json` to define which vendor-model pairs can be selected:
    ```json
    [
      {
        "vendor": "gemini",
-       "model": "gemini-1.5-flash"
+       "model": "gemini-2.0-flash"
      },
      {
        "vendor": "openai",
@@ -75,20 +82,55 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendo
    ]
    ```
 
-4. **Run Locally**:
+5. **Run the Service**:
    ```bash
-   go mod tidy
-   go run ./cmd/server
+   make run
    ```
    
    The service will be available at http://localhost:8082
 
-## Docker Deployment
+## Usage
 
-Build and run using Docker Compose:
+### Using Example Scripts
+
+Example scripts are provided for common use cases:
 
 ```bash
-docker-compose up --build
+# Basic usage examples
+./examples/curl/basic.sh
+
+# Streaming examples
+./examples/curl/streaming.sh
+
+# Tool calling examples
+./examples/curl/tools.sh
+```
+
+### Client Libraries
+
+Example implementations are available for multiple languages:
+
+- **Python**: `examples/clients/python/client.py`
+- **Node.js**: `examples/clients/nodejs/client.js`
+- **Go**: `examples/clients/go/client.go`
+
+### Docker Deployment
+
+Build and run using Docker:
+
+```bash
+# Build and run with Docker Compose
+make docker-build
+make docker-run
+
+# Stop the service
+make docker-stop
+```
+
+Or manually:
+
+```bash
+docker-compose -f deployments/docker/docker-compose.yml up --build
 ```
 
 ## API Reference
@@ -100,6 +142,14 @@ GET /health
 ```
 
 **Response**: `200 OK` with body `OK` if the service is running properly.
+
+### Metrics
+
+```http
+GET /metrics
+```
+
+**Response**: Prometheus-formatted metrics including request counts, durations, and error rates.
 
 ### Models Listing
 
@@ -187,15 +237,34 @@ curl -X POST http://localhost:8082/v1/chat/completions \
 The project follows a modular design with clear separation of concerns:
 
 ```
-go-generative-api-router/
+generative-api-router/
 ├── cmd/server/          # Application entry point
-├── internal/
-│   ├── app/             # Application core and HTTP handlers
+├── configs/             # Configuration files
+│   ├── credentials.json # API keys (gitignored)
+│   └── models.json      # Vendor-model mappings
+├── deployments/         # Deployment configurations
+│   └── docker/          # Docker files
+├── docs/                # Documentation
+│   ├── api/             # API documentation
+│   ├── development/     # Development guides
+│   └── user/            # User guides
+├── examples/            # Usage examples
+│   ├── curl/            # cURL examples
+│   └── clients/         # Client library examples
+├── internal/            # Core application code
+│   ├── app/             # Application initialization
 │   ├── config/          # Configuration management
-│   ├── proxy/           # API client and proxy functionality
-│   ├── selector/        # Vendor/model selection strategies
+│   ├── errors/          # Error handling
+│   ├── filter/          # Filtering utilities
+│   ├── handlers/        # HTTP handlers
+│   ├── monitoring/      # Metrics collection
+│   ├── proxy/           # Proxy functionality
+│   ├── router/          # Route definitions
+│   ├── selector/        # Vendor/model selection
 │   └── validator/       # Request validation
-└── models.json          # Vendor-model configuration
+├── scripts/             # Operational scripts
+├── testdata/            # Test fixtures and analysis
+└── Makefile             # Build automation
 ```
 
 ## Development
@@ -203,35 +272,78 @@ go-generative-api-router/
 ### Building
 
 ```bash
-go build -o go-generative-api-router ./cmd/server
+# Build the application
+make build
+
+# Build Docker image
+make docker-build
 ```
 
 ### Testing
 
-Test basic functionality:
+Run the comprehensive test suite:
+
 ```bash
-# Health check
-curl -X GET http://localhost:8082/health
+# Run all tests
+make test
 
-# List models
-curl -X GET http://localhost:8082/v1/models
+# Run tests with coverage
+make test-coverage
 
-# Basic completion
-curl -X POST http://localhost:8082/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model": "any-model", "messages": [{"role": "user", "content": "Hello"}]}'
+# Run tests with race detection
+go test -race ./...
 ```
+
+### Code Quality
+
+```bash
+# Format code
+make format
+
+# Run linter
+make lint
+
+# Clean build artifacts
+make clean
+```
+
+### Development Mode
+
+```bash
+# Run without building (using go run)
+make run-dev
+
+# Run with logging to file
+make run-with-logs
+```
+
+## Configuration
+
+### Environment Variables
+
+The service supports the following environment variables:
+
+- `PORT`: Server port (default: 8082)
+- `LOG_LEVEL`: Logging level (default: info)
+
+### Configuration Files
+
+- `configs/credentials.json`: API keys for vendors
+- `configs/models.json`: Available models and their vendors
 
 ## Security Considerations
 
-- The current implementation stores API keys in plain text in `credentials.json`. 
-- For production environments, consider using environment variables or a secret management solution.
-- The `credentials.json` file is included in `.gitignore` to prevent accidentally committing API keys.
-- Consider implementing rate limiting for production deployments.
+- API keys are stored in `configs/credentials.json` which is gitignored
+- For production environments, consider using:
+  - Environment variables for sensitive data
+  - Secret management solutions (AWS Secrets Manager, HashiCorp Vault)
+  - Encrypted configuration files
+- Consider implementing rate limiting for production deployments
+- Use HTTPS in production environments
 
 ## Contributing
 
-Contributions are welcome! Here's how you can contribute:
+Contributions are welcome! Please see our [Contributing Guide](docs/development/CONTRIBUTING.md) for details.
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/my-feature`
@@ -239,11 +351,19 @@ Contributions are welcome! Here's how you can contribute:
 4. Push to the branch: `git push origin feature/my-feature`
 5. Submit a pull request
 
+## Documentation
+
+- [Development Guide](docs/development/DEVELOPMENT.md)
+- [Testing Guide](docs/development/TESTING.md)
+- [API Documentation](docs/api/)
+- [User Guide](docs/user/README.md)
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
-- This project was inspired by the need for a unified interface to multiple LLM providers.
-- Special thanks to the Go community for the excellent libraries and tools.
+- This project was inspired by the need for a unified interface to multiple LLM providers
+- Special thanks to the Go community for the excellent libraries and tools
+- Built with modern Go best practices and clean architecture principles

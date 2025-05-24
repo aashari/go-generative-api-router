@@ -15,12 +15,15 @@ This guide provides step-by-step instructions for running and testing the Genera
    cd go-generative-api-router
    ```
 
-2. **Configure Credentials**:
-   - Copy the example credentials file:
-     ```bash
-     cp credentials.json.example credentials.json
-     ```
-   - Edit [credentials.json](mdc:generative-api-router/credentials.json) with valid API keys:
+2. **Initial Setup**:
+   ```bash
+   # Run the setup script to install dependencies and create config files
+   make setup
+   ```
+
+3. **Configure Credentials**:
+   - The setup script creates `configs/credentials.json` from the example file
+   - Edit [configs/credentials.json](mdc:generative-api-router/generative-api-router/configs/credentials.json) with valid API keys:
      ```json
      [
        {
@@ -36,8 +39,8 @@ This guide provides step-by-step instructions for running and testing the Genera
      ]
      ```
 
-3. **Configure Models**:
-   - Edit [models.json](mdc:generative-api-router/models.json) to specify which models you want to use:
+4. **Configure Models**:
+   - Edit [configs/models.json](mdc:generative-api-router/generative-api-router/configs/models.json) to specify which models you want to use:
      ```json
      [
        {
@@ -53,33 +56,56 @@ This guide provides step-by-step instructions for running and testing the Genera
 
 ## Running the Service
 
-### Locally with Go
+### Using Makefile (Recommended)
 
-1. **Install Dependencies**:
+1. **Build and Run**:
    ```bash
-   go mod tidy
+   # Build and run the service
+   make run
+   
+   # Run without building (using go run)
+   make run-dev
+   
+   # Run with logging to file
+   make run-with-logs
    ```
 
-2. **Run the Server**:
+2. **Build Only**:
    ```bash
-   go run ./cmd/server
-   # OR for background execution and logging:
-   # ./server > server.log 2>&1 &
+   make build
+   # Binary will be in build/server
+   ```
+
+### Manual Execution
+
+1. **Run the Built Binary**:
+   ```bash
+   ./build/server
+   # OR for background execution:
+   ./build/server > logs/server.log 2>&1 &
    ```
    - The server will start on port `:8082` by default.
-   - Check for successful initialization in the logs (e.g., `tail -f server.log` if running in background).
+   - Check logs in `logs/` directory or console output.
    - **Important**: Wait a few seconds (e.g., `sleep 3`) after starting the server before sending requests to avoid "Connection refused" errors.
 
 ### Using Docker
 
 1. **Build and Run with Docker Compose**:
    ```bash
-   docker-compose up --build
+   # Using Makefile
+   make docker-build
+   make docker-run
+   
+   # OR manually
+   docker-compose -f deployments/docker/docker-compose.yml up --build
    ```
 
 2. **Run as a Background Service**:
    ```bash
-   docker-compose up -d
+   docker-compose -f deployments/docker/docker-compose.yml up -d
+   
+   # Stop the service
+   make docker-stop
    ```
 
 ## Running Tests
@@ -90,11 +116,15 @@ The project includes comprehensive test coverage added in Phase 2:
 
 1. **Run All Tests**:
    ```bash
+   make test
+   # OR
    go test ./...
    ```
 
 2. **Run Tests with Coverage**:
    ```bash
+   make test-coverage
+   # OR
    go test -cover ./...
    ```
 
@@ -118,9 +148,24 @@ The project uses:
 - `github.com/stretchr/testify` v1.10.0 - For assertions and test suites
 - `github.com/go-playground/validator/v10` v10.26.0 - For struct validation
 
-Note: Some tests may skip if `credentials.json` is not present, which is expected behavior.
+Note: Some tests may skip if `configs/credentials.json` is not present, which is expected behavior.
 
 ## Testing the Service
+
+### Using Example Scripts
+
+Example scripts are provided in the `examples/` directory:
+
+```bash
+# Basic usage examples
+./examples/curl/basic.sh
+
+# Streaming examples
+./examples/curl/streaming.sh
+
+# Tool calling examples
+./examples/curl/tools.sh
+```
 
 ### Basic Tests
 
@@ -146,7 +191,7 @@ Note: Some tests may skip if `credentials.json` is not present, which is expecte
      - A proper `\"id\"` field with `\"chatcmpl-\"` prefix
      - Content in the expected format
      - The `\"model\"` field in the response should match the `\"model\"` field sent in the request (e.g., `\"any-model-name-you-like\"`).
-   - **Log Check**: Verify server logs (e.g., `grep \"VERBOSE_DEBUG: ProxyRequest\" server.log | tail -n 1`) show the requested model and the actual model selected by the router. Example:
+   - **Log Check**: Verify server logs (e.g., `grep \"VERBOSE_DEBUG: ProxyRequest\" logs/server.log | tail -n 1`) show the requested model and the actual model selected by the router. Example:
      `VERBOSE_DEBUG: ProxyRequest - Original requested model: 'any-model-name-you-like', will route to: 'actual-selected-model'`
    - Also check for `Processing response from actual model:` log line.
 
@@ -237,7 +282,7 @@ Note: Some tests may skip if `credentials.json` is not present, which is expecte
    - **Wait a few seconds** (e.g., `sleep 3`) after starting the server.
 
 3. **Invalid API Key Errors**:
-   - Verify your API keys in `credentials.json` are valid and current.
+   - Verify your API keys in `configs/credentials.json` are valid and current.
    - Check vendor-specific error messages in the response.
 
 4. **Request Validation Errors**:
@@ -246,21 +291,37 @@ Note: Some tests may skip if `credentials.json` is not present, which is expecte
    - The service now provides detailed validation error messages in a standardized format.
 
 5. **Server Crashes**:
-   - Check the server logs for error messages (e.g., `tail server.log`).
-   - Ensure `credentials.json` and `models.json` are valid JSON files.
+   - Check the server logs for error messages (e.g., `tail logs/server.log`).
+   - Ensure `configs/credentials.json` and `configs/models.json` are valid JSON files.
 
 ## Stopping the Service
 
-### Locally:
+### Using Makefile:
+```bash
+# Stop Docker containers
+make docker-stop
+
+# Clean build artifacts and logs
+make clean
+make clean-logs
+```
+
+### Manually:
 ```bash
 # If running in foreground, press Ctrl+C
 # If running in background (more specific to avoid killing other 'server' processes):
-pgrep -f "^./server$" | xargs kill -9 || echo "Server not found or already stopped"
+pgrep -f "build/server$" | xargs kill -9 || echo "Server not found or already stopped"
 # Alternatively:
-# pkill -f "^./server$"
+# pkill -f "build/server$"
 ```
 
 ### Docker:
 ```bash
-docker-compose down
+docker-compose -f deployments/docker/docker-compose.yml down
 ```
+
+## Additional Resources
+
+- See `docs/development/` for development guides
+- Check `examples/clients/` for client library examples in Go, Node.js, and Python
+- Run `make help` to see all available Makefile targets
