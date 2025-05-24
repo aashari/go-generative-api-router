@@ -57,7 +57,7 @@ func Init(config Config) error {
 	case "stderr":
 		output = os.Stderr
 	default:
-		output, err = os.OpenFile(config.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		output, err = os.OpenFile(config.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
 			return fmt.Errorf("failed to open log file %s: %w", config.Output, err)
 		}

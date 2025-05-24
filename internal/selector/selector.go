@@ -33,6 +33,7 @@ func NewRandomSelector() *RandomSelector {
 	// math/rand is used for model selection, which is not security-critical.
 	// Using crypto/rand would incur unnecessary performance overhead.
 	return &RandomSelector{
+		// #nosec G404
 		rng: rand.New(rand.NewSource(rand.Int63())), // This ensures each selector has its own randomness
 	}
 }
@@ -79,6 +80,7 @@ func NewEvenDistributionSelector() *EvenDistributionSelector {
 	// math/rand is used for model selection, which is not security-critical.
 	// Using crypto/rand would incur unnecessary performance overhead.
 	return &EvenDistributionSelector{
+		// #nosec G404
 		rng: rand.New(rand.NewSource(rand.Int63())),
 	}
 }
