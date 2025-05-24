@@ -10,33 +10,33 @@ This guide provides instructions and tips for developing, testing, and maintaini
 ## Project Structure
 
 ### Core Application Code
-- **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server. ([cmd/server/main.go](mdc:generative-api-router/generative-api-router/cmd/server/main.go))
-- **`internal/app/app.go`**: Centralizes application configuration and dependencies (reduced to 64 lines after Phase 2 refactoring). ([internal/app/app.go](mdc:generative-api-router/generative-api-router/internal/app/app.go))
-- **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication. ([internal/proxy/proxy.go](mdc:generative-api-router/generative-api-router/internal/proxy/proxy.go))
-- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs. ([internal/proxy/client.go](mdc:generative-api-router/generative-api-router/internal/proxy/client.go))
-- **`internal/proxy/response_processor.go`**: Processes non-streaming responses from vendors. ([internal/proxy/response_processor.go](mdc:generative-api-router/generative-api-router/internal/proxy/response_processor.go))
-- **`internal/proxy/stream_processor.go`**: Handles streaming responses from vendors. ([internal/proxy/stream_processor.go](mdc:generative-api-router/generative-api-router/internal/proxy/stream_processor.go))
-- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models. ([internal/selector/selector.go](mdc:generative-api-router/generative-api-router/internal/selector/selector.go))
-- **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request. ([internal/validator/validator.go](mdc:generative-api-router/generative-api-router/internal/validator/validator.go))
-- **`internal/config/config.go`**: Loads and manages configuration from JSON files. ([internal/config/config.go](mdc:generative-api-router/generative-api-router/internal/config/config.go))
-- **`internal/config/validation.go`**: Validates credentials and model configurations. ([internal/config/validation.go](mdc:generative-api-router/generative-api-router/internal/config/validation.go))
-- **`internal/handlers/api_handlers.go`**: HTTP handlers for health, chat completions, and models endpoints. ([internal/handlers/api_handlers.go](mdc:generative-api-router/generative-api-router/internal/handlers/api_handlers.go))
-- **`internal/errors/errors.go`**: Standardized error types and JSON error responses. ([internal/errors/errors.go](mdc:generative-api-router/generative-api-router/internal/errors/errors.go))
-- **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor. ([internal/filter/utils.go](mdc:generative-api-router/generative-api-router/internal/filter/utils.go))
-- **`internal/monitoring/metrics.go`**: Metrics collection, middleware, and monitoring endpoints. ([internal/monitoring/metrics.go](mdc:generative-api-router/generative-api-router/internal/monitoring/metrics.go))
-- **`internal/router/routes.go`**: Centralized route setup with middleware integration. ([internal/router/routes.go](mdc:generative-api-router/generative-api-router/internal/router/routes.go))
+- **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server. ([cmd/server/main.go](mdc:generative-api-router/generative-api-router/generative-api-router/cmd/server/main.go))
+- **`internal/app/app.go`**: Centralizes application configuration and dependencies (reduced to 64 lines after Phase 2 refactoring). ([internal/app/app.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/app/app.go))
+- **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication. ([internal/proxy/proxy.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/proxy/proxy.go))
+- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs. ([internal/proxy/client.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/proxy/client.go))
+- **`internal/proxy/response_processor.go`**: Processes non-streaming responses from vendors. ([internal/proxy/response_processor.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/proxy/response_processor.go))
+- **`internal/proxy/stream_processor.go`**: Handles streaming responses from vendors. ([internal/proxy/stream_processor.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/proxy/stream_processor.go))
+- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models. ([internal/selector/selector.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/selector/selector.go))
+- **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request. ([internal/validator/validator.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/validator/validator.go))
+- **`internal/config/config.go`**: Loads and manages configuration from JSON files. ([internal/config/config.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/config/config.go))
+- **`internal/config/validation.go`**: Validates credentials and model configurations. ([internal/config/validation.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/config/validation.go))
+- **`internal/handlers/api_handlers.go`**: HTTP handlers for health, chat completions, and models endpoints. ([internal/handlers/api_handlers.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/handlers/api_handlers.go))
+- **`internal/errors/errors.go`**: Standardized error types and JSON error responses. ([internal/errors/errors.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/errors/errors.go))
+- **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor. ([internal/filter/utils.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/filter/utils.go))
+- **`internal/monitoring/metrics.go`**: Metrics collection, middleware, and monitoring endpoints. ([internal/monitoring/metrics.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/monitoring/metrics.go))
+- **`internal/router/routes.go`**: Centralized route setup with middleware integration. ([internal/router/routes.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/router/routes.go))
 
 ### Configuration Files
-- **`configs/credentials.json`**: Stores API keys for different vendors (gitignored). ([configs/credentials.json.example](mdc:generative-api-router/generative-api-router/configs/credentials.json.example))
-- **`configs/models.json`**: Defines the available models and their vendors. ([configs/models.json](mdc:generative-api-router/generative-api-router/configs/models.json))
+- **`configs/credentials.json`**: Stores API keys for different vendors (gitignored). ([configs/credentials.json.example](mdc:generative-api-router/generative-api-router/generative-api-router/configs/credentials.json.example))
+- **`configs/models.json`**: Defines the available models and their vendors. ([configs/models.json](mdc:generative-api-router/generative-api-router/generative-api-router/configs/models.json))
 
 ### Deployment Files
-- **`deployments/docker/Dockerfile`**: For building the Docker image. ([deployments/docker/Dockerfile](mdc:generative-api-router/generative-api-router/deployments/docker/Dockerfile))
-- **`deployments/docker/docker-compose.yml`**: For running the service with Docker Compose. ([deployments/docker/docker-compose.yml](mdc:generative-api-router/generative-api-router/deployments/docker/docker-compose.yml))
-- **`scripts/deploy.sh`**: AWS ECS deployment script (contains sensitive data, gitignored). ([scripts/deploy.sh](mdc:generative-api-router/generative-api-router/scripts/deploy.sh))
+- **`deployments/docker/Dockerfile`**: For building the Docker image. ([deployments/docker/Dockerfile](mdc:generative-api-router/generative-api-router/generative-api-router/deployments/docker/Dockerfile))
+- **`deployments/docker/docker-compose.yml`**: For running the service with Docker Compose. ([deployments/docker/docker-compose.yml](mdc:generative-api-router/generative-api-router/generative-api-router/deployments/docker/docker-compose.yml))
+- **`scripts/deploy.sh`**: AWS ECS deployment script (contains sensitive data, gitignored). ([scripts/deploy.sh](mdc:generative-api-router/generative-api-router/generative-api-router/scripts/deploy.sh))
 
 ### Development Tools
-- **`Makefile`**: Build automation and common tasks. ([Makefile](mdc:generative-api-router/generative-api-router/Makefile))
+- **`Makefile`**: Build automation and common tasks. ([Makefile](mdc:generative-api-router/generative-api-router/generative-api-router/Makefile))
 - **`scripts/`**: Helper scripts for deployment, testing, and setup
 - **`examples/`**: Usage examples for cURL and various client languages
 - **`docs/`**: Comprehensive documentation (API, development, user guides)
@@ -128,7 +128,144 @@ This guide provides instructions and tips for developing, testing, and maintaini
    rm pr-body-temp.md
    ```
 
-## Testing
+### Monitoring GitHub Actions & CI/CD
+
+**IMPORTANT**: After creating a PR, you MUST proactively monitor the GitHub Actions CI/CD pipeline and fix any issues before requesting review.
+
+1. **Monitor PR Checks**:
+   ```bash
+   # Wait for CI to start (usually 30 seconds)
+   sleep 30
+   
+   # Check PR CI status
+   gh pr checks <PR_NUMBER>
+   
+   # Watch checks in real-time (refreshes every 10 seconds)
+   watch -n 10 'gh pr checks <PR_NUMBER>'
+   ```
+
+2. **View Detailed CI Run**:
+   ```bash
+   # List recent workflow runs for your branch
+   gh run list --branch <your-branch-name> --limit 5
+   
+   # View specific run details
+   gh run view <RUN_ID>
+   
+   # View failed job logs
+   gh run view <RUN_ID> --log-failed
+   
+   # View specific job logs
+   gh run view --job=<JOB_ID>
+   ```
+
+3. **Common CI Monitoring Commands**:
+   ```bash
+   # Check PR status including CI checks
+   gh pr view <PR_NUMBER>
+   
+   # Get PR checks in JSON format
+   gh pr checks <PR_NUMBER> --json name,status,conclusion
+   
+   # Wait for checks to complete
+   gh pr checks <PR_NUMBER> --watch
+   ```
+
+### Handling CI Failures
+
+If CI checks fail, follow these steps:
+
+1. **Identify the Issue**:
+   ```bash
+   # View failed logs
+   gh run view <RUN_ID> --log-failed | grep -B 10 -A 10 "error\|Error\|failed\|Failed"
+   
+   # Check specific job that failed
+   gh run view <RUN_ID> --job=<JOB_ID>
+   ```
+
+2. **Fix Issues Locally**:
+   ```bash
+   # Run CI checks locally before pushing
+   make ci-check
+   
+   # Individual checks
+   make format-check    # Code formatting
+   make lint           # Linting
+   make test-coverage  # Tests with coverage
+   make build          # Build verification
+   make security-scan  # Security scanning
+   ```
+
+3. **Push Fixes**:
+   ```bash
+   # After fixing issues
+   git add .
+   git commit -m "fix: address CI failures" \
+     -m "- Fix formatting issues" \
+     -m "- Resolve linting errors"
+   git push
+   
+   # Monitor new CI run
+   sleep 30 && gh pr checks <PR_NUMBER>
+   ```
+
+### Branch Protection Rules
+
+This repository enforces the following rules:
+- **No direct pushes to main**: All changes must go through pull requests
+- **CI must pass**: PRs cannot be merged unless all CI checks are green
+- **Up-to-date branch**: PRs must be up-to-date with main before merging
+
+### PR Lifecycle Best Practices
+
+1. **Before Creating PR**:
+   - Run `make ci-check` locally
+   - Ensure all tests pass
+   - Check for sensitive data leaks
+
+2. **After Creating PR**:
+   - Monitor CI pipeline immediately
+   - Fix any failures proactively
+   - Don't wait for reviewers if CI is failing
+
+3. **Example Complete Workflow**:
+   ```bash
+   # Create feature branch
+   git checkout -b feat/awesome-feature
+   
+   # Make changes and test locally
+   make ci-check
+   
+   # Commit and push
+   git add .
+   git commit -m "feat: add awesome feature" -m "- Implementation details"
+   git push -u origin feat/awesome-feature
+   
+   # Create PR
+   gh pr create --title "feat: awesome feature" --body "Add awesome feature with XYZ functionality"
+   
+   # Monitor CI (get PR number from create output)
+   PR_NUM=$(gh pr list --head feat/awesome-feature --json number -q '.[0].number')
+   echo "Monitoring PR #$PR_NUM"
+   
+   # Wait and check
+   sleep 30
+   gh pr checks $PR_NUM --watch
+   
+   # If failures occur
+   gh run list --branch feat/awesome-feature --limit 1
+   gh run view <RUN_ID> --log-failed
+   
+   # Fix and push
+   # ... make fixes ...
+   git add . && git commit -m "fix: address CI issues" && git push
+   
+   # Monitor again
+   gh pr checks $PR_NUM --watch
+   ```
+
+
 
 **Key Principle**: This service acts as a *transparent proxy* with a key modification. The router selects an actual vendor/model based on its internal logic (e.g., random selection, vendor filter). The `model` field in the request to the downstream vendor is overridden with this *actual selected model*. However, the `model` field in the final response back to the client is modified to reflect the *original model name the client sent in its initial request*. All other request and response data (headers, body structure excluding the model field, status code) from the vendor **must** be passed *exactly* to the client, and vice-versa. Changes must not interfere with this.
 
