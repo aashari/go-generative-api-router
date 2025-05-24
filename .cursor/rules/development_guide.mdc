@@ -10,35 +10,37 @@ This guide provides instructions and tips for developing, testing, and maintaini
 ## Project Structure
 
 ### Core Application Code
-- **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server. ([cmd/server/main.go](mdc:generative-api-router/cmd/server/main.go))
-- **`internal/app/app.go`**: Centralizes application configuration and dependencies (reduced to 64 lines after Phase 2 refactoring). ([internal/app/app.go](mdc:generative-api-router/internal/app/app.go))
-- **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication. ([internal/proxy/proxy.go](mdc:generative-api-router/internal/proxy/proxy.go))
-- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs. ([internal/proxy/client.go](mdc:generative-api-router/internal/proxy/client.go))
-- **`internal/proxy/response_processor.go`**: Processes non-streaming responses from vendors. ([internal/proxy/response_processor.go](mdc:generative-api-router/internal/proxy/response_processor.go))
-- **`internal/proxy/stream_processor.go`**: Handles streaming responses from vendors. ([internal/proxy/stream_processor.go](mdc:generative-api-router/internal/proxy/stream_processor.go))
-- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models. ([internal/selector/selector.go](mdc:generative-api-router/internal/selector/selector.go))
-- **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request. ([internal/validator/validator.go](mdc:generative-api-router/internal/validator/validator.go))
-- **`internal/config/config.go`**: Loads and manages configuration from JSON files. ([internal/config/config.go](mdc:generative-api-router/internal/config/config.go))
-- **`internal/config/validation.go`**: Validates credentials and model configurations. ([internal/config/validation.go](mdc:generative-api-router/internal/config/validation.go))
-- **`internal/handlers/api_handlers.go`**: HTTP handlers for health, chat completions, and models endpoints. ([internal/handlers/api_handlers.go](mdc:generative-api-router/internal/handlers/api_handlers.go))
-- **`internal/errors/errors.go`**: Standardized error types and JSON error responses. ([internal/errors/errors.go](mdc:generative-api-router/internal/errors/errors.go))
-- **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor. ([internal/filter/utils.go](mdc:generative-api-router/internal/filter/utils.go))
-- **`internal/monitoring/metrics.go`**: Metrics collection, middleware, and monitoring endpoints. ([internal/monitoring/metrics.go](mdc:generative-api-router/internal/monitoring/metrics.go))
-- **`internal/router/routes.go`**: Centralized route setup with middleware integration. ([internal/router/routes.go](mdc:generative-api-router/internal/router/routes.go))
+- **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server. ([cmd/server/main.go](mdc:generative-api-router/generative-api-router/cmd/server/main.go))
+- **`internal/app/app.go`**: Centralizes application configuration and dependencies (reduced to 64 lines after Phase 2 refactoring). ([internal/app/app.go](mdc:generative-api-router/generative-api-router/internal/app/app.go))
+- **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication. ([internal/proxy/proxy.go](mdc:generative-api-router/generative-api-router/internal/proxy/proxy.go))
+- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs. ([internal/proxy/client.go](mdc:generative-api-router/generative-api-router/internal/proxy/client.go))
+- **`internal/proxy/response_processor.go`**: Processes non-streaming responses from vendors. ([internal/proxy/response_processor.go](mdc:generative-api-router/generative-api-router/internal/proxy/response_processor.go))
+- **`internal/proxy/stream_processor.go`**: Handles streaming responses from vendors. ([internal/proxy/stream_processor.go](mdc:generative-api-router/generative-api-router/internal/proxy/stream_processor.go))
+- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models. ([internal/selector/selector.go](mdc:generative-api-router/generative-api-router/internal/selector/selector.go))
+- **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request. ([internal/validator/validator.go](mdc:generative-api-router/generative-api-router/internal/validator/validator.go))
+- **`internal/config/config.go`**: Loads and manages configuration from JSON files. ([internal/config/config.go](mdc:generative-api-router/generative-api-router/internal/config/config.go))
+- **`internal/config/validation.go`**: Validates credentials and model configurations. ([internal/config/validation.go](mdc:generative-api-router/generative-api-router/internal/config/validation.go))
+- **`internal/handlers/api_handlers.go`**: HTTP handlers for health, chat completions, and models endpoints. ([internal/handlers/api_handlers.go](mdc:generative-api-router/generative-api-router/internal/handlers/api_handlers.go))
+- **`internal/errors/errors.go`**: Standardized error types and JSON error responses. ([internal/errors/errors.go](mdc:generative-api-router/generative-api-router/internal/errors/errors.go))
+- **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor. ([internal/filter/utils.go](mdc:generative-api-router/generative-api-router/internal/filter/utils.go))
+- **`internal/monitoring/metrics.go`**: Metrics collection, middleware, and monitoring endpoints. ([internal/monitoring/metrics.go](mdc:generative-api-router/generative-api-router/internal/monitoring/metrics.go))
+- **`internal/router/routes.go`**: Centralized route setup with middleware integration. ([internal/router/routes.go](mdc:generative-api-router/generative-api-router/internal/router/routes.go))
 
 ### Configuration Files
-- **`configs/credentials.json`**: Stores API keys for different vendors (gitignored). ([configs/credentials.json.example](mdc:generative-api-router/configs/credentials.json.example))
-- **`configs/models.json`**: Defines the available models and their vendors. ([configs/models.json](mdc:generative-api-router/configs/models.json))
+- **`configs/credentials.json`**: Stores API keys for different vendors (gitignored). ([configs/credentials.json.example](mdc:generative-api-router/generative-api-router/configs/credentials.json.example))
+- **`configs/models.json`**: Defines the available models and their vendors. ([configs/models.json](mdc:generative-api-router/generative-api-router/configs/models.json))
 
 ### Deployment Files
-- **`deployments/docker/Dockerfile`**: For building the Docker image. ([deployments/docker/Dockerfile](mdc:generative-api-router/deployments/docker/Dockerfile))
-- **`deployments/docker/docker-compose.yml`**: For running the service with Docker Compose. ([deployments/docker/docker-compose.yml](mdc:generative-api-router/deployments/docker/docker-compose.yml))
+- **`deployments/docker/Dockerfile`**: For building the Docker image. ([deployments/docker/Dockerfile](mdc:generative-api-router/generative-api-router/deployments/docker/Dockerfile))
+- **`deployments/docker/docker-compose.yml`**: For running the service with Docker Compose. ([deployments/docker/docker-compose.yml](mdc:generative-api-router/generative-api-router/deployments/docker/docker-compose.yml))
+- **`scripts/deploy.sh`**: AWS ECS deployment script (contains sensitive data, gitignored). ([scripts/deploy.sh](mdc:generative-api-router/generative-api-router/scripts/deploy.sh))
 
 ### Development Tools
-- **`Makefile`**: Build automation and common tasks. ([Makefile](mdc:generative-api-router/Makefile))
+- **`Makefile`**: Build automation and common tasks. ([Makefile](mdc:generative-api-router/generative-api-router/Makefile))
 - **`scripts/`**: Helper scripts for deployment, testing, and setup
 - **`examples/`**: Usage examples for cURL and various client languages
 - **`docs/`**: Comprehensive documentation (API, development, user guides)
+- **`.golangci.yml`**: Linter configuration for code quality
 
 ## Development
 
@@ -73,6 +75,58 @@ This guide provides instructions and tips for developing, testing, and maintaini
     # Run with logging
     make run-with-logs
     ```
+
+## Security Best Practices
+
+### Sensitive Data Management
+1. **ALWAYS check for sensitive data before committing**:
+   ```bash
+   # Check for AWS account IDs (12-digit numbers)
+   grep -r -E '\b[0-9]{12}\b' --exclude-dir={.git,node_modules,vendor,.terraform,build} --exclude="*.log" .
+   
+   # Check for AWS access keys
+   grep -r -E '(AKIA|ASIA|aws_access_key|aws_secret|AWS_ACCESS|AWS_SECRET)' --exclude-dir={.git,node_modules,vendor,.terraform,build} --exclude="*.log" .
+   ```
+
+2. **Deployment scripts often contain sensitive information**:
+   - `scripts/deploy.sh` is gitignored as it contains AWS account IDs, VPC IDs, etc.
+   - Never commit files with hardcoded credentials or infrastructure IDs
+
+3. **Use environment variables or secret management for production**
+
+## Git Workflow
+
+### Creating Pull Requests
+1. **Create a feature branch**:
+   ```bash
+   git checkout -b feat/your-feature-name
+   ```
+
+2. **Commit with detailed messages using multiple -m flags**:
+   ```bash
+   git commit -m "feat: main commit message" \
+     -m "- First bullet point" \
+     -m "- Second bullet point" \
+     -m "" \
+     -m "- Additional details"
+   ```
+
+3. **Push and create PR using GitHub CLI**:
+   ```bash
+   # Push branch
+   git push -u origin feat/your-feature-name
+   
+   # Create PR with temporary file
+   cat > pr-body-temp.md << 'EOF'
+   # PR Title
+   
+   ## Summary
+   ...
+   EOF
+   
+   gh pr create --title "feat: your feature" --body-file pr-body-temp.md --base main
+   rm pr-body-temp.md
+   ```
 
 ## Testing
 
@@ -132,6 +186,32 @@ Test files are available for:
         ```
         *   Expected: Error message about missing `messages` field, HTTP 400.
 
+## Deployment
+
+### AWS ECS Fargate Deployment
+The project includes `scripts/deploy.sh` for AWS ECS deployment:
+
+1. **Prerequisites**:
+   - AWS CLI configured with appropriate profile
+   - Docker installed and running
+   - ECR repository access
+   - Proper IAM permissions
+
+2. **Deployment Script Requirements**:
+   - The script expects Dockerfile in the root directory
+   - If using the new structure, create a symlink: `ln -s deployments/docker/Dockerfile Dockerfile`
+   - The script builds for ARM64 architecture
+
+3. **Running Deployment**:
+   ```bash
+   ./scripts/deploy.sh
+   ```
+
+4. **Post-Deployment**:
+   - Check CloudWatch logs for any issues
+   - Verify health endpoint: `curl http://<load-balancer-url>/health`
+   - Monitor ECS service for task health
+
 ## Maintenance
 
 *   **Dependencies**: Run `go mod tidy` periodically to clean up dependencies. Key dependencies include:
@@ -160,6 +240,15 @@ Test files are available for:
 *   **Curl Command Formatting**: Ensure JSON payloads in `curl -d` arguments are properly quoted and escaped, especially when using multi-line JSON. Single-line JSON with escaped quotes (e.g., `\'{\"key\": \"value\"}\'`) is often safer in scripts.
 *   **Background Processes**: When starting the server with `&`, ensure it's managed correctly (e.g., `pgrep -f "^./server$" | xargs kill -9` to stop it specifically).
 *   **Error Message Reliance**: Avoid relying on exact string matching for error messages. Use typed errors (`errors.Is()`) for more robust error handling.
+*   **Project Structure Changes**: When reorganizing project structure:
+    *   Update all file references in code
+    *   Update Docker build contexts and COPY commands
+    *   Update documentation paths
+    *   Run verification scripts to ensure completeness
+*   **Security Scans**: Always scan for sensitive data before committing:
+    *   AWS account IDs, access keys, secrets
+    *   Infrastructure IDs (VPCs, subnets, security groups)
+    *   Any hardcoded credentials or tokens
 
 ---
 

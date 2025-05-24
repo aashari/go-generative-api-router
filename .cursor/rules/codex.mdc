@@ -10,6 +10,27 @@ Whenever you need to plan, design, review, or implement changes, Codex is your c
 
 ---
 
+### **Project-Specific Context: Generative API Router**
+
+When working with the Generative API Router project, include this context in your queries to Codex:
+
+* **Project Overview**: A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendors (OpenAI, Gemini) with configurable selection strategies
+* **Key Structure**: 
+  * Configs in `configs/` directory
+  * Docker files in `deployments/docker/`
+  * Documentation in `docs/` with subdirectories for api, development, and user guides
+  * Examples in `examples/` with curl scripts and client libraries
+  * Makefile for build automation
+* **Security Considerations**: 
+  * `scripts/deploy.sh` contains sensitive AWS infrastructure data and is gitignored
+  * Always scan for AWS account IDs, access keys, and other credentials before committing
+* **Testing Requirements**: 
+  * Service must maintain transparent proxy behavior (original model name preserved in responses)
+  * Always wait for service initialization before testing
+  * Use Makefile commands for consistency
+
+---
+
 ### **How to Use Codex in Your Workflow**
 
 **1. Always Interact via Single-Line Command**
@@ -45,7 +66,7 @@ Your query to Codex **must always** include:
 
 * **Quality standards:**
 
-  * Codex must enforce DRY (Don’t Repeat Yourself), clean code, clarity, modularity, and industry best practices at every step.
+  * Codex must enforce DRY (Don't Repeat Yourself), clean code, clarity, modularity, and industry best practices at every step.
   * Require Codex to proactively flag code smells, duplication, unclear logic, or maintainability concerns—even if requirements appear satisfied.
   * Tell Codex to suggest improvements or refactorings for code quality, maintainability, and robustness.
 
@@ -69,6 +90,12 @@ Suppose you want Codex to implement and verify a secure user authentication API.
 Design and implement a secure REST API endpoint for user authentication in Node.js with Express and JWT. The endpoint must handle login, password validation, and return a signed token on success. After implementation, check all file changes, run lint, build, and all tests. Enforce DRY and clean code principles. If any errors, test failures, code duplication, or maintainability issues are found, report them and propose improvements. Do not declare work complete until all issues are resolved, all verifications pass, and the solution meets high code quality standards.
 ```
 
+**Example for Generative API Router**:
+
+```
+Review the proxy implementation in internal/proxy/ directory for the generative-api-router project. Verify that the proxy maintains transparent behavior where the original model name from client requests is preserved in responses while routing to actual vendor models. Check for proper error handling, streaming support, and tool calling functionality. Run make test and make lint to verify code quality. Report any issues with the transparent proxy behavior or code quality concerns.
+```
+
 ---
 
 **4. Summary Checklist Before Submitting a Query to Codex**
@@ -79,6 +106,7 @@ Design and implement a secure REST API endpoint for user authentication in Node.
 * [ ] Did I make it clear Codex must enforce DRY, clean code, and suggest improvements?
 * [ ] Did I require Codex to document uncertainties and ask for missing info if verification is blocked?
 * [ ] Did I require Codex to loop, never declaring completion until *everything* is fully checked and passes?
+* [ ] For generative-api-router: Did I mention the transparent proxy requirement and Makefile usage?
 
 ---
 
@@ -92,4 +120,4 @@ Design and implement a secure REST API endpoint for user authentication in Node.
 
 ## **In Short**
 
-Treat Codex as a highly critical, detail-oriented peer. Demand that it plans, reviews, verifies, and enforces best practices end-to-end. Codex’s approval is *never* based on assumption—only on complete, independently-verified evidence.
+Treat Codex as a highly critical, detail-oriented peer. Demand that it plans, reviews, verifies, and enforces best practices end-to-end. Codex's approval is *never* based on assumption—only on complete, independently-verified evidence.

@@ -23,7 +23,7 @@ This guide provides step-by-step instructions for running and testing the Genera
 
 3. **Configure Credentials**:
    - The setup script creates `configs/credentials.json` from the example file
-   - Edit [configs/credentials.json](mdc:generative-api-router/generative-api-router/configs/credentials.json) with valid API keys:
+   - Edit [configs/credentials.json](mdc:generative-api-router/generative-api-router/configs/credentials.json) with valid API keys (mostly you don't need to, because it might already exists with valid API keys already):
      ```json
      [
        {
@@ -40,7 +40,7 @@ This guide provides step-by-step instructions for running and testing the Genera
      ```
 
 4. **Configure Models**:
-   - Edit [configs/models.json](mdc:generative-api-router/generative-api-router/configs/models.json) to specify which models you want to use:
+   - Edit [configs/models.json](mdc:generative-api-router/generative-api-router/configs/models.json) to specify which models you want to use (mostly you don't need to, because it might already exists with valid models already):
      ```json
      [
        {
@@ -90,7 +90,16 @@ This guide provides step-by-step instructions for running and testing the Genera
 
 ### Using Docker
 
-1. **Build and Run with Docker Compose**:
+1. **Pre-deployment Checks**:
+   ```bash
+   # Check if port is already in use
+   lsof -i :8082 | cat
+   
+   # Stop any existing containers
+   make docker-stop
+   ```
+
+2. **Build and Run with Docker Compose**:
    ```bash
    # Using Makefile
    make docker-build
@@ -100,12 +109,55 @@ This guide provides step-by-step instructions for running and testing the Genera
    docker-compose -f deployments/docker/docker-compose.yml up --build
    ```
 
-2. **Run as a Background Service**:
+3. **Run as a Background Service**:
    ```bash
    docker-compose -f deployments/docker/docker-compose.yml up -d
    
    # Stop the service
    make docker-stop
+   ```
+
+## Deployment to Production
+
+### AWS ECS Fargate Deployment
+
+1. **Pre-deployment Security Check**:
+   ```bash
+   # CRITICAL: Check for sensitive data before deploying
+   grep -r -E '\b[0-9]{12}\b' --exclude-dir={.git,node_modules,vendor,.terraform,build} --exclude="*.log" . | grep -v "created.*1715" | cat
+   grep -r -E '(AKIA|ASIA|aws_access_key|aws_secret|AWS_ACCESS|AWS_SECRET)' --exclude-dir={.git,node_modules,vendor,.terraform,build} --exclude="*.log" . | cat
+   ```
+
+2. **Prepare for Deployment**:
+   ```bash
+   # The deploy script expects Dockerfile in root
+   # If using new structure, create symlink:
+   ln -s deployments/docker/Dockerfile Dockerfile
+   
+   # Ensure AWS profile is configured
+   aws configure list-profiles | grep <your-profile-name>
+   ```
+
+3. **Deploy**:
+   ```bash
+   # Stop local containers first
+   make docker-stop
+   
+   # Run deployment
+   ./scripts/deploy.sh 2>&1 | tee deploy-output.log
+   ```
+
+4. **Post-deployment Verification**:
+   ```bash
+   # Wait for deployment to complete (check the output URL)
+   # Then verify:
+   curl http://<load-balancer-url>/health | cat
+   ```
+
+5. **Cleanup**:
+   ```bash
+   # Remove symlink if created
+   rm -f Dockerfile
    ```
 
 ## Running Tests
@@ -152,6 +204,29 @@ Note: Some tests may skip if `configs/credentials.json` is not present, which is
 
 ## Testing the Service
 
+### Testing Best Practices
+
+1. **Always Clean Environment First**:
+   ```bash
+   # Kill any process on port 8082
+   sudo lsof -i :8082 | grep LISTEN | awk '{print $2}' | xargs -r sudo kill -9
+   
+   # Or safer for specific server
+   pgrep -f "build/server$" | xargs -r kill -9
+   ```
+
+2. **Wait for Service Readiness**:
+   ```bash
+   # Start service
+   make run &
+   
+   # ALWAYS wait before testing
+   sleep 3
+   
+   # Verify it's ready
+   curl -s http://localhost:8082/health | cat || echo "Service not ready yet"
+   ```
+
 ### Using Example Scripts
 
 Example scripts are provided in the `examples/` directory:
@@ -183,15 +258,15 @@ Example scripts are provided in the `examples/` directory:
 
 3. **Basic Chat Completion**:
    ```bash
-   curl -X POST http://localhost:8082/v1/chat/completions \\
-     -H "Content-Type: application/json" \\
-     -d \'{\"model\": \"any-model-name-you-like\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}]}\' | jq | cat
+   curl -X POST http://localhost:8082/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{"model": "any-model-name-you-like", "messages": [{"role": "user", "content": "Hello"}]}' | jq | cat
    ```
    - Verify that the response includes:
-     - A proper `\"id\"` field with `\"chatcmpl-\"` prefix
+     - A proper `"id"` field with `"chatcmpl-"` prefix
      - Content in the expected format
-     - The `\"model\"` field in the response should match the `\"model\"` field sent in the request (e.g., `\"any-model-name-you-like\"`).
-   - **Log Check**: Verify server logs (e.g., `grep \"VERBOSE_DEBUG: ProxyRequest\" logs/server.log | tail -n 1`) show the requested model and the actual model selected by the router. Example:
+     - The `"model"` field in the response should match the `"model"` field sent in the request (e.g., `"any-model-name-you-like"`).
+   - **Log Check**: Verify server logs (e.g., `grep "VERBOSE_DEBUG: ProxyRequest" logs/server.log | tail -n 1`) show the requested model and the actual model selected by the router. Example:
      `VERBOSE_DEBUG: ProxyRequest - Original requested model: 'any-model-name-you-like', will route to: 'actual-selected-model'`
    - Also check for `Processing response from actual model:` log line.
 
@@ -294,6 +369,12 @@ Example scripts are provided in the `examples/` directory:
    - Check the server logs for error messages (e.g., `tail logs/server.log`).
    - Ensure `configs/credentials.json` and `configs/models.json` are valid JSON files.
 
+6. **Deployment Issues**:
+   - **ECR Login Failed**: Ensure AWS CLI is configured with correct profile
+   - **Docker Build Failed**: Check if Dockerfile exists in expected location
+   - **ECS Task Failed to Start**: Check CloudWatch logs for the task
+   - **Load Balancer Not Responding**: Wait a few minutes for tasks to become healthy
+
 ## Stopping the Service
 
 ### Using Makefile:
@@ -325,3 +406,4 @@ docker-compose -f deployments/docker/docker-compose.yml down
 - See `docs/development/` for development guides
 - Check `examples/clients/` for client library examples in Go, Node.js, and Python
 - Run `make help` to see all available Makefile targets
+- Review `scripts/verify-structure.sh` to validate project structure
