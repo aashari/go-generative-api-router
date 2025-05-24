@@ -289,6 +289,7 @@ jobs:
           --exclude='node_modules' \
           --exclude='*.log' \
           --exclude='coverage.*' \
+          --exclude='deployment-artifact.tar.gz' \
           .
           
     - name: Upload deployment artifact
