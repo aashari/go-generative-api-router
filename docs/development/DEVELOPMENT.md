@@ -18,4 +18,25 @@
 - Format code: `make format`
 - Lint before committing: `make lint`
 
+## Structured Logging
+
+The service uses a structured logging system based on Go's `log/slog` package. Basic usage:
+
+```go
+import "github.com/aashari/go-generative-api-router/internal/logger"
+
+// Basic logging
+logger.Info("Operation completed", "key", value)
+
+// Context-aware logging (includes request_id)
+logger.InfoCtx(ctx, "Request processed", "status", "success")
+
+// Error logging
+if err != nil {
+    logger.Error("Operation failed", "error", err)
+}
+```
+
+For complete documentation on the logging system, see [LOGGING.md](./LOGGING.md).
+
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidelines. 
