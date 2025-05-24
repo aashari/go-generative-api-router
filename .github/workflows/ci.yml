@@ -60,7 +60,7 @@ jobs:
     - name: Run linter
       run: |
         echo "Running linter..."
-        golangci-lint run --timeout=5m --go=1.22
+        golangci-lint run --timeout=5m
         echo "✅ Linting passed"
         
     - name: Run tests
