@@ -48,7 +48,9 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 		http.Error(w, "Failed to read request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	r.Body.Close()
+	if err := r.Body.Close(); err != nil {
+		logger.WarnCtx(r.Context(), "Failed to close request body", "error", err)
+	}
 
 	// Validate and modify request
 	modifiedBody, originalModel, err := validator.ValidateAndModifyRequest(body, selection.Model)

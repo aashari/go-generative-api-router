@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/app"
 	"github.com/aashari/go-generative-api-router/internal/logger"
@@ -52,7 +53,7 @@ func main() {
 	if err := logger.InitFromEnv(); err != nil {
 		// Can't use logger here as it failed to initialize
 		// Fall back to basic output and exit
-		os.Stderr.WriteString("FATAL: Failed to initialize logger: " + err.Error() + "\n")
+		_ = os.Stderr.WriteString("FATAL: Failed to initialize logger: " + err.Error() + "\n")
 		os.Exit(1)
 	}
 
@@ -72,7 +73,14 @@ func main() {
 	logger.Info("Server starting", "address", "0.0.0.0:8082")
 	logger.Info("Swagger documentation available", "url", "https://genapi.aduh.xyz/swagger/index.html")
 
-	err = http.ListenAndServe("0.0.0.0:8082", corsHandler)
+	srv := &http.Server{
+		Addr:         "0.0.0.0:8082",
+		Handler:      corsHandler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	err = srv.ListenAndServe()
 	if err != nil {
 		logger.Error("Server failed", "error", err)
 		os.Exit(1)

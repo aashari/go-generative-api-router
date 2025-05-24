@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 )
 
 type Credential struct {
@@ -17,6 +18,7 @@ type VendorModel struct {
 }
 
 func LoadCredentials(filePath string) ([]Credential, error) {
+	filePath = filepath.Clean(filePath)
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
@@ -27,6 +29,7 @@ func LoadCredentials(filePath string) ([]Credential, error) {
 }
 
 func LoadVendorModels(filePath string) ([]VendorModel, error) {
+	filePath = filepath.Clean(filePath)
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err

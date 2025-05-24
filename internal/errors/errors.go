@@ -83,11 +83,11 @@ func HandleError(w http.ResponseWriter, err error, statusCode int) {
 	response := ErrorResponse{Error: *apiError}
 
 	if jsonBytes, jsonErr := json.Marshal(response); jsonErr == nil {
-		w.Write(jsonBytes)
+		_ = w.Write(jsonBytes)
 	} else {
 		// Fallback if JSON marshaling fails
 		logger.Error("Error marshaling error response", "error", jsonErr)
-		w.Write([]byte(`{"error":{"type":"internal_error","message":"Internal server error"}}`))
+		_ = w.Write([]byte(`{"error":{"type":"internal_error","message":"Internal server error"}}`))
 	}
 
 	// Log the error for debugging

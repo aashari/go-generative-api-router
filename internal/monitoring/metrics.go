@@ -207,5 +207,7 @@ func MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	response += "}"
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(response))
+	if _, err := w.Write([]byte(response)); err != nil {
+		logger.WarnCtx(r.Context(), "Failed to write metrics response", "error", err)
+	}
 }
