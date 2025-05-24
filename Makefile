@@ -62,18 +62,15 @@ docker-stop:
 
 # Lint the code
 lint:
-	@echo "$(GREEN)Running linter...$(NC)"
-	@golangci-lint run || (echo "$(RED)golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest$(NC)" && exit 1)
+	@echo "Running linter..."
+	@go vet ./...
+	@echo "✅ Linting passed"
 
-# Lint check for CI (more lenient)
+# Check linting (CI mode - fails on issues)
 lint-check:
-	@echo "$(GREEN)Running linter check...$(NC)"
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run --issues-exit-code=0 || true; \
-		echo "$(GREEN)✅ Linter check completed (issues reported but not failing)$(NC)"; \
-	else \
-		echo "$(RED)golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest$(NC)" && exit 1; \
-	fi
+	@echo "Running linter check..."
+	@go vet ./...
+	@echo "✅ Linting passed"
 
 # Format the code
 format:

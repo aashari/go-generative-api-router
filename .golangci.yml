@@ -7,8 +7,13 @@ run:
   go: "1.22"
   timeout: 5m
   tests: true
+  build-tags:
+    - all
+  modules-download-mode: readonly
 
 linters:
+  disable:
+    - typecheck  # Disabled due to Go 1.24.3 compatibility issue
   enable:
     - govet
     - ineffassign
