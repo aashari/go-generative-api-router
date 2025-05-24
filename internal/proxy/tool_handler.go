@@ -2,9 +2,10 @@ package proxy
 
 import (
 	"encoding/json"
-	"log"
 	"regexp"
 	"strings"
+
+	"github.com/aashari/go-generative-api-router/internal/logger"
 )
 
 // ProcessToolCalls processes a list of tool calls, adding or updating IDs as needed.
@@ -16,7 +17,7 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 		return toolCalls
 	}
 
-	log.Printf("Processing %d tool calls for vendor: %s", len(toolCalls), vendor)
+	logger.Info("Processing tool calls", "count", len(toolCalls), "vendor", vendor)
 
 	var processedToolCalls []interface{}
 
@@ -24,21 +25,21 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 	for j, toolCall := range toolCalls {
 		toolCallMap, ok := toolCall.(map[string]interface{})
 		if !ok {
-			log.Printf("Tool call %d is not a map, skipping processing", j)
+			logger.Info("Tool call not a map", "index", j)
 			processedToolCalls = append(processedToolCalls, toolCall)
 			continue
 		}
 
 		// Check if "id" field exists and what its value is
 		toolCallID, idExists := toolCallMap["id"]
-		log.Printf("Tool call %d has ID: %v (exists: %v)", j, toolCallID, idExists)
+		logger.Info("Tool call ID info", "index", j, "id", toolCallID, "exists", idExists)
 
 		// Check for malformed arguments and split if needed
 		if function, ok := toolCallMap["function"].(map[string]interface{}); ok {
 			if arguments, ok := function["arguments"].(string); ok {
 				splitToolCalls := validateAndSplitArguments(toolCallMap, arguments, vendor)
 				if len(splitToolCalls) > 1 {
-					log.Printf("Split malformed tool call %d into %d separate calls", j, len(splitToolCalls))
+					logger.Info("Split malformed tool call", "index", j, "splits", len(splitToolCalls))
 					processedToolCalls = append(processedToolCalls, splitToolCalls...)
 					continue
 				}
@@ -49,12 +50,12 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 		if vendor == "gemini" {
 			// Always generate a new ID for Gemini responses regardless of current value
 			newID := ToolCallID()
-			log.Printf("FORCING new tool call ID for Gemini vendor: %s (was: %v)", newID, toolCallID)
+			logger.Info("Forcing new tool call ID for Gemini", "new_id", newID, "old_id", toolCallID)
 			toolCallMap["id"] = newID
 		} else if !idExists || toolCallID == nil || toolCallID == "" {
 			// For other vendors, only generate if missing/empty
 			newID := ToolCallID()
-			log.Printf("Generated new tool call ID for %s: %s", vendor, newID)
+			logger.Info("Generated new tool call ID", "vendor", vendor, "id", newID)
 			toolCallMap["id"] = newID
 		}
 
@@ -72,17 +73,17 @@ func validateAndSplitArguments(originalToolCall map[string]interface{}, argument
 		return []interface{}{originalToolCall}
 	}
 
-	log.Printf("Detected malformed arguments with multiple JSON objects: %s", arguments)
+	logger.Info("Detected malformed arguments", "content", arguments)
 
 	// Split the arguments into separate JSON objects
 	jsonObjects := splitJSONObjects(arguments)
 	if len(jsonObjects) <= 1 {
 		// Couldn't split properly, return original
-		log.Printf("Failed to split arguments, returning original tool call")
+		logger.Info("Failed to split arguments")
 		return []interface{}{originalToolCall}
 	}
 
-	log.Printf("Successfully split arguments into %d JSON objects", len(jsonObjects))
+	logger.Info("Successfully split arguments", "count", len(jsonObjects))
 
 	var splitToolCalls []interface{}
 	function := originalToolCall["function"].(map[string]interface{})
@@ -109,7 +110,7 @@ func validateAndSplitArguments(originalToolCall map[string]interface{}, argument
 		newID := ToolCallID()
 		newToolCall["id"] = newID
 
-		log.Printf("Created split tool call %d with ID %s and arguments: %s", i+1, newID, jsonObj)
+		logger.Info("Created split tool call", "index", i+1, "id", newID, "arguments", jsonObj)
 		splitToolCalls = append(splitToolCalls, newToolCall)
 	}
 
@@ -125,13 +126,13 @@ func containsMultipleJSONObjects(arguments string) bool {
 
 	// Pattern 1: }{ indicates two objects concatenated
 	if strings.Contains(arguments, "}{") {
-		log.Printf("Found }{ pattern indicating multiple JSON objects")
+		logger.Info("Found multiple JSON objects pattern", "pattern", "}{")
 		return true
 	}
 
 	// Pattern 2: ][ indicates two arrays concatenated
 	if strings.Contains(arguments, "][") {
-		log.Printf("Found ][ pattern indicating multiple JSON arrays")
+		logger.Info("Found multiple JSON arrays pattern", "pattern", "][")
 		return true
 	}
 
@@ -150,7 +151,7 @@ func containsMultipleJSONObjects(arguments string) bool {
 
 	// Check if there's more content after the first valid JSON object
 	if decoder.More() {
-		log.Printf("Found additional JSON content after first object")
+		logger.Info("Found additional JSON content after first object")
 		return true
 	}
 
@@ -195,7 +196,7 @@ func splitJSONObjects(arguments string) []string {
 			if isValidJSON(part) {
 				results = append(results, part)
 			} else {
-				log.Printf("Invalid JSON after splitting: %s", part)
+				logger.Info("Invalid JSON after splitting", "content", part)
 			}
 		}
 	}
@@ -230,7 +231,7 @@ func splitJSONObjects(arguments string) []string {
 			if isValidJSON(part) {
 				results = append(results, part)
 			} else {
-				log.Printf("Invalid JSON array after splitting: %s", part)
+				logger.Info("Invalid JSON array after splitting", "content", part)
 			}
 		}
 	}
@@ -244,7 +245,7 @@ func splitJSONObjects(arguments string) []string {
 		for decoder.More() {
 			var obj interface{}
 			if err := decoder.Decode(&obj); err != nil {
-				log.Printf("Error parsing JSON object: %v", err)
+				logger.Info("Error parsing JSON object", "error", err.Error())
 				break
 			}
 
@@ -260,7 +261,7 @@ func splitJSONObjects(arguments string) []string {
 		}
 	}
 
-	log.Printf("Split into %d JSON objects: %v", len(results), results)
+	logger.Info("Split JSON objects", "count", len(results), "results", results)
 	return results
 }
 
