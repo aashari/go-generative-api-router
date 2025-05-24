@@ -45,7 +45,7 @@ func NewApp() (*App, error) {
 
 	// Initialize components
 	apiClient := proxy.NewAPIClient()
-	modelSelector := selector.NewRandomSelector()
+	modelSelector := selector.NewEvenDistributionSelector()
 	apiHandlers := handlers.NewAPIHandlers(creds, models, apiClient, modelSelector)
 
 	return &App{
