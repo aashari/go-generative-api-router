@@ -171,9 +171,9 @@ func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp
 	conversationID := ChatCompletionID()
 	timestamp := time.Now().Unix()
 	systemFingerprint := SystemFingerprint()
-	logger.InfoCtx(r.Context(), "Generated streaming values", 
-		"id", conversationID, 
-		"timestamp", timestamp, 
+	logger.InfoCtx(r.Context(), "Generated streaming values",
+		"id", conversationID,
+		"timestamp", timestamp,
 		"fingerprint", systemFingerprint)
 
 	// Create stream processor
@@ -182,9 +182,9 @@ func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp
 	// Get content encoding for gzip handling
 	contentEncoding := resp.Header.Get("Content-Encoding")
 	if contentEncoding != "" {
-		logger.InfoCtx(r.Context(), "Response content encoding", 
-			"encoding", contentEncoding, 
-			"vendor", selection.Vendor, 
+		logger.InfoCtx(r.Context(), "Response content encoding",
+			"encoding", contentEncoding,
+			"vendor", selection.Vendor,
 			"streaming", true)
 	}
 
@@ -260,9 +260,9 @@ func (s *ResponseStandardizer) setCompliantHeaders(w http.ResponseWriter, vendor
 		w.Header().Set("Content-Length", strconv.Itoa(contentLength))
 	}
 
-	logger.Debug("Set standardized headers", 
-		"vendor", vendor, 
-		"content_length", contentLength, 
+	logger.Debug("Set standardized headers",
+		"vendor", vendor,
+		"content_length", contentLength,
 		"compressed", isCompressed)
 }
 
@@ -286,9 +286,9 @@ func (s *ResponseStandardizer) processResponseBody(body io.Reader, contentEncodi
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	logger.Debug("Processed response body", 
-		"bytes", len(responseBody), 
-		"vendor", vendor, 
+	logger.Debug("Processed response body",
+		"bytes", len(responseBody),
+		"vendor", vendor,
 		"gzipped", contentEncoding == "gzip")
 	return responseBody, nil
 }
@@ -309,9 +309,9 @@ func (s *ResponseStandardizer) shouldCompress(r *http.Request) bool {
 		return false
 	}
 
-	logger.Debug("Compression check", 
-		"accept_encoding", acceptEncoding, 
-		"user_agent", userAgent, 
+	logger.Debug("Compression check",
+		"accept_encoding", acceptEncoding,
+		"user_agent", userAgent,
 		"will_compress", strings.Contains(acceptEncoding, "gzip"))
 	return strings.Contains(acceptEncoding, "gzip")
 }
@@ -333,9 +333,9 @@ func (s *ResponseStandardizer) compressResponseMandatory(body []byte) ([]byte, e
 		return body, err
 	}
 
-	logger.Debug("Compressed response", 
-		"original_bytes", len(body), 
-		"compressed_bytes", buf.Len(), 
+	logger.Debug("Compressed response",
+		"original_bytes", len(body),
+		"compressed_bytes", buf.Len(),
 		"reduction_percent", float64(len(body)-buf.Len())*100/float64(len(body)))
 	return buf.Bytes(), nil
 }
@@ -427,8 +427,8 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	// 1. Process response body
 	responseBody, err := c.standardizer.processResponseBody(resp.Body, resp.Header.Get("Content-Encoding"), selection.Vendor)
 	if err != nil {
-		logger.ErrorCtx(r.Context(), "Error processing response body", 
-			"vendor", selection.Vendor, 
+		logger.ErrorCtx(r.Context(), "Error processing response body",
+			"vendor", selection.Vendor,
 			"error", err)
 		return err
 	}
@@ -436,8 +436,8 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	// 2. Validate response
 	if c.standardizer.enableValidation {
 		if err := c.standardizer.validateVendorResponse(responseBody, selection.Vendor); err != nil {
-			logger.ErrorCtx(r.Context(), "Vendor response validation failed", 
-				"vendor", selection.Vendor, 
+			logger.ErrorCtx(r.Context(), "Vendor response validation failed",
+				"vendor", selection.Vendor,
 				"error", err)
 			return err
 		}
@@ -446,8 +446,8 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	// 3. Process response (replace model, format, etc.)
 	modifiedResponse, err := ProcessResponse(responseBody, selection.Vendor, resp.Header.Get("Content-Encoding"), originalModel)
 	if err != nil {
-		logger.ErrorCtx(r.Context(), "Error processing response", 
-			"vendor", selection.Vendor, 
+		logger.ErrorCtx(r.Context(), "Error processing response",
+			"vendor", selection.Vendor,
 			"error", err)
 		return err
 	}
@@ -460,8 +460,8 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	if shouldCompress {
 		finalResponse, compressErr = c.standardizer.compressResponseMandatory(modifiedResponse)
 		if compressErr != nil {
-			logger.ErrorCtx(r.Context(), "Error compressing response", 
-				"vendor", selection.Vendor, 
+			logger.ErrorCtx(r.Context(), "Error compressing response",
+				"vendor", selection.Vendor,
 				"error", compressErr)
 			// Fall back to uncompressed if compression fails
 			finalResponse = modifiedResponse
@@ -480,8 +480,8 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	// 6. Write the response
 	_, err = w.Write(finalResponse)
 	if err != nil {
-		logger.ErrorCtx(r.Context(), "Error writing response", 
-			"vendor", selection.Vendor, 
+		logger.ErrorCtx(r.Context(), "Error writing response",
+			"vendor", selection.Vendor,
 			"error", err)
 		return err
 	}

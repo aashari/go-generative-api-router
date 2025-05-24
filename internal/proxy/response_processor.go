@@ -79,8 +79,8 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 		return responseBody, fmt.Errorf("error decompressing gzip response: %w", err)
 	}
 
-	logger.Info("Successfully decompressed gzip response", 
-		"original_size_bytes", len(responseBody), 
+	logger.Info("Successfully decompressed gzip response",
+		"original_size_bytes", len(responseBody),
 		"decompressed_size_bytes", len(decompressedBody))
 	return decompressedBody, nil
 }
