@@ -284,14 +284,18 @@ jobs:
     - name: Create deployment artifact
       run: |
         echo "Creating deployment artifact..."
-        tar -czf deployment-artifact.tar.gz \
+        # Create artifact in temp location to avoid tar race condition
+        tar -czf /tmp/deployment-artifact.tar.gz \
           --exclude='.git' \
           --exclude='node_modules' \
           --exclude='*.log' \
           --exclude='coverage.*' \
           --exclude='deployment-artifact.tar.gz' \
           .
-          
+        # Move to final location
+        mv /tmp/deployment-artifact.tar.gz .
+        echo "✅ Deployment artifact created successfully"
+        
     - name: Upload deployment artifact
       uses: actions/upload-artifact@v4
       with:
