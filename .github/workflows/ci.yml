@@ -152,6 +152,11 @@ jobs:
             "platform": "openai",
             "type": "api-key",
             "value": "sk-test-key-for-docker-build"
+          },
+          {
+            "platform": "gemini",
+            "type": "api-key",
+            "value": "test-gemini-key-for-docker-build"
           }
         ]
         EOF
@@ -205,13 +210,20 @@ jobs:
       run: |
         echo "Setting up test environment..."
         make setup
-        # Create minimal test credentials
+        # Create logs directory
+        mkdir -p logs
+        # Create minimal test credentials with both OpenAI and Gemini
         cat > configs/credentials.json << 'EOF'
         [
           {
             "platform": "openai",
             "type": "api-key",
             "value": "sk-test-key-for-ci"
+          },
+          {
+            "platform": "gemini",
+            "type": "api-key",
+            "value": "test-gemini-key-for-ci"
           }
         ]
         EOF
