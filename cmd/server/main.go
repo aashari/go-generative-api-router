@@ -53,7 +53,7 @@ func main() {
 	if err := logger.InitFromEnv(); err != nil {
 		// Can't use logger here as it failed to initialize
 		// Fall back to basic output and exit
-		_ = os.Stderr.WriteString("FATAL: Failed to initialize logger: " + err.Error() + "\n")
+		_, _ = os.Stderr.WriteString("FATAL: Failed to initialize logger: " + err.Error() + "\n")
 		os.Exit(1)
 	}
 
