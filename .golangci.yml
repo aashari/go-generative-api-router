@@ -1,13 +1,12 @@
 version: 2
 
 run:
+  # Note: This is set to 1.22 for golangci-lint compatibility
+  # The actual project uses Go 1.24.3 (see go.mod)
+  # This is a temporary workaround until golangci-lint supports Go 1.24
   go: "1.22"
   timeout: 5m
   tests: true
-  skip-dirs:
-    - vendor
-    - .git
-    - .terraform
 
 linters:
   enable:
@@ -30,6 +29,10 @@ linters-settings:
 issues:
   max-issues-per-linter: 100
   max-same-issues: 10
+  exclude-dirs:
+    - vendor
+    - .git
+    - .terraform
   exclude-rules:
     - path: _test\.go
       linters:
