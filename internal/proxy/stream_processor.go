@@ -3,7 +3,8 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
-	"log"
+
+	"github.com/aashari/go-generative-api-router/internal/logger"
 )
 
 // StreamProcessor handles stateful processing of streaming responses
@@ -82,7 +83,7 @@ func (sp *StreamProcessor) parseStreamChunk(chunk []byte) (map[string]interface{
 
 	var chunkData map[string]interface{}
 	if err := json.Unmarshal(jsonData, &chunkData); err != nil {
-		log.Printf("Error unmarshaling stream chunk: %v", err)
+		logger.Error("Error unmarshaling stream chunk", "error", err, "vendor", sp.Vendor)
 		return nil, err
 	}
 
@@ -117,15 +118,15 @@ func (sp *StreamProcessor) replaceModelField(chunkData map[string]interface{}) {
 func (sp *StreamProcessor) processStreamChoices(chunkData map[string]interface{}) {
 	choices, ok := chunkData["choices"].([]interface{})
 	if !ok || len(choices) == 0 {
-		log.Printf("No choices found in stream chunk")
+		logger.Debug("No choices found in stream chunk", "vendor", sp.Vendor)
 		return
 	}
 
-	log.Printf("Processing %d choices in stream chunk", len(choices))
+	logger.Debug("Processing choices in stream chunk", "count", len(choices), "vendor", sp.Vendor)
 	for i, choice := range choices {
 		choiceMap, ok := choice.(map[string]interface{})
 		if !ok {
-			log.Printf("Stream chunk choice %d is not a map", i)
+			logger.Warn("Stream chunk choice is not a map", "index", i, "vendor", sp.Vendor)
 			continue
 		}
 
@@ -142,7 +143,7 @@ func (sp *StreamProcessor) processStreamChoices(chunkData map[string]interface{}
 			sp.processStreamMessage(message)
 			choiceMap["message"] = message
 		} else {
-			log.Printf("No delta or message found in stream chunk choice %d", i)
+			logger.Warn("No delta or message found in stream chunk choice", "index", i, "vendor", sp.Vendor)
 		}
 
 		choices[i] = choiceMap
@@ -152,7 +153,7 @@ func (sp *StreamProcessor) processStreamChoices(chunkData map[string]interface{}
 
 // processStreamDelta processes delta content in streaming response
 func (sp *StreamProcessor) processStreamDelta(delta map[string]interface{}) {
-	log.Printf("Processing delta in stream chunk")
+	logger.Debug("Processing delta in stream chunk", "vendor", sp.Vendor)
 
 	// Add annotations array if missing in delta
 	if _, ok := delta["annotations"]; !ok {
@@ -166,17 +167,17 @@ func (sp *StreamProcessor) processStreamDelta(delta map[string]interface{}) {
 
 	// Process tool_calls if present
 	if toolCalls, ok := delta["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
-		log.Printf("Processing %d tool calls in stream chunk delta", len(toolCalls))
+		logger.Debug("Processing tool calls in stream chunk delta", "count", len(toolCalls), "vendor", sp.Vendor)
 		processedToolCalls := ProcessToolCalls(toolCalls, sp.Vendor)
 		delta["tool_calls"] = processedToolCalls
 	} else {
-		log.Printf("No tool calls found in stream chunk delta")
+		logger.Debug("No tool calls found in stream chunk delta", "vendor", sp.Vendor)
 	}
 }
 
 // processStreamMessage processes message content in streaming response
 func (sp *StreamProcessor) processStreamMessage(message map[string]interface{}) {
-	log.Printf("Processing message in stream chunk")
+	logger.Debug("Processing message in stream chunk", "vendor", sp.Vendor)
 
 	// Add annotations array if missing
 	if _, ok := message["annotations"]; !ok {
@@ -190,11 +191,11 @@ func (sp *StreamProcessor) processStreamMessage(message map[string]interface{}) 
 
 	// Process tool_calls if present
 	if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
-		log.Printf("Processing %d tool calls in stream chunk message", len(toolCalls))
+		logger.Debug("Processing tool calls in stream chunk message", "count", len(toolCalls), "vendor", sp.Vendor)
 		processedToolCalls := ProcessToolCalls(toolCalls, sp.Vendor)
 		message["tool_calls"] = processedToolCalls
 	} else {
-		log.Printf("No tool calls found in stream chunk message")
+		logger.Debug("No tool calls found in stream chunk message", "vendor", sp.Vendor)
 	}
 }
 
@@ -235,15 +236,15 @@ func (sp *StreamProcessor) addUsageForFirstChunk(chunkData map[string]interface{
 	}
 }
 
-// reconstructSSE reconstructs the SSE format from processed data
+// reconstructSSE reconstructs SSE format from processed data
 func (sp *StreamProcessor) reconstructSSE(chunkData map[string]interface{}) []byte {
-	// Encode the modified chunk
-	modifiedData, err := json.Marshal(chunkData)
+	// Marshal the processed data back to JSON
+	modifiedJSON, err := json.Marshal(chunkData)
 	if err != nil {
-		log.Printf("Error marshaling modified stream chunk: %v", err)
-		return []byte{} // Return empty if marshal fails
+		logger.Error("Error marshaling modified stream chunk", "error", err, "vendor", sp.Vendor)
+		return nil
 	}
 
-	// Reconstruct the chunk with "data: " prefix
-	return []byte("data: " + string(modifiedData) + "\n\n")
+	// Return the SSE formatted chunk
+	return append([]byte("data: "), modifiedJSON...)
 }
