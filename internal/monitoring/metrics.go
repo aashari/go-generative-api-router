@@ -1,12 +1,13 @@
 package monitoring
 
 import (
-	"log"
 	"net/http"
 	"net/http/pprof"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/aashari/go-generative-api-router/internal/logger"
 )
 
 // Metrics holds application metrics
@@ -142,8 +143,14 @@ func MetricsMiddleware(next http.Handler) http.Handler {
 		globalMetrics.RecordRequest(duration, wrapper.statusCode, vendor, model)
 
 		// Log request for debugging
-		log.Printf("Request: %s %s - Status: %d - Duration: %v - Vendor: %s - Model: %s",
-			r.Method, r.URL.Path, wrapper.statusCode, duration, vendor, model)
+		logger.DebugCtx(r.Context(), "Request completed",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", wrapper.statusCode,
+			"duration_ms", duration.Milliseconds(),
+			"vendor", vendor,
+			"model", model,
+		)
 	})
 }
 

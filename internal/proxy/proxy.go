@@ -1,12 +1,13 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/aashari/go-generative-api-router/internal/config"
+	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/selector"
 	"github.com/aashari/go-generative-api-router/internal/validator"
 )
@@ -26,10 +27,20 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 	// Use the provided selector to determine which vendor and model to use
 	selection, err := modelSelector.Select(creds, models)
 	if err != nil {
+		logger.ErrorCtx(r.Context(), "Vendor selection failed", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("VERBOSE_DEBUG: ProxyRequest - Selected Vendor: '%s', Model: '%s'", selection.Vendor, selection.Model)
+
+	// Enrich context with vendor information
+	ctx := context.WithValue(r.Context(), logger.VendorKey, selection.Vendor)
+	ctx = context.WithValue(ctx, logger.ModelKey, selection.Model)
+	r = r.WithContext(ctx)
+
+	logger.DebugCtx(ctx, "Vendor and model selected",
+		"selected_vendor", selection.Vendor,
+		"selected_model", selection.Model,
+	)
 
 	// Read the request body
 	body, err := io.ReadAll(r.Body)
@@ -42,23 +53,32 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 	// Validate and modify request
 	modifiedBody, originalModel, err := validator.ValidateAndModifyRequest(body, selection.Model)
 	if err != nil {
+		logger.ErrorCtx(ctx, "Request validation failed", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("VERBOSE_DEBUG: ProxyRequest - Original requested model: '%s', will route to: '%s'", originalModel, selection.Model)
+	// Log the transparent proxy behavior
+	logger.LogProxyRequest(ctx, originalModel, selection.Vendor, selection.Model, len(creds)*len(models))
 
 	// Use the provided API client
 	err = apiClient.SendRequest(w, r, selection, modifiedBody, originalModel)
 	if err != nil {
 		// Check for specific error types
 		if errors.Is(err, ErrUnknownVendor) {
-			log.Printf("Error: %v, for vendor: %s", err, selection.Vendor)
+			logger.ErrorCtx(r.Context(), "Unknown vendor configuration error",
+				"vendor", selection.Vendor,
+				"error", err,
+			)
 			http.Error(w, "Internal configuration error: Unknown vendor", http.StatusBadRequest)
 			return
 		}
 
 		// For other network errors
+		logger.ErrorCtx(r.Context(), "Failed to communicate with upstream service",
+			"vendor", selection.Vendor,
+			"error", err,
+		)
 		http.Error(w, "Failed to communicate with upstream service: "+err.Error(), http.StatusBadGateway)
 		return
 	}

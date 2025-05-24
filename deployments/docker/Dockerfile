@@ -28,6 +28,11 @@ RUN if [ ! -f ./configs/credentials.json ] && [ -f ./configs/credentials.json.ex
 # Set environment variable to force Go's standard logger to use UTC time and include microseconds
 ENV TZ=UTC
 
+# Configure structured logging for production
+ENV LOG_LEVEL=INFO
+ENV LOG_FORMAT=json
+ENV LOG_OUTPUT=stdout
+
 # Ensure logs are sent to stdout/stderr for CloudWatch collection
 ENV GLOG_logtostderr=1
 

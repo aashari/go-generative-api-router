@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/aashari/go-generative-api-router/internal/handlers"
+	"github.com/aashari/go-generative-api-router/internal/middleware"
 	"github.com/aashari/go-generative-api-router/internal/monitoring"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -31,6 +32,9 @@ func SetupRoutes(apiHandlers *handlers.APIHandlers) http.Handler {
 		httpSwagger.DomID("swagger-ui"),
 	))
 
-	// Wrap with metrics middleware
-	return monitoring.MetricsMiddleware(mux)
+	// Wrap with middleware stack (order matters: correlation -> metrics)
+	handler := monitoring.MetricsMiddleware(mux)
+	handler = middleware.RequestCorrelationMiddleware(handler)
+
+	return handler
 }

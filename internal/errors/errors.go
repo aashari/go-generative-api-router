@@ -3,8 +3,9 @@ package errors
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
+
+	"github.com/aashari/go-generative-api-router/internal/logger"
 )
 
 // ErrorType represents different types of errors
@@ -85,12 +86,16 @@ func HandleError(w http.ResponseWriter, err error, statusCode int) {
 		w.Write(jsonBytes)
 	} else {
 		// Fallback if JSON marshaling fails
-		log.Printf("Error marshaling error response: %v", jsonErr)
+		logger.Error("Error marshaling error response", "error", jsonErr)
 		w.Write([]byte(`{"error":{"type":"internal_error","message":"Internal server error"}}`))
 	}
 
 	// Log the error for debugging
-	log.Printf("API Error [%d]: %s - %s", statusCode, apiError.Type, apiError.Message)
+	logger.Error("API Error",
+		"status_code", statusCode,
+		"error_type", string(apiError.Type),
+		"message", apiError.Message,
+	)
 }
 
 // inferErrorType attempts to infer the error type based on the error message and status code
