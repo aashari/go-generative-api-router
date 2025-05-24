@@ -3,13 +3,13 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/errors"
 	"github.com/aashari/go-generative-api-router/internal/filter"
+	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/proxy"
 	"github.com/aashari/go-generative-api-router/internal/selector"
 )
@@ -41,7 +41,7 @@ func NewAPIHandlers(creds []config.Credential, models []config.VendorModel, clie
 // @Success      200  {string}  string  "OK"
 // @Router       /health [get]
 func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("Health check endpoint hit")
+	logger.DebugCtx(r.Context(), "Health check endpoint accessed")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }
@@ -61,7 +61,7 @@ func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure      500     {object}  ErrorResponse          "Internal server error"
 // @Router       /v1/chat/completions [post]
 func (h *APIHandlers) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request to /v1/chat/completions from %s", r.RemoteAddr)
+	logger.InfoCtx(r.Context(), "Chat completions request received", "remote_addr", r.RemoteAddr)
 
 	// Optional vendor filter via query parameter
 	vendorFilter := r.URL.Query().Get("vendor")
@@ -70,17 +70,19 @@ func (h *APIHandlers) ChatCompletionsHandler(w http.ResponseWriter, r *http.Requ
 	creds := h.Credentials
 	models := h.VendorModels
 	if vendorFilter != "" {
-		log.Printf("Filtering by vendor: %s", vendorFilter)
+		logger.DebugCtx(r.Context(), "Filtering by vendor", "vendor", vendorFilter)
 		creds = filter.CredentialsByVendor(creds, vendorFilter)
 		models = filter.ModelsByVendor(models, vendorFilter)
 
 		// Check if we have credentials and models for this vendor
 		if len(creds) == 0 {
+			logger.WarnCtx(r.Context(), "No credentials available for vendor", "vendor", vendorFilter)
 			err := errors.NewValidationError(fmt.Sprintf("No credentials available for vendor: %s", vendorFilter))
 			errors.HandleError(w, err, http.StatusBadRequest)
 			return
 		}
 		if len(models) == 0 {
+			logger.WarnCtx(r.Context(), "No models available for vendor", "vendor", vendorFilter)
 			err := errors.NewValidationError(fmt.Sprintf("No models available for vendor: %s", vendorFilter))
 			errors.HandleError(w, err, http.StatusBadRequest)
 			return
@@ -118,7 +120,7 @@ func (h *APIHandlers) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 	vendorFilter := r.URL.Query().Get("vendor")
 	models := h.VendorModels
 	if vendorFilter != "" {
-		log.Printf("Filtering models by vendor: %s", vendorFilter)
+		logger.DebugCtx(r.Context(), "Filtering models by vendor", "vendor", vendorFilter)
 		models = filter.ModelsByVendor(models, vendorFilter)
 	}
 
@@ -135,8 +137,11 @@ func (h *APIHandlers) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 		response.Data = append(response.Data, model)
 	}
 
+	logger.DebugCtx(r.Context(), "Models list generated", "count", len(response.Data), "vendor_filter", vendorFilter)
+
 	jsonResp, err := json.Marshal(response)
 	if err != nil {
+		logger.ErrorCtx(r.Context(), "Failed to marshal models response", "error", err)
 		apiErr := errors.NewInternalError("Failed to generate model list")
 		errors.HandleError(w, apiErr, http.StatusInternalServerError)
 		return

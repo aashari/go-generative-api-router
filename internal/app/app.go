@@ -2,12 +2,12 @@ package app
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
 	_ "github.com/aashari/go-generative-api-router/docs/api" // This is necessary for Swagger documentation
 	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/handlers"
+	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/proxy"
 	"github.com/aashari/go-generative-api-router/internal/router"
 	"github.com/aashari/go-generative-api-router/internal/selector"
@@ -41,7 +41,10 @@ func NewApp() (*App, error) {
 		return nil, fmt.Errorf("configuration validation failed: %s", validationErr.Error())
 	}
 
-	log.Printf("Loaded and validated %d credentials and %d vendor-model pairs", len(creds), len(models))
+	logger.Info("Configuration loaded and validated",
+		"credentials_count", len(creds),
+		"vendor_model_pairs", len(models),
+	)
 
 	// Initialize components
 	apiClient := proxy.NewAPIClient()

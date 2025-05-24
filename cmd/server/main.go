@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/aashari/go-generative-api-router/internal/app"
+	"github.com/aashari/go-generative-api-router/internal/logger"
 )
 
 // @title           Generative API Router
@@ -47,9 +48,15 @@ func CORSMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
+	// Initialize structured logging
+	if err := logger.InitFromEnv(); err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+
 	// Create and initialize the application
 	app, err := app.NewApp()
 	if err != nil {
+		logger.Error("Failed to initialize application", "error", err)
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
 
@@ -59,10 +66,12 @@ func main() {
 	// Apply CORS middleware
 	corsHandler := CORSMiddleware(handler)
 
-	log.Println("Server starting on 0.0.0.0:8082")
-	log.Println("Swagger documentation available at https://genapi.aduh.xyz/swagger/index.html")
+	logger.Info("Server starting", "address", "0.0.0.0:8082")
+	logger.Info("Swagger documentation available", "url", "https://genapi.aduh.xyz/swagger/index.html")
+
 	err = http.ListenAndServe("0.0.0.0:8082", corsHandler)
 	if err != nil {
+		logger.Error("Server failed", "error", err)
 		log.Fatalf("Server failed: %v", err)
 	}
 }

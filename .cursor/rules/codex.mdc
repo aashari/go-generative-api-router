@@ -36,7 +36,7 @@ When working with the Generative API Router project, include this context in you
 **1. Always Interact via Single-Line Command**
 
 ```bash
-GENAPI_API_KEY=HaloHaloBandung codex -p genapi -q "{your query}"
+GENAPI_API_KEY=HaloHaloBandung codex -p genapi -q "{your query}" | cat
 ```
 
 * *Note: Your query must be a single line. Multi-line input will cause errors.*

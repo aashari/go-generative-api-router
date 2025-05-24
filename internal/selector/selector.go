@@ -2,7 +2,6 @@ package selector
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
 
 	"github.com/aashari/go-generative-api-router/internal/config"
@@ -45,8 +44,6 @@ func (s *RandomSelector) Select(creds []config.Credential, models []config.Vendo
 	selectedCred := creds[s.rng.Intn(len(creds))]
 	vendor := selectedCred.Platform
 
-	log.Printf("Randomly selected credential for vendor: %s", vendor)
-
 	// Filter models for the selected vendor
 	var vendorModels []config.VendorModel
 	for _, m := range models {
@@ -62,8 +59,6 @@ func (s *RandomSelector) Select(creds []config.Credential, models []config.Vendo
 	// Randomly select a model for the vendor
 	selectedModel := vendorModels[s.rng.Intn(len(vendorModels))]
 	model := selectedModel.Model
-
-	log.Printf("Randomly selected model: %s for vendor: %s", model, vendor)
 
 	return &VendorSelection{
 		Vendor:     vendor,
@@ -114,9 +109,6 @@ func (s *EvenDistributionSelector) Select(creds []config.Credential, models []co
 
 	// Randomly select one combination from the flat list
 	selectedCombination := combinations[s.rng.Intn(len(combinations))]
-
-	log.Printf("Even distribution selected combination - Vendor: %s, Model: %s (from %d total combinations)",
-		selectedCombination.Vendor, selectedCombination.Model, len(combinations))
 
 	return &VendorSelection{
 		Vendor:     selectedCombination.Vendor,

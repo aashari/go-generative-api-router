@@ -107,8 +107,7 @@ func (c *APIClient) setupRequest(r *http.Request, selection *selector.VendorSele
 	if err := json.Unmarshal(modifiedBody, &requestData); err == nil {
 		if stream, ok := requestData["stream"].(bool); ok && stream {
 			isStreaming = true
-			log.Printf("Initiating streaming from vendor %s, model %s, will be presented as %s",
-				selection.Vendor, selection.Model, originalModel)
+			// Note: Streaming initiation is logged by the proxy layer with request context
 		}
 	}
 
