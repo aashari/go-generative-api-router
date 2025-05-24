@@ -1,9 +1,0 @@
-version: "3.8"
-services:
-  app:
-    build: .
-    ports:
-      - "8082:8082"
-    volumes:
-      - ./credentials.json:/app/credentials.json
-      - ./models.json:/app/models.json

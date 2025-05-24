@@ -9,6 +9,7 @@ This guide provides instructions and tips for developing, testing, and maintaini
 
 ## Project Structure
 
+### Core Application Code
 - **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server. ([cmd/server/main.go](mdc:generative-api-router/cmd/server/main.go))
 - **`internal/app/app.go`**: Centralizes application configuration and dependencies (reduced to 64 lines after Phase 2 refactoring). ([internal/app/app.go](mdc:generative-api-router/internal/app/app.go))
 - **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication. ([internal/proxy/proxy.go](mdc:generative-api-router/internal/proxy/proxy.go))
@@ -24,22 +25,54 @@ This guide provides instructions and tips for developing, testing, and maintaini
 - **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor. ([internal/filter/utils.go](mdc:generative-api-router/internal/filter/utils.go))
 - **`internal/monitoring/metrics.go`**: Metrics collection, middleware, and monitoring endpoints. ([internal/monitoring/metrics.go](mdc:generative-api-router/internal/monitoring/metrics.go))
 - **`internal/router/routes.go`**: Centralized route setup with middleware integration. ([internal/router/routes.go](mdc:generative-api-router/internal/router/routes.go))
-- **`credentials.json`**: Stores API keys for different vendors (ensure this is gitignored). ([credentials.json.example](mdc:generative-api-router/credentials.json.example))
-- **`models.json`**: Defines the available models and their vendors. ([models.json](mdc:generative-api-router/models.json))
-- **`Dockerfile`**: For building the Docker image. ([Dockerfile](mdc:generative-api-router/Dockerfile))
-- **`docker-compose.yml`**: For running the service with Docker Compose. ([docker-compose.yml](mdc:generative-api-router/docker-compose.yml))
+
+### Configuration Files
+- **`configs/credentials.json`**: Stores API keys for different vendors (gitignored). ([configs/credentials.json.example](mdc:generative-api-router/configs/credentials.json.example))
+- **`configs/models.json`**: Defines the available models and their vendors. ([configs/models.json](mdc:generative-api-router/configs/models.json))
+
+### Deployment Files
+- **`deployments/docker/Dockerfile`**: For building the Docker image. ([deployments/docker/Dockerfile](mdc:generative-api-router/deployments/docker/Dockerfile))
+- **`deployments/docker/docker-compose.yml`**: For running the service with Docker Compose. ([deployments/docker/docker-compose.yml](mdc:generative-api-router/deployments/docker/docker-compose.yml))
+
+### Development Tools
+- **`Makefile`**: Build automation and common tasks. ([Makefile](mdc:generative-api-router/Makefile))
+- **`scripts/`**: Helper scripts for deployment, testing, and setup
+- **`examples/`**: Usage examples for cURL and various client languages
+- **`docs/`**: Comprehensive documentation (API, development, user guides)
 
 ## Development
 
-1.  **Configuration**:
-    *   Ensure `credentials.json` is populated with valid API keys. Use `credentials.json.example` as a template.
-    *   Modify `models.json` to define your desired vendor/model pool.
-2.  **Running Locally**:
-    *   Use `go run ./cmd/server` or `./<binary_name> &` to start the server.
-    *   If running in the background, use ` ./server > server.log 2>&1 &` for logging.
-    *   The server typically runs on port `:8082`.
+1.  **Initial Setup**:
+    ```bash
+    # Clone and setup the project
+    git clone <repository-url>
+    cd generative-api-router
+    make setup
+    ```
+
+2.  **Configuration**:
+    *   Edit `configs/credentials.json` with valid API keys (created from example during setup)
+    *   Modify `configs/models.json` to define your desired vendor/model pool
+
 3.  **Building**:
-    *   Use `go build -o <output_name> ./cmd/server` to create a binary.
+    ```bash
+    # Build the application
+    make build
+    
+    # Output will be in build/server
+    ```
+
+4.  **Running Locally**:
+    ```bash
+    # Build and run
+    make run
+    
+    # Run without building (development mode)
+    make run-dev
+    
+    # Run with logging
+    make run-with-logs
+    ```
 
 ## Testing
 
@@ -74,9 +107,9 @@ Test files are available for:
     *   **Kill Existing Processes**: Before starting a new server instance for testing, ensure no other instance is running on the same port (typically `:8082`).
         *   Use `sudo lsof -i :8082 | cat` to check for processes.
         *   Use `sudo kill -9 <PID>` to terminate any conflicting process (use with caution).
-        *   A safer way to stop the local server if run as `./server &` is `pgrep -f "^./server$" | xargs kill -9`.
+        *   A safer way to stop the local server if run as `./build/server &` is `pgrep -f "server$" | xargs kill -9`.
         *   If a Docker container is using the port, use `docker ps | grep 8082 | cat` to find it and `docker stop <container_id_or_name> | cat` to stop it.
-    *   **Wait for Server Initialization**: After starting the server (e.g., `./server &`), *wait a few seconds* (e.g., `sleep 3`) before sending requests (e.g., `curl`). This is crucial to avoid "Connection refused" errors.
+    *   **Wait for Server Initialization**: After starting the server, *wait a few seconds* (e.g., `sleep 3`) before sending requests. This is crucial to avoid "Connection refused" errors.
 2.  **Health Check**:
     ```bash
     curl -X GET http://localhost:8082/health | cat
@@ -104,9 +137,21 @@ Test files are available for:
 *   **Dependencies**: Run `go mod tidy` periodically to clean up dependencies. Key dependencies include:
     *   `github.com/stretchr/testify` v1.10.0 - Testing assertions
     *   `github.com/go-playground/validator/v10` v10.26.0 - Struct validation
-*   **Configuration Updates**: API keys (`credentials.json`) and model lists (`models.json`) can be updated without code changes. Restart the server for changes to take effect.
-*   **Logging**: Review logs for errors or unexpected behavior. The server logs selected vendors/models for each request, the original requested model, and how the response model is being presented. Key log lines for debugging model handling include `VERBOSE_DEBUG: ProxyRequest - Original requested model:`, `VERBOSE_DEBUG: ProxyRequest - Selected Vendor:`, and `Processing response from actual model: ... will be presented as:`.
+*   **Configuration Updates**: API keys (`configs/credentials.json`) and model lists (`configs/models.json`) can be updated without code changes. Restart the server for changes to take effect.
+*   **Logging**: Review logs in the `logs/` directory or console output. The server logs selected vendors/models for each request, the original requested model, and how the response model is being presented. Key log lines for debugging model handling include `VERBOSE_DEBUG: ProxyRequest - Original requested model:`, `VERBOSE_DEBUG: ProxyRequest - Selected Vendor:`, and `Processing response from actual model: ... will be presented as:`.
 *   **Monitoring**: Access metrics at `/metrics` endpoint for request counts, durations, and error rates. The service also includes pprof endpoints for profiling.
+*   **Code Quality**: 
+    ```bash
+    # Format code
+    make format
+    
+    # Run linter
+    make lint
+    
+    # Clean build artifacts and logs
+    make clean
+    make clean-logs
+    ```
 
 ## Common Pitfalls & Lessons Learned
 
@@ -118,4 +163,4 @@ Test files are available for:
 
 ---
 
-Important: you can't read the `credentials.json` using `read_file` tool, you can use `run_terminal_cmd` to `cat credentials.json` instead
+Important: you can't read the `configs/credentials.json` using `read_file` tool, you can use `run_terminal_cmd` to `cat configs/credentials.json` instead

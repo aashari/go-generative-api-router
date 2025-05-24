@@ -11,6 +11,9 @@ import (
 )
 
 func TestNewApp_Success(t *testing.T) {
+	// Create configs directory
+	os.MkdirAll("configs", 0755)
+	
 	// Create temporary test files
 	credsContent := `[
 		{"platform": "openai", "type": "api-key", "value": "test-key"},
@@ -38,8 +41,8 @@ func TestNewApp_Success(t *testing.T) {
 	modelsFile.Close()
 
 	// Temporarily rename the files to match expected names
-	originalCredsPath := "credentials.json"
-	originalModelsPath := "models.json"
+	originalCredsPath := "configs/credentials.json"
+	originalModelsPath := "configs/models.json"
 	
 	// Backup original files if they exist
 	credsBackup := false
@@ -80,8 +83,11 @@ func TestNewApp_Success(t *testing.T) {
 }
 
 func TestNewApp_MissingCredentialsFile(t *testing.T) {
+	// Create configs directory
+	os.MkdirAll("configs", 0755)
+	
 	// Temporarily rename credentials.json if it exists
-	originalPath := "credentials.json"
+	originalPath := "configs/credentials.json"
 	backupPath := originalPath + ".test_backup"
 	
 	if _, err := os.Stat(originalPath); err == nil {
@@ -96,11 +102,14 @@ func TestNewApp_MissingCredentialsFile(t *testing.T) {
 }
 
 func TestNewApp_InvalidCredentialsJSON(t *testing.T) {
+	// Create configs directory
+	os.MkdirAll("configs", 0755)
+	
 	// Create invalid JSON file
 	invalidContent := `{invalid json`
 	
 	// Backup and create test file
-	originalPath := "credentials.json"
+	originalPath := "configs/credentials.json"
 	backupPath := originalPath + ".test_backup"
 	
 	if _, err := os.Stat(originalPath); err == nil {
@@ -119,12 +128,15 @@ func TestNewApp_InvalidCredentialsJSON(t *testing.T) {
 }
 
 func TestNewApp_MissingModelsFile(t *testing.T) {
+	// Create configs directory
+	os.MkdirAll("configs", 0755)
+	
 	// Create valid credentials file
 	credsContent := `[{"platform": "openai", "type": "api-key", "value": "test-key"}]`
 	
 	// Backup original files
-	credsPath := "credentials.json"
-	modelsPath := "models.json"
+	credsPath := "configs/credentials.json"
+	modelsPath := "configs/models.json"
 	credsBackup := false
 	modelsBackup := false
 	
@@ -161,6 +173,9 @@ func TestNewApp_MissingModelsFile(t *testing.T) {
 }
 
 func TestNewApp_ValidationError(t *testing.T) {
+	// Create configs directory
+	os.MkdirAll("configs", 0755)
+	
 	// Create credentials and models that will fail validation
 	// (models reference vendors without credentials)
 	credsContent := `[{"platform": "openai", "type": "api-key", "value": "test-key"}]`
@@ -170,8 +185,8 @@ func TestNewApp_ValidationError(t *testing.T) {
 	]`
 
 	// Backup and create test files
-	credsPath := "credentials.json"
-	modelsPath := "models.json"
+	credsPath := "configs/credentials.json"
+	modelsPath := "configs/models.json"
 	credsBackup := false
 	modelsBackup := false
 	
@@ -207,13 +222,16 @@ func TestNewApp_ValidationError(t *testing.T) {
 }
 
 func TestApp_SetupRoutes(t *testing.T) {
+	// Create configs directory
+	os.MkdirAll("configs", 0755)
+	
 	// Create minimal valid config files
 	credsContent := `[{"platform": "openai", "type": "api-key", "value": "test"}]`
 	modelsContent := `[{"vendor": "openai", "model": "gpt-4"}]`
 
 	// Setup test files
-	credsPath := "credentials.json"
-	modelsPath := "models.json"
+	credsPath := "configs/credentials.json"
+	modelsPath := "configs/models.json"
 	credsBackup := false
 	modelsBackup := false
 	
@@ -260,13 +278,16 @@ func TestApp_SetupRoutes(t *testing.T) {
 }
 
 func TestNewApp_EmptyCredentials(t *testing.T) {
+	// Create configs directory
+	os.MkdirAll("configs", 0755)
+	
 	// Create empty credentials and models files
 	credsContent := `[]`
 	modelsContent := `[]`
 
 	// Setup test files
-	credsPath := "credentials.json"
-	modelsPath := "models.json"
+	credsPath := "configs/credentials.json"
+	modelsPath := "configs/models.json"
 	credsBackup := false
 	modelsBackup := false
 	

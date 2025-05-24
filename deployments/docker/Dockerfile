@@ -17,8 +17,9 @@ WORKDIR /app
 COPY --from=builder /app/generative-api-router .
 # Copy pre-existing docs directory (already generated)
 COPY docs ./docs
-COPY credentials.json .
-COPY models.json .
+# Copy configuration files from configs directory
+COPY configs/credentials.json ./configs/
+COPY configs/models.json ./configs/
 
 # Set environment variable to force Go's standard logger to use UTC time and include microseconds
 ENV TZ=UTC
