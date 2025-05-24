@@ -109,7 +109,7 @@ func TestProxyRequest_SelectorError(t *testing.T) {
 	client := NewAPIClient()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", 
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
 		strings.NewReader(`{"messages": [{"role": "user", "content": "test"}]}`))
 
 	ProxyRequest(w, r, creds, models, client, selector)
@@ -132,7 +132,7 @@ func TestProxyRequest_InvalidRequestBody(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	// Invalid JSON body
-	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", 
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
 		strings.NewReader(`{"invalid": json`))
 
 	ProxyRequest(w, r, creds, models, client, selector)
@@ -154,7 +154,7 @@ func TestProxyRequest_MissingMessages(t *testing.T) {
 	client := NewAPIClient()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", 
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
 		strings.NewReader(`{"model": "test-model"}`))
 
 	ProxyRequest(w, r, creds, models, client, selector)
@@ -176,7 +176,7 @@ func TestProxyRequest_UnknownVendorError(t *testing.T) {
 	client := NewAPIClient()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", 
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
 		strings.NewReader(`{"model": "test-model", "messages": [{"role": "user", "content": "test"}]}`))
 
 	ProxyRequest(w, r, creds, models, client, selector)
@@ -195,7 +195,7 @@ func TestProxyRequest_NetworkError(t *testing.T) {
 			Credential: creds[0],
 		},
 	}
-	
+
 	// Mock client that returns network error
 	mockClient := &MockAPIClient{
 		sendRequestFunc: func(w http.ResponseWriter, r *http.Request, selection *VendorSelection, modifiedBody []byte, originalModel string) error {
@@ -204,7 +204,7 @@ func TestProxyRequest_NetworkError(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", 
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
 		strings.NewReader(`{"model": "test-model", "messages": [{"role": "user", "content": "test"}]}`))
 
 	ProxyRequest(w, r, creds, models, mockClient, selector)
@@ -291,7 +291,7 @@ func TestProxyRequest_StreamingRequest(t *testing.T) {
 			var requestData map[string]interface{}
 			err := json.Unmarshal(modifiedBody, &requestData)
 			require.NoError(t, err)
-			
+
 			if stream, ok := requestData["stream"].(bool); ok && stream {
 				capturedIsStreaming = true
 			}
@@ -446,7 +446,7 @@ func TestProxyRequest_ComplexToolsValidation(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	requestBody := map[string]interface{}{
-		"model": "test-model",
+		"model":    "test-model",
 		"messages": []map[string]string{{"role": "user", "content": "What's the weather?"}},
 		"tools": []map[string]interface{}{
 			{
@@ -475,4 +475,4 @@ func TestProxyRequest_ComplexToolsValidation(t *testing.T) {
 	ProxyRequest(w, r, creds, models, mockClient, selector)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-} 
+}

@@ -18,8 +18,12 @@ COPY --from=builder /app/generative-api-router .
 # Copy pre-existing docs directory (already generated)
 COPY docs ./docs
 # Copy configuration files from configs directory
-COPY configs/credentials.json ./configs/
-COPY configs/models.json ./configs/
+# Copy credentials.json if it exists, otherwise use the example file
+COPY configs/credentials.json* configs/models.json ./configs/
+# If credentials.json doesn't exist, use the example
+RUN if [ ! -f ./configs/credentials.json ] && [ -f ./configs/credentials.json.example ]; then \
+    cp ./configs/credentials.json.example ./configs/credentials.json; \
+    fi
 
 # Set environment variable to force Go's standard logger to use UTC time and include microseconds
 ENV TZ=UTC

@@ -98,7 +98,7 @@ func TestChatCompletionsHandler_Success(t *testing.T) {
 	models := []config.VendorModel{
 		{Vendor: "openai", Model: "gpt-4"},
 	}
-	
+
 	// Create a mock API client that doesn't make real requests
 	client := proxy.NewAPIClient()
 	selector := selector.NewRandomSelector()
@@ -129,7 +129,7 @@ func TestChatCompletionsHandler_VendorFilter(t *testing.T) {
 		{Vendor: "openai", Model: "gpt-4"},
 		{Vendor: "gemini", Model: "gemini-pro"},
 	}
-	
+
 	client := proxy.NewAPIClient()
 	selector := selector.NewRandomSelector()
 
@@ -157,7 +157,7 @@ func TestChatCompletionsHandler_InvalidVendorNoCredentials(t *testing.T) {
 	models := []config.VendorModel{
 		{Vendor: "openai", Model: "gpt-4"},
 	}
-	
+
 	client := proxy.NewAPIClient()
 	selector := selector.NewRandomSelector()
 
@@ -188,7 +188,7 @@ func TestChatCompletionsHandler_InvalidVendorNoModels(t *testing.T) {
 		{Vendor: "openai", Model: "gpt-4"},
 		// No models for gemini
 	}
-	
+
 	client := proxy.NewAPIClient()
 	selector := selector.NewRandomSelector()
 
@@ -217,7 +217,7 @@ func TestChatCompletionsHandler_EmptyVendorFilter(t *testing.T) {
 	models := []config.VendorModel{
 		{Vendor: "openai", Model: "gpt-4"},
 	}
-	
+
 	client := proxy.NewAPIClient()
 	selector := selector.NewRandomSelector()
 

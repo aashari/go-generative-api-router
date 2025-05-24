@@ -123,7 +123,7 @@ func TestRandomSelector_Randomness(t *testing.T) {
 	}
 
 	selector := NewRandomSelector()
-	
+
 	// Run multiple selections to verify randomness
 	selections := make(map[string]int)
 	iterations := 100
@@ -131,7 +131,7 @@ func TestRandomSelector_Randomness(t *testing.T) {
 	for i := 0; i < iterations; i++ {
 		selection, err := selector.Select(creds, models)
 		require.NoError(t, err)
-		
+
 		key := selection.Vendor + ":" + selection.Model
 		selections[key]++
 	}
@@ -170,7 +170,7 @@ func TestRandomSelector_MultipleModelsForVendor(t *testing.T) {
 	}
 
 	selector := NewRandomSelector()
-	
+
 	// Run multiple selections to verify model randomness within vendor
 	modelSelections := make(map[string]int)
 	iterations := 50
@@ -353,7 +353,7 @@ func TestEvenDistributionSelector_EvenDistribution(t *testing.T) {
 	}
 
 	selector := NewEvenDistributionSelector()
-	
+
 	// Run many selections to verify even distribution
 	combinations := make(map[string]int)
 	iterations := 6000 // Multiple of 6 (total combinations)
@@ -361,7 +361,7 @@ func TestEvenDistributionSelector_EvenDistribution(t *testing.T) {
 	for i := 0; i < iterations; i++ {
 		selection, err := selector.Select(creds, models)
 		require.NoError(t, err)
-		
+
 		key := selection.Vendor + ":" + selection.Model
 		combinations[key]++
 	}
@@ -378,21 +378,21 @@ func TestEvenDistributionSelector_EvenDistribution(t *testing.T) {
 		if diff < 0 {
 			diff = -diff
 		}
-		assert.LessOrEqual(t, diff, tolerance, 
-			"Combination %s should be selected roughly equally (got %d, expected ~%d)", 
+		assert.LessOrEqual(t, diff, tolerance,
+			"Combination %s should be selected roughly equally (got %d, expected ~%d)",
 			combo, count, expectedCount)
 	}
 
 	// Verify all expected combinations exist
 	expectedCombos := []string{
 		"openai:gpt-4",
-		"openai:gpt-4-turbo", 
+		"openai:gpt-4-turbo",
 		"openai:gpt-3.5-turbo",
 		"openai:o1",
 		"gemini:gemini-pro",
 		"gemini:gemini-2.0-flash",
 	}
-	
+
 	for _, expected := range expectedCombos {
 		assert.Contains(t, combinations, expected, "Should include combination: %s", expected)
 	}
@@ -415,9 +415,9 @@ func TestEvenDistributionSelector_CompareWithRandomSelector(t *testing.T) {
 
 	evenSelector := NewEvenDistributionSelector()
 	randomSelector := NewRandomSelector()
-	
+
 	iterations := 6000
-	
+
 	// Test even distribution selector
 	evenCombinations := make(map[string]int)
 	for i := 0; i < iterations; i++ {
@@ -426,7 +426,7 @@ func TestEvenDistributionSelector_CompareWithRandomSelector(t *testing.T) {
 		key := selection.Vendor + ":" + selection.Model
 		evenCombinations[key]++
 	}
-	
+
 	// Test random selector
 	randomCombinations := make(map[string]int)
 	for i := 0; i < iterations; i++ {
@@ -438,7 +438,7 @@ func TestEvenDistributionSelector_CompareWithRandomSelector(t *testing.T) {
 
 	// Even distribution should have all 6 combinations with roughly equal counts
 	assert.Equal(t, 6, len(evenCombinations), "Even selector should have all 6 combinations")
-	
+
 	expectedEvenCount := iterations / 6
 	for _, count := range evenCombinations {
 		// Each combination should be within 10% of expected
@@ -455,12 +455,12 @@ func TestEvenDistributionSelector_CompareWithRandomSelector(t *testing.T) {
 	// So gemini:gemini-pro should get ~50% of total selections
 	// Each OpenAI model should get ~10% (50% vendor selection / 5 models)
 	geminiCount := randomCombinations["gemini:gemini-pro"]
-	
+
 	// Gemini should get significantly more selections than any individual OpenAI model
 	// due to the bias in the two-stage selection process
 	for combo, count := range randomCombinations {
 		if combo != "gemini:gemini-pro" {
-			assert.Greater(t, geminiCount, count, 
+			assert.Greater(t, geminiCount, count,
 				"Random selector should show bias: Gemini model should be selected more than OpenAI models")
 		}
 	}
@@ -503,7 +503,6 @@ func TestVendorModelCombination_Structure(t *testing.T) {
 
 func TestEvenDistributionSelector_VendorFiltering(t *testing.T) {
 	selector := NewEvenDistributionSelector()
-
 
 	t.Run("OpenAI vendor filtering", func(t *testing.T) {
 		// Filter to only OpenAI
@@ -596,12 +595,12 @@ func TestEvenDistributionSelector_VendorFiltering(t *testing.T) {
 		// Should have 2 credentials × 3 models = 6 combinations
 		// We can't directly test the count, but we can verify all combinations are possible
 		seenCombinations := make(map[string]bool)
-		
+
 		// Run enough iterations to likely see all combinations
 		for i := 0; i < 50; i++ {
 			selection, err := selector.Select(openaiCreds, openaiModels)
 			require.NoError(t, err)
-			
+
 			key := fmt.Sprintf("%s-%s", selection.Credential.Value, selection.Model)
 			seenCombinations[key] = true
 		}
@@ -609,4 +608,4 @@ func TestEvenDistributionSelector_VendorFiltering(t *testing.T) {
 		// We should see multiple different combinations
 		assert.Greater(t, len(seenCombinations), 1, "Should see multiple different combinations")
 	})
-} 
+}
