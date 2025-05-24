@@ -136,7 +136,10 @@ func addOpenAICompatibilityFields(responseData map[string]interface{}) {
 // replaceModelField replaces the model field with the original requested model
 func replaceModelField(responseData map[string]interface{}, vendor string, originalModel string) {
 	if model, ok := responseData["model"].(string); ok {
-		logger.LogVendorResponse(nil, vendor, model, originalModel, 0, 0)
+		logger.Info("Processing response from actual model",
+			"actual_model", model,
+			"vendor", vendor,
+			"presented_as", originalModel)
 	}
 
 	if originalModel != "" {
