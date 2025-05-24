@@ -245,6 +245,8 @@ func (sp *StreamProcessor) reconstructSSE(chunkData map[string]interface{}) []by
 		return nil
 	}
 
-	// Return the SSE formatted chunk
-	return append([]byte("data: "), modifiedJSON...)
+	// Return the SSE formatted chunk with proper line endings
+	result := append([]byte("data: "), modifiedJSON...)
+	result = append(result, '\n', '\n')
+	return result
 }

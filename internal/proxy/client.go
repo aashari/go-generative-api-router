@@ -252,8 +252,32 @@ func (s *ResponseStandardizer) setCompliantHeaders(w http.ResponseWriter, vendor
 		w.Header().Set(k, v)
 	}
 
+	// Set service identification headers
+	w.Header().Set("Server", "Generative-API-Router/1.0")
+	w.Header().Set("X-Powered-By", "Generative-API-Router")
+	w.Header().Set("X-Vendor-Source", vendor)
+
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+	w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID, X-Response-Time")
+
+	// Set date header
+	w.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
+
+	// Generate and set request ID
+	requestID := "req_" + generateRandomString(16)
+	w.Header().Set("X-Request-ID", requestID)
+
 	// Set content type for JSON responses
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	// Set compression headers if applicable
+	if isCompressed {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Vary", "Accept-Encoding")
+	}
 
 	// Set content length if available
 	if contentLength > 0 {
@@ -263,7 +287,8 @@ func (s *ResponseStandardizer) setCompliantHeaders(w http.ResponseWriter, vendor
 	logger.Debug("Set standardized headers",
 		"vendor", vendor,
 		"content_length", contentLength,
-		"compressed", isCompressed)
+		"compressed", isCompressed,
+		"request_id", requestID)
 }
 
 // processResponseBody handles response body processing
@@ -306,6 +331,12 @@ func (s *ResponseStandardizer) shouldCompress(r *http.Request) bool {
 	// Disable compression for known problematic clients
 	if strings.Contains(userAgent, "curl/") && !strings.Contains(userAgent, "curl/8") {
 		logger.Debug("Disabling compression for older curl client", "user_agent", userAgent)
+		return false
+	}
+
+	// Disable compression for Postman and Insomnia clients
+	if strings.Contains(userAgent, "PostmanRuntime") || strings.Contains(strings.ToLower(userAgent), "insomnia") {
+		logger.Debug("Disabling compression for API testing client", "user_agent", userAgent)
 		return false
 	}
 
