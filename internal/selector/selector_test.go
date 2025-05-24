@@ -1,6 +1,7 @@
 package selector
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 
@@ -498,4 +499,114 @@ func TestVendorModelCombination_Structure(t *testing.T) {
 	assert.Equal(t, "openai", combo.Vendor)
 	assert.Equal(t, "gpt-4", combo.Model)
 	assert.Equal(t, cred, combo.Credential)
+}
+
+func TestEvenDistributionSelector_VendorFiltering(t *testing.T) {
+	selector := NewEvenDistributionSelector()
+
+
+	t.Run("OpenAI vendor filtering", func(t *testing.T) {
+		// Filter to only OpenAI
+		openaiCreds := []config.Credential{
+			{Platform: "openai", Type: "api-key", Value: "sk-openai1"},
+			{Platform: "openai", Type: "api-key", Value: "sk-openai2"},
+		}
+		openaiModels := []config.VendorModel{
+			{Vendor: "openai", Model: "gpt-4o"},
+			{Vendor: "openai", Model: "gpt-4"},
+		}
+
+		// Test multiple selections to verify they're all OpenAI
+		for i := 0; i < 10; i++ {
+			selection, err := selector.Select(openaiCreds, openaiModels)
+			require.NoError(t, err)
+			assert.Equal(t, "openai", selection.Vendor)
+			assert.Contains(t, []string{"gpt-4o", "gpt-4"}, selection.Model)
+			assert.Equal(t, "openai", selection.Credential.Platform)
+		}
+	})
+
+	t.Run("Gemini vendor filtering", func(t *testing.T) {
+		// Filter to only Gemini
+		geminiCreds := []config.Credential{
+			{Platform: "gemini", Type: "api-key", Value: "gemini1"},
+			{Platform: "gemini", Type: "api-key", Value: "gemini2"},
+			{Platform: "gemini", Type: "api-key", Value: "gemini3"},
+		}
+		geminiModels := []config.VendorModel{
+			{Vendor: "gemini", Model: "gemini-2.0-flash"},
+			{Vendor: "gemini", Model: "gemini-pro"},
+		}
+
+		// Test multiple selections to verify they're all Gemini
+		for i := 0; i < 10; i++ {
+			selection, err := selector.Select(geminiCreds, geminiModels)
+			require.NoError(t, err)
+			assert.Equal(t, "gemini", selection.Vendor)
+			assert.Contains(t, []string{"gemini-2.0-flash", "gemini-pro"}, selection.Model)
+			assert.Equal(t, "gemini", selection.Credential.Platform)
+		}
+	})
+
+	t.Run("No credentials for vendor", func(t *testing.T) {
+		// Empty credentials should return error
+		emptyCredentials := []config.Credential{}
+		models := []config.VendorModel{{Vendor: "openai", Model: "gpt-4"}}
+
+		selection, err := selector.Select(emptyCredentials, models)
+		assert.Error(t, err)
+		assert.Nil(t, selection)
+		assert.Contains(t, err.Error(), "no credentials available")
+	})
+
+	t.Run("No models for vendor", func(t *testing.T) {
+		// Empty models should return error
+		credentials := []config.Credential{{Platform: "openai", Type: "api-key", Value: "sk-test"}}
+		emptyModels := []config.VendorModel{}
+
+		selection, err := selector.Select(credentials, emptyModels)
+		assert.Error(t, err)
+		assert.Nil(t, selection)
+		assert.Contains(t, err.Error(), "no models available")
+	})
+
+	t.Run("Mismatched vendor credentials and models", func(t *testing.T) {
+		// OpenAI credentials but Gemini models should return error
+		openaiCreds := []config.Credential{{Platform: "openai", Type: "api-key", Value: "sk-test"}}
+		geminiModels := []config.VendorModel{{Vendor: "gemini", Model: "gemini-pro"}}
+
+		selection, err := selector.Select(openaiCreds, geminiModels)
+		assert.Error(t, err)
+		assert.Nil(t, selection)
+		assert.Contains(t, err.Error(), "no valid vendor-credential-model combinations available")
+	})
+
+	t.Run("Combination count with filtering", func(t *testing.T) {
+		// Test that combination count is correct for filtered inputs
+		openaiCreds := []config.Credential{
+			{Platform: "openai", Type: "api-key", Value: "sk-1"},
+			{Platform: "openai", Type: "api-key", Value: "sk-2"},
+		}
+		openaiModels := []config.VendorModel{
+			{Vendor: "openai", Model: "gpt-4o"},
+			{Vendor: "openai", Model: "gpt-4"},
+			{Vendor: "openai", Model: "gpt-3.5-turbo"},
+		}
+
+		// Should have 2 credentials × 3 models = 6 combinations
+		// We can't directly test the count, but we can verify all combinations are possible
+		seenCombinations := make(map[string]bool)
+		
+		// Run enough iterations to likely see all combinations
+		for i := 0; i < 50; i++ {
+			selection, err := selector.Select(openaiCreds, openaiModels)
+			require.NoError(t, err)
+			
+			key := fmt.Sprintf("%s-%s", selection.Credential.Value, selection.Model)
+			seenCombinations[key] = true
+		}
+
+		// We should see multiple different combinations
+		assert.Greater(t, len(seenCombinations), 1, "Should see multiple different combinations")
+	})
 } 
