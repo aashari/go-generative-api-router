@@ -4,13 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/aashari/go-generative-api-router)](https://github.com/aashari/go-generative-api-router)
 
-A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendors (OpenAI, Gemini) using configurable selection strategies. This router simplifies integration with AI services by providing a unified interface while handling the complexity of multi-vendor management.
+A transparent API router for generative AI services supporting OpenAI, Anthropic, and Google APIs.
 
-<!-- 
-<div align="center">
-  <img src="https://raw.githubusercontent.com/aashari/go-generative-api-router/main/docs/assets/architecture-diagram.png" alt="Architecture Diagram" width="800">
-</div>
--->
+**Note: This PR completes the migration to structured logging to ensure all log messages are properly sanitized and formatted.**
 
 ## Features
 
