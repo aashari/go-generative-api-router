@@ -298,6 +298,8 @@ generative-api-router/
 │   ├── errors/          # Error handling
 │   ├── filter/          # Filtering utilities
 │   ├── handlers/        # HTTP handlers
+│   ├── logger/          # Structured logging system
+│   ├── middleware/      # HTTP middleware (CORS, correlation)
 │   ├── monitoring/      # Metrics collection
 │   ├── proxy/           # Proxy functionality
 │   ├── router/          # Route definitions
@@ -365,7 +367,9 @@ make run-with-logs
 The service supports the following environment variables:
 
 - `PORT`: Server port (default: 8082)
-- `LOG_LEVEL`: Logging level (default: info)
+- `LOG_LEVEL`: Logging level - DEBUG, INFO, WARN, ERROR (default: INFO)
+- `LOG_FORMAT`: Log output format - json, text (default: json)
+- `LOG_OUTPUT`: Log output destination - stdout, stderr (default: stdout)
 
 ### Configuration Files
 
