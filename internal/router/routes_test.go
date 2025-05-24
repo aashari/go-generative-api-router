@@ -203,7 +203,7 @@ func TestSetupRoutes_MetricsMiddleware(t *testing.T) {
 	handler.ServeHTTP(metricsW, metricsReq)
 
 	assert.Equal(t, http.StatusOK, metricsW.Code)
-	
+
 	// Check that metrics contain expected data (JSON format)
 	body := metricsW.Body.String()
 	assert.Contains(t, body, "total_requests", "Metrics should contain request counter")
@@ -257,7 +257,7 @@ func TestSetupRoutes_VendorFilterQuery(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	
+
 	body := w.Body.String()
 	assert.Contains(t, body, "gpt-4", "Response should contain OpenAI model")
 	assert.NotContains(t, body, "gemini-pro", "Response should not contain Gemini model when filtered")
@@ -285,7 +285,7 @@ func TestSetupRoutes_CORS_Headers(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	
+
 	// While not explicitly set in the router, check that basic functionality works
 	// In a real implementation, CORS headers might be added to the middleware
-} 
+}

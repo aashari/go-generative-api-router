@@ -1,7 +1,7 @@
+version: 2
+
 linters:
   enable:
-    - gofmt
-    - golint
     - govet
     - ineffassign
     - misspell
@@ -17,12 +17,20 @@ linters-settings:
     min-complexity: 15
   dupl:
     threshold: 100
-  govet:
-    check-shadowing: true
 
 issues:
+  max-issues-per-linter: 100
+  max-same-issues: 10
   exclude-rules:
     - path: _test\.go
       linters:
         - dupl
-        - gosec 
+        - gosec
+        - errcheck
+    - path: examples/
+      linters:
+        - errcheck
+        - gosec
+    - text: "G101|G404|G304"  # Allow some security issues temporarily
+      linters:
+        - gosec

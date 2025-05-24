@@ -115,7 +115,7 @@ func (s *EvenDistributionSelector) Select(creds []config.Credential, models []co
 	// Randomly select one combination from the flat list
 	selectedCombination := combinations[s.rng.Intn(len(combinations))]
 
-	log.Printf("Even distribution selected combination - Vendor: %s, Model: %s (from %d total combinations)", 
+	log.Printf("Even distribution selected combination - Vendor: %s, Model: %s (from %d total combinations)",
 		selectedCombination.Vendor, selectedCombination.Model, len(combinations))
 
 	return &VendorSelection{

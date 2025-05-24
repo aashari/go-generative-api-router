@@ -28,20 +28,20 @@ func TestResponseStandardizer_SetCompliantHeaders(t *testing.T) {
 			contentLength: 1234,
 			isCompressed:  false,
 			expectedHeaders: map[string]string{
-				"Content-Type":                     "application/json; charset=utf-8",
-				"Content-Length":                   "1234",
-				"Server":                           "Generative-API-Router/1.0",
-				"X-Powered-By":                     "Generative-API-Router",
-				"X-Vendor-Source":                  "openai",
-				"Cache-Control":                    "no-cache, no-store, must-revalidate",
-				"X-Content-Type-Options":           "nosniff",
-				"X-Frame-Options":                  "DENY",
-				"X-XSS-Protection":                 "1; mode=block",
-				"Referrer-Policy":                  "strict-origin-when-cross-origin",
-				"Access-Control-Allow-Origin":      "*",
-				"Access-Control-Allow-Methods":     "POST, GET, OPTIONS, PUT, DELETE",
-				"Access-Control-Allow-Headers":     "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization",
-				"Access-Control-Expose-Headers":    "X-Request-ID, X-Response-Time",
+				"Content-Type":                  "application/json; charset=utf-8",
+				"Content-Length":                "1234",
+				"Server":                        "Generative-API-Router/1.0",
+				"X-Powered-By":                  "Generative-API-Router",
+				"X-Vendor-Source":               "openai",
+				"Cache-Control":                 "no-cache, no-store, must-revalidate",
+				"X-Content-Type-Options":        "nosniff",
+				"X-Frame-Options":               "DENY",
+				"X-XSS-Protection":              "1; mode=block",
+				"Referrer-Policy":               "strict-origin-when-cross-origin",
+				"Access-Control-Allow-Origin":   "*",
+				"Access-Control-Allow-Methods":  "POST, GET, OPTIONS, PUT, DELETE",
+				"Access-Control-Allow-Headers":  "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization",
+				"Access-Control-Expose-Headers": "X-Request-ID, X-Response-Time",
 			},
 		},
 		{
@@ -50,13 +50,13 @@ func TestResponseStandardizer_SetCompliantHeaders(t *testing.T) {
 			contentLength: 5678,
 			isCompressed:  true,
 			expectedHeaders: map[string]string{
-				"Content-Type":                     "application/json; charset=utf-8",
-				"Content-Length":                   "5678",
-				"Content-Encoding":                 "gzip",
-				"Vary":                             "Accept-Encoding",
-				"Server":                           "Generative-API-Router/1.0",
-				"X-Powered-By":                     "Generative-API-Router",
-				"X-Vendor-Source":                  "gemini",
+				"Content-Type":     "application/json; charset=utf-8",
+				"Content-Length":   "5678",
+				"Content-Encoding": "gzip",
+				"Vary":             "Accept-Encoding",
+				"Server":           "Generative-API-Router/1.0",
+				"X-Powered-By":     "Generative-API-Router",
+				"X-Vendor-Source":  "gemini",
 			},
 		},
 		{
@@ -75,25 +75,25 @@ func TestResponseStandardizer_SetCompliantHeaders(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a test response writer
 			w := httptest.NewRecorder()
-			
+
 			// Create standardizer
 			standardizer := NewResponseStandardizer()
-			
+
 			// Call setCompliantHeaders
 			standardizer.setCompliantHeaders(w, tt.vendor, tt.contentLength, tt.isCompressed)
-			
+
 			// Check expected headers
 			for key, expectedValue := range tt.expectedHeaders {
 				actualValue := w.Header().Get(key)
 				assert.Equal(t, expectedValue, actualValue, "Header %s mismatch", key)
 			}
-			
+
 			// Check Date header is present and valid
 			dateHeader := w.Header().Get("Date")
 			assert.NotEmpty(t, dateHeader)
 			_, err := time.Parse(http.TimeFormat, dateHeader)
 			assert.NoError(t, err, "Date header should be in valid HTTP format")
-			
+
 			// Check X-Request-ID is present and has correct format
 			requestID := w.Header().Get("X-Request-ID")
 			assert.NotEmpty(t, requestID, "X-Request-ID header should not be empty")
@@ -210,12 +210,12 @@ func TestResponseStandardizer_ShouldCompress(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			standardizer := NewResponseStandardizer()
-			
+
 			// Create test request
 			req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
 			req.Header.Set("Accept-Encoding", tt.acceptEncoding)
 			req.Header.Set("User-Agent", tt.userAgent)
-			
+
 			// Test shouldCompress
 			result := standardizer.shouldCompress(req)
 			assert.Equal(t, tt.expectCompress, result)
@@ -225,23 +225,23 @@ func TestResponseStandardizer_ShouldCompress(t *testing.T) {
 
 func TestResponseStandardizer_CompressResponseMandatory(t *testing.T) {
 	standardizer := NewResponseStandardizer()
-	
+
 	testData := []byte(`{"test": "data", "long_field": "` + strings.Repeat("a", 1000) + `"}`)
-	
+
 	compressed, err := standardizer.compressResponseMandatory(testData)
 	require.NoError(t, err)
-	
+
 	// Verify compression actually happened
 	assert.Less(t, len(compressed), len(testData), "Compressed data should be smaller")
-	
+
 	// Verify we can decompress it
 	reader, err := gzip.NewReader(bytes.NewReader(compressed))
 	require.NoError(t, err)
 	defer reader.Close()
-	
+
 	decompressed, err := io.ReadAll(reader)
 	require.NoError(t, err)
-	
+
 	assert.Equal(t, testData, decompressed, "Decompressed data should match original")
 }
 
@@ -297,9 +297,9 @@ func TestResponseStandardizer_ValidateVendorResponse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			standardizer := NewResponseStandardizer()
-			
+
 			err := standardizer.validateVendorResponse([]byte(tt.response), tt.vendor)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
@@ -311,9 +311,9 @@ func TestResponseStandardizer_ValidateVendorResponse(t *testing.T) {
 
 func TestAPIClient_SetupResponseHeadersWithVendor(t *testing.T) {
 	tests := []struct {
-		name        string
-		vendor      string
-		isStreaming bool
+		name         string
+		vendor       string
+		isStreaming  bool
 		checkHeaders map[string]string
 	}{
 		{
@@ -342,27 +342,27 @@ func TestAPIClient_SetupResponseHeadersWithVendor(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client := NewAPIClient()
 			w := httptest.NewRecorder()
-			
+
 			// Create a mock vendor response
 			vendorResp := &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{},
 			}
-			
+
 			// Call setupResponseHeadersWithVendor
 			client.setupResponseHeadersWithVendor(w, vendorResp, tt.isStreaming, tt.vendor)
-			
+
 			// Check headers
 			for key, expectedValue := range tt.checkHeaders {
 				actualValue := w.Header().Get(key)
 				assert.Equal(t, expectedValue, actualValue, "Header %s mismatch", key)
 			}
-			
+
 			// For streaming, ensure Content-Length is not set
 			if tt.isStreaming {
 				assert.Empty(t, w.Header().Get("Content-Length"))
 			}
-			
+
 			// Check status code was written
 			assert.Equal(t, http.StatusOK, w.Code)
 		})
@@ -371,22 +371,22 @@ func TestAPIClient_SetupResponseHeadersWithVendor(t *testing.T) {
 
 func TestAddCustomServiceHeader(t *testing.T) {
 	w := httptest.NewRecorder()
-	
+
 	// Test adding custom headers
 	AddCustomServiceHeader(w, "X-Custom-Header", "custom-value")
 	AddCustomServiceHeader(w, "X-Another-Header", "another-value")
-	
+
 	assert.Equal(t, "custom-value", w.Header().Get("X-Custom-Header"))
 	assert.Equal(t, "another-value", w.Header().Get("X-Another-Header"))
 }
 
 func TestHeaderStandardization_VendorHeadersCompletelyDiscarded(t *testing.T) {
 	tests := []struct {
-		name             string
-		vendor           string
-		vendorHeaders    http.Header
-		expectedAbsent   []string
-		expectedPresent  []string
+		name            string
+		vendor          string
+		vendorHeaders   http.Header
+		expectedAbsent  []string
+		expectedPresent []string
 	}{
 		{
 			name:   "OpenAI vendor headers completely discarded",
@@ -403,16 +403,16 @@ func TestHeaderStandardization_VendorHeadersCompletelyDiscarded(t *testing.T) {
 				"Cf-Cache-Status":                []string{"DYNAMIC"},
 				"Alt-Svc":                        []string{"h3=\":443\"; ma=86400"},
 				// Standard HTTP headers from vendor
-				"Server":           []string{"cloudflare"},
-				"Date":             []string{"Mon, 23 May 2025 21:00:00 GMT"},
-				"Vary":             []string{"Origin"},
-				"Content-Type":     []string{"application/json"},
-				"Content-Length":   []string{"1234"},
-				"X-Request-Id":     []string{"req_openai_123456"},
+				"Server":         []string{"cloudflare"},
+				"Date":           []string{"Mon, 23 May 2025 21:00:00 GMT"},
+				"Vary":           []string{"Origin"},
+				"Content-Type":   []string{"application/json"},
+				"Content-Length": []string{"1234"},
+				"X-Request-Id":   []string{"req_openai_123456"},
 			},
 			expectedAbsent: []string{
 				"X-Ratelimit-Limit-Tokens",
-				"X-Ratelimit-Remaining-Tokens", 
+				"X-Ratelimit-Remaining-Tokens",
 				"X-Ratelimit-Reset-Tokens",
 				"X-Ratelimit-Limit-Requests",
 				"X-Ratelimit-Remaining-Requests",
@@ -423,12 +423,12 @@ func TestHeaderStandardization_VendorHeadersCompletelyDiscarded(t *testing.T) {
 				"Vary", // Vendor's Vary header should be replaced
 			},
 			expectedPresent: []string{
-				"Server",         // Our server header
+				"Server", // Our server header
 				"X-Vendor-Source",
 				"X-Powered-By",
-				"Content-Type",   // Standard headers we set
-				"Date",           // Our date
-				"X-Request-ID",   // Our request ID
+				"Content-Type", // Standard headers we set
+				"Date",         // Our date
+				"X-Request-ID", // Our request ID
 			},
 		},
 		{
@@ -436,16 +436,16 @@ func TestHeaderStandardization_VendorHeadersCompletelyDiscarded(t *testing.T) {
 			vendor: "gemini",
 			vendorHeaders: http.Header{
 				// Gemini/Google specific headers
-				"X-Goog-Api-Version":    []string{"v1beta"},
+				"X-Goog-Api-Version":     []string{"v1beta"},
 				"X-Goog-Safety-Encoding": []string{"base64"},
-				"X-Goog-Safety-Schema":  []string{"1.0.0"},
-				"Grpc-Server-Stats-Bin": []string{"AAABBBCCCDDDeeefff"},
-				"X-Goog-Trace-Id":       []string{"abc123def456ghi789"},
+				"X-Goog-Safety-Schema":   []string{"1.0.0"},
+				"Grpc-Server-Stats-Bin":  []string{"AAABBBCCCDDDeeefff"},
+				"X-Goog-Trace-Id":        []string{"abc123def456ghi789"},
 				// Standard HTTP headers from vendor
-				"Server":         []string{"scaffolding on HTTPServer2"},
-				"Vary":           []string{"Origin, X-Origin, Referer"},
-				"Cache-Control":  []string{"private"},
-				"Content-Type":   []string{"application/json; charset=UTF-8"},
+				"Server":        []string{"scaffolding on HTTPServer2"},
+				"Vary":          []string{"Origin, X-Origin, Referer"},
+				"Cache-Control": []string{"private"},
+				"Content-Type":  []string{"application/json; charset=UTF-8"},
 			},
 			expectedAbsent: []string{
 				"X-Goog-Api-Version",
@@ -467,40 +467,40 @@ func TestHeaderStandardization_VendorHeadersCompletelyDiscarded(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create test response writer
 			w := httptest.NewRecorder()
-			
+
 			// Create API client and call setupResponseHeadersWithVendor
 			client := NewAPIClient()
 			vendorResp := &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     tt.vendorHeaders,
 			}
-			
+
 			// This simulates what happens in the actual flow
 			client.setupResponseHeadersWithVendor(w, vendorResp, false, tt.vendor)
-			
+
 			// Verify all vendor-specific headers are absent
 			for _, header := range tt.expectedAbsent {
 				value := w.Header().Get(header)
 				assert.Empty(t, value, "Vendor header '%s' should be completely discarded, but found: %s", header, value)
 			}
-			
+
 			// Verify our standard headers are present
 			for _, header := range tt.expectedPresent {
 				value := w.Header().Get(header)
 				assert.NotEmpty(t, value, "Standard header '%s' should be present", header)
 			}
-			
+
 			// Verify specific header values
 			assert.Equal(t, "Generative-API-Router/1.0", w.Header().Get("Server"), "Server header should be our service, not vendor's")
 			assert.Equal(t, tt.vendor, w.Header().Get("X-Vendor-Source"), "X-Vendor-Source should match vendor")
 			assert.Equal(t, "Generative-API-Router", w.Header().Get("X-Powered-By"))
 			assert.Equal(t, "no-cache, no-store, must-revalidate", w.Header().Get("Cache-Control"), "Cache-Control should be our standard value")
-			
+
 			// Verify our Date header is set (not vendor's)
 			ourDate := w.Header().Get("Date")
 			assert.NotEmpty(t, ourDate)
 			assert.NotEqual(t, tt.vendorHeaders.Get("Date"), ourDate, "Date header should be freshly generated, not vendor's")
-			
+
 			// Verify our X-Request-ID format
 			ourRequestID := w.Header().Get("X-Request-ID")
 			assert.True(t, strings.HasPrefix(ourRequestID, "req_"), "X-Request-ID should use our format")
@@ -512,12 +512,12 @@ func TestHeaderStandardization_VendorHeadersCompletelyDiscarded(t *testing.T) {
 func TestHeaderStandardization_ConsistencyAcrossVendors(t *testing.T) {
 	vendors := []string{"openai", "gemini", "anthropic"}
 	headerSets := make(map[string]http.Header)
-	
+
 	// Collect headers from each vendor
 	for _, vendor := range vendors {
 		w := httptest.NewRecorder()
 		client := NewAPIClient()
-		
+
 		vendorResp := &http.Response{
 			StatusCode: http.StatusOK,
 			Header: http.Header{
@@ -527,15 +527,15 @@ func TestHeaderStandardization_ConsistencyAcrossVendors(t *testing.T) {
 				"Vary":                        []string{vendor + "-vary"},
 			},
 		}
-		
+
 		client.setupResponseHeadersWithVendor(w, vendorResp, false, vendor)
 		headerSets[vendor] = w.Header()
 	}
-	
+
 	// Verify consistency across vendors
 	baseVendor := vendors[0]
 	baseHeaders := headerSets[baseVendor]
-	
+
 	// These headers should be identical across all vendors
 	consistentHeaders := []string{
 		"Server",
@@ -549,28 +549,28 @@ func TestHeaderStandardization_ConsistencyAcrossVendors(t *testing.T) {
 		"Access-Control-Expose-Headers",
 		"Content-Type",
 	}
-	
+
 	for _, vendor := range vendors[1:] {
 		vendorHeaders := headerSets[vendor]
-		
+
 		for _, header := range consistentHeaders {
 			baseValue := baseHeaders.Get(header)
 			vendorValue := vendorHeaders.Get(header)
-			assert.Equal(t, baseValue, vendorValue, 
+			assert.Equal(t, baseValue, vendorValue,
 				"Header '%s' should be consistent across vendors. %s: '%s', %s: '%s'",
 				header, baseVendor, baseValue, vendor, vendorValue)
 		}
-		
+
 		// Verify X-Vendor-Source is different but present
 		assert.NotEqual(t, baseHeaders.Get("X-Vendor-Source"), vendorHeaders.Get("X-Vendor-Source"),
 			"X-Vendor-Source should be different for each vendor")
 		assert.Equal(t, vendor, vendorHeaders.Get("X-Vendor-Source"),
 			"X-Vendor-Source should match the vendor name")
-		
+
 		// Verify no vendor-specific headers leaked through
 		for key := range vendorHeaders {
 			assert.False(t, strings.Contains(key, "X-Vendor-Specific-"),
 				"Vendor-specific header '%s' should not be present", key)
 		}
 	}
-} 
+}

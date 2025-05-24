@@ -13,7 +13,7 @@ import (
 func TestNewApp_Success(t *testing.T) {
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
-	
+
 	// Create temporary test files
 	credsContent := `[
 		{"platform": "openai", "type": "api-key", "value": "test-key"},
@@ -43,7 +43,7 @@ func TestNewApp_Success(t *testing.T) {
 	// Temporarily rename the files to match expected names
 	originalCredsPath := "configs/credentials.json"
 	originalModelsPath := "configs/models.json"
-	
+
 	// Backup original files if they exist
 	credsBackup := false
 	if _, err := os.Stat(originalCredsPath); err == nil {
@@ -74,7 +74,7 @@ func TestNewApp_Success(t *testing.T) {
 	app, err := NewApp()
 	require.NoError(t, err)
 	require.NotNil(t, app)
-	
+
 	assert.NotNil(t, app.APIClient)
 	assert.NotNil(t, app.ModelSelector)
 	assert.NotNil(t, app.APIHandlers)
@@ -85,11 +85,11 @@ func TestNewApp_Success(t *testing.T) {
 func TestNewApp_MissingCredentialsFile(t *testing.T) {
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
-	
+
 	// Temporarily rename credentials.json if it exists
 	originalPath := "configs/credentials.json"
 	backupPath := originalPath + ".test_backup"
-	
+
 	if _, err := os.Stat(originalPath); err == nil {
 		os.Rename(originalPath, backupPath)
 		defer os.Rename(backupPath, originalPath)
@@ -104,14 +104,14 @@ func TestNewApp_MissingCredentialsFile(t *testing.T) {
 func TestNewApp_InvalidCredentialsJSON(t *testing.T) {
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
-	
+
 	// Create invalid JSON file
 	invalidContent := `{invalid json`
-	
+
 	// Backup and create test file
 	originalPath := "configs/credentials.json"
 	backupPath := originalPath + ".test_backup"
-	
+
 	if _, err := os.Stat(originalPath); err == nil {
 		os.Rename(originalPath, backupPath)
 		defer os.Rename(backupPath, originalPath)
@@ -130,16 +130,16 @@ func TestNewApp_InvalidCredentialsJSON(t *testing.T) {
 func TestNewApp_MissingModelsFile(t *testing.T) {
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
-	
+
 	// Create valid credentials file
 	credsContent := `[{"platform": "openai", "type": "api-key", "value": "test-key"}]`
-	
+
 	// Backup original files
 	credsPath := "configs/credentials.json"
 	modelsPath := "configs/models.json"
 	credsBackup := false
 	modelsBackup := false
-	
+
 	if _, err := os.Stat(credsPath); err == nil {
 		os.Rename(credsPath, credsPath+".bak")
 		credsBackup = true
@@ -148,7 +148,7 @@ func TestNewApp_MissingModelsFile(t *testing.T) {
 		os.Rename(modelsPath, modelsPath+".bak")
 		modelsBackup = true
 	}
-	
+
 	defer func() {
 		os.Remove(credsPath)
 		if credsBackup {
@@ -175,7 +175,7 @@ func TestNewApp_MissingModelsFile(t *testing.T) {
 func TestNewApp_ValidationError(t *testing.T) {
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
-	
+
 	// Create credentials and models that will fail validation
 	// (models reference vendors without credentials)
 	credsContent := `[{"platform": "openai", "type": "api-key", "value": "test-key"}]`
@@ -189,16 +189,16 @@ func TestNewApp_ValidationError(t *testing.T) {
 	modelsPath := "configs/models.json"
 	credsBackup := false
 	modelsBackup := false
-	
+
 	if _, err := os.Stat(credsPath); err == nil {
 		os.Rename(credsPath, credsPath+".bak")
 		credsBackup = true
 	}
 	if _, err := os.Stat(modelsPath); err == nil {
-		os.Rename(modelsPath, modelsPath+".bak") 
+		os.Rename(modelsPath, modelsPath+".bak")
 		modelsBackup = true
 	}
-	
+
 	defer func() {
 		os.Remove(credsPath)
 		os.Remove(modelsPath)
@@ -224,7 +224,7 @@ func TestNewApp_ValidationError(t *testing.T) {
 func TestApp_SetupRoutes(t *testing.T) {
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
-	
+
 	// Create minimal valid config files
 	credsContent := `[{"platform": "openai", "type": "api-key", "value": "test"}]`
 	modelsContent := `[{"vendor": "openai", "model": "gpt-4"}]`
@@ -234,7 +234,7 @@ func TestApp_SetupRoutes(t *testing.T) {
 	modelsPath := "configs/models.json"
 	credsBackup := false
 	modelsBackup := false
-	
+
 	if _, err := os.Stat(credsPath); err == nil {
 		os.Rename(credsPath, credsPath+".bak")
 		credsBackup = true
@@ -243,7 +243,7 @@ func TestApp_SetupRoutes(t *testing.T) {
 		os.Rename(modelsPath, modelsPath+".bak")
 		modelsBackup = true
 	}
-	
+
 	defer func() {
 		os.Remove(credsPath)
 		os.Remove(modelsPath)
@@ -280,7 +280,7 @@ func TestApp_SetupRoutes(t *testing.T) {
 func TestNewApp_EmptyCredentials(t *testing.T) {
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
-	
+
 	// Create empty credentials and models files
 	credsContent := `[]`
 	modelsContent := `[]`
@@ -290,7 +290,7 @@ func TestNewApp_EmptyCredentials(t *testing.T) {
 	modelsPath := "configs/models.json"
 	credsBackup := false
 	modelsBackup := false
-	
+
 	if _, err := os.Stat(credsPath); err == nil {
 		os.Rename(credsPath, credsPath+".bak")
 		credsBackup = true
@@ -299,7 +299,7 @@ func TestNewApp_EmptyCredentials(t *testing.T) {
 		os.Rename(modelsPath, modelsPath+".bak")
 		modelsBackup = true
 	}
-	
+
 	defer func() {
 		os.Remove(credsPath)
 		os.Remove(modelsPath)
@@ -321,5 +321,3 @@ func TestNewApp_EmptyCredentials(t *testing.T) {
 	assert.Nil(t, app)
 	assert.Contains(t, err.Error(), "configuration validation failed")
 }
-
-
