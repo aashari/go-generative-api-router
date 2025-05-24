@@ -43,7 +43,9 @@ func NewAPIHandlers(creds []config.Credential, models []config.VendorModel, clie
 func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	logger.DebugCtx(r.Context(), "Health check endpoint accessed")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	if _, err := w.Write([]byte("OK")); err != nil {
+		logger.WarnCtx(r.Context(), "Failed to write health check response", "error", err)
+	}
 }
 
 // ChatCompletionsHandler handles the chat completions endpoint
@@ -148,5 +150,7 @@ func (h *APIHandlers) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write(jsonResp)
+	if _, err := w.Write(jsonResp); err != nil {
+		logger.WarnCtx(r.Context(), "Failed to write models response", "error", err)
+	}
 }

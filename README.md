@@ -381,6 +381,11 @@ The service supports the following environment variables:
   - Encrypted configuration files
 - Consider implementing rate limiting for production deployments
 - Use HTTPS in production environments
+- This project uses `gosec` for static application security testing (SAST) to identify potential vulnerabilities. We strive to address all critical findings.
+- **Random Number Generation**: In certain non-security-critical areas, such as model selection (`internal/selector/selector.go`), `math/rand` is used instead of `crypto/rand`. This is a deliberate choice for performance reasons, as the randomness in this context does not have security implications.
+- **Addressed Issues**: Other security improvements implemented include configuring HTTP server timeouts, setting secure file permissions for logs, robust error handling, and sanitizing file paths to prevent inclusion vulnerabilities.
+
+We are committed to maintaining a secure codebase and welcome contributions that further enhance security.
 
 ## Contributing
 

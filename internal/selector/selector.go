@@ -30,7 +30,10 @@ type RandomSelector struct {
 func NewRandomSelector() *RandomSelector {
 	// In Go 1.20+, math/rand is automatically seeded
 	// For a shared selector, we could pass a custom rng for more control and testing
+	// math/rand is used for model selection, which is not security-critical.
+	// Using crypto/rand would incur unnecessary performance overhead.
 	return &RandomSelector{
+		// #nosec G404
 		rng: rand.New(rand.NewSource(rand.Int63())), // This ensures each selector has its own randomness
 	}
 }
@@ -74,7 +77,10 @@ type EvenDistributionSelector struct {
 
 // NewEvenDistributionSelector creates a new even distribution selector
 func NewEvenDistributionSelector() *EvenDistributionSelector {
+	// math/rand is used for model selection, which is not security-critical.
+	// Using crypto/rand would incur unnecessary performance overhead.
 	return &EvenDistributionSelector{
+		// #nosec G404
 		rng: rand.New(rand.NewSource(rand.Int63())),
 	}
 }

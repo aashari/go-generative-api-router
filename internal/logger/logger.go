@@ -57,7 +57,7 @@ func Init(config Config) error {
 	case "stderr":
 		output = os.Stderr
 	default:
-		output, err = os.OpenFile(config.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		output, err = os.OpenFile(config.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
 			return fmt.Errorf("failed to open log file %s: %w", config.Output, err)
 		}
@@ -127,7 +127,12 @@ func sanitizeValue(value string) string {
 func WithContext(ctx context.Context) *slog.Logger {
 	if Logger == nil {
 		// Fallback to default if not initialized
-		Init(DefaultConfig)
+		if err := Init(DefaultConfig); err != nil {
+			// If default logger initialization fails, log to stderr and use a temporary stderr logger for this context
+			fmt.Fprintf(os.Stderr, "FATAL: Failed to initialize default logger in WithContext: %v\n", err)
+			// Return a temporary, minimal logger that writes to stderr
+			return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: LevelDebug}))
+		}
 	}
 
 	logger := Logger
