@@ -1,8 +1,8 @@
 package main
 
 import (
-	"log"
 	"net/http"
+	"os"
 
 	"github.com/aashari/go-generative-api-router/internal/app"
 	"github.com/aashari/go-generative-api-router/internal/logger"
@@ -50,14 +50,17 @@ func CORSMiddleware(next http.Handler) http.Handler {
 func main() {
 	// Initialize structured logging
 	if err := logger.InitFromEnv(); err != nil {
-		log.Fatalf("Failed to initialize logger: %v", err)
+		// Can't use logger here as it failed to initialize
+		// Fall back to basic output and exit
+		os.Stderr.WriteString("FATAL: Failed to initialize logger: " + err.Error() + "\n")
+		os.Exit(1)
 	}
 
 	// Create and initialize the application
 	app, err := app.NewApp()
 	if err != nil {
 		logger.Error("Failed to initialize application", "error", err)
-		log.Fatalf("Failed to initialize application: %v", err)
+		os.Exit(1)
 	}
 
 	// Get router with all routes configured
@@ -72,6 +75,6 @@ func main() {
 	err = http.ListenAndServe("0.0.0.0:8082", corsHandler)
 	if err != nil {
 		logger.Error("Server failed", "error", err)
-		log.Fatalf("Server failed: %v", err)
+		os.Exit(1)
 	}
 }

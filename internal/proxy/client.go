@@ -8,12 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/selector"
 )
 
@@ -150,7 +150,7 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 		w.Header().Set("Connection", "keep-alive")
 		// Remove Content-Length for streaming as it's chunked
 		w.Header().Del("Content-Length")
-		log.Printf("STREAMING HEADERS: Set SSE headers for vendor %s", vendor)
+		logger.Info("Set streaming headers", "vendor", vendor)
 	}
 
 	// Write status code after setting all headers
@@ -165,14 +165,16 @@ func AddCustomServiceHeader(w http.ResponseWriter, key, value string) {
 
 // handleStreaming processes streaming responses
 func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string) error {
-	log.Printf("VERBOSE_DEBUG: SendRequest - Streaming - Vendor passed for processing: '%s'", selection.Vendor)
+	logger.InfoCtx(r.Context(), "Processing streaming request", "vendor", selection.Vendor)
 
 	// Generate consistent conversation-level values for streaming responses
 	conversationID := ChatCompletionID()
 	timestamp := time.Now().Unix()
 	systemFingerprint := SystemFingerprint()
-	log.Printf("Generated consistent streaming values: ID=%s, timestamp=%d, fingerprint=%s",
-		conversationID, timestamp, systemFingerprint)
+	logger.InfoCtx(r.Context(), "Generated streaming values",
+		"id", conversationID,
+		"timestamp", timestamp,
+		"fingerprint", systemFingerprint)
 
 	// Create stream processor
 	streamProcessor := NewStreamProcessor(conversationID, timestamp, systemFingerprint, selection.Vendor, originalModel)
@@ -180,16 +182,19 @@ func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp
 	// Get content encoding for gzip handling
 	contentEncoding := resp.Header.Get("Content-Encoding")
 	if contentEncoding != "" {
-		log.Printf("Response has Content-Encoding: %s for vendor: %s, streaming: true", contentEncoding, selection.Vendor)
+		logger.InfoCtx(r.Context(), "Response content encoding",
+			"encoding", contentEncoding,
+			"vendor", selection.Vendor,
+			"streaming", true)
 	}
 
 	// Create the appropriate reader based on content encoding
 	var reader *bufio.Reader
 	if contentEncoding == "gzip" {
-		log.Printf("Streaming response is gzip encoded, creating gzip reader")
+		logger.InfoCtx(r.Context(), "Setting up gzip reader for streaming", "vendor", selection.Vendor)
 		gzipReader, err := gzip.NewReader(resp.Body)
 		if err != nil {
-			log.Printf("Error creating gzip reader for streaming: %v", err)
+			logger.ErrorCtx(r.Context(), "Error creating gzip reader for streaming", "error", err)
 			return fmt.Errorf("error creating gzip reader for streaming: %w", err)
 		}
 		defer gzipReader.Close()
@@ -198,301 +203,318 @@ func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp
 		reader = bufio.NewReader(resp.Body)
 	}
 
-	// Get flusher for streaming responses
-	var flusher http.Flusher
-	if f, ok := w.(http.Flusher); ok {
-		flusher = f
-	} else {
-		log.Printf("Warning: ResponseWriter does not support flushing")
+	// Try to get a flusher from the response writer
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		logger.WarnCtx(r.Context(), "ResponseWriter does not support flushing")
 	}
 
-	// Process streaming response
 	return c.processStreamingResponse(w, reader, streamProcessor, flusher)
 }
 
-// validateVendorResponse validates that the vendor response meets our standards
+// validateVendorResponse validates JSON responses from vendors
 func (s *ResponseStandardizer) validateVendorResponse(body []byte, vendor string) error {
-	if !s.enableValidation {
-		return nil
+	if len(body) == 0 {
+		logger.Error("Empty response from vendor", "vendor", vendor)
+		return ErrInvalidResponse
 	}
 
-	// Basic JSON validation
-	if !json.Valid(body) {
-		log.Printf("VALIDATION ERROR: Invalid JSON from vendor %s", vendor)
-		return fmt.Errorf("%w: invalid JSON from vendor %s", ErrInvalidResponse, vendor)
+	// Quick check if the response is valid JSON
+	if !bytes.HasPrefix(bytes.TrimSpace(body), []byte("{")) && !bytes.HasPrefix(bytes.TrimSpace(body), []byte("[")) {
+		logger.Error("Invalid JSON from vendor", "vendor", vendor)
+		return ErrInvalidResponse
 	}
 
-	// Parse and validate structure
-	var response map[string]interface{}
-	if err := json.Unmarshal(body, &response); err != nil {
-		log.Printf("VALIDATION ERROR: Failed to parse JSON from vendor %s: %v", vendor, err)
-		return fmt.Errorf("%w: failed to parse response from vendor %s", ErrInvalidResponse, vendor)
+	// Try to parse the JSON
+	var responseData map[string]interface{}
+	if err := json.Unmarshal(body, &responseData); err != nil {
+		logger.Error("Failed to parse JSON from vendor", "vendor", vendor, "error", err)
+		return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
 
-	// Validate required fields based on OpenAI standard
-	requiredFields := []string{"choices", "created", "id", "model", "object"}
+	// Basic validation: check for required fields in non-error responses
+	requiredFields := []string{"id", "object", "choices"}
 	for _, field := range requiredFields {
-		if _, exists := response[field]; !exists {
-			log.Printf("VALIDATION ERROR: Missing required field '%s' from vendor %s", field, vendor)
-			return fmt.Errorf("%w: missing required field '%s' from vendor %s", ErrInvalidResponse, field, vendor)
+		if _, ok := responseData[field]; !ok && !isErrorResponse(responseData) {
+			logger.Error("Missing required field from vendor", "field", field, "vendor", vendor)
+			return fmt.Errorf("%w: missing required field '%s'", ErrInvalidResponse, field)
 		}
 	}
 
-	log.Printf("VALIDATION SUCCESS: Response from vendor %s passed validation", vendor)
+	logger.Debug("Response validation successful", "vendor", vendor)
 	return nil
 }
 
-// setCompliantHeaders sets all standard headers with complete HTTP compliance
+// setCompliantHeaders sets standardized headers for all responses
 func (s *ResponseStandardizer) setCompliantHeaders(w http.ResponseWriter, vendor string, contentLength int, isCompressed bool) {
-	// SECURITY HEADERS - Always applied for security compliance
-	for key, value := range s.standardHeaders {
-		w.Header().Set(key, value)
+	// Set standard security and cache headers
+	for k, v := range s.standardHeaders {
+		w.Header().Set(k, v)
 	}
 
-	// CORS HEADERS - Complete CORS compliance
+	// Set service identification headers
+	w.Header().Set("Server", "Generative-API-Router/1.0")
+	w.Header().Set("X-Powered-By", "Generative-API-Router")
+	w.Header().Set("X-Vendor-Source", vendor)
+
+	// Set CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 	w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID, X-Response-Time")
 
-	// CONTENT HEADERS - HTTP compliance
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Content-Length", strconv.Itoa(contentLength))
+	// Set date header
+	w.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
 
-	// COMPRESSION HEADERS - Mandatory for all responses
+	// Generate and set request ID
+	requestID := "req_" + generateRandomString(16)
+	w.Header().Set("X-Request-ID", requestID)
+
+	// Set content type for JSON responses
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	// Set compression headers if applicable
 	if isCompressed {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Set("Vary", "Accept-Encoding")
 	}
 
-	// SERVICE IDENTIFICATION
-	w.Header().Set("X-Powered-By", "Generative-API-Router")
-	w.Header().Set("X-Vendor-Source", vendor)
-	w.Header().Set("X-Request-ID", RequestID())
+	// Set content length if available
+	if contentLength > 0 {
+		w.Header().Set("Content-Length", strconv.Itoa(contentLength))
+	}
 
-	// STANDARD HTTP HEADERS - Generated by our service (NO vendor pass-through)
-	w.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
-	w.Header().Set("Server", "Generative-API-Router/1.0")
-
-	log.Printf("COMPLIANT HEADERS: Set standardized headers for vendor %s (content-length: %d, compressed: %t)",
-		vendor, contentLength, isCompressed)
+	logger.Debug("Set standardized headers",
+		"vendor", vendor,
+		"content_length", contentLength,
+		"compressed", isCompressed,
+		"request_id", requestID)
 }
 
-// processResponseBody handles gzip decompression and response processing
+// processResponseBody handles response body processing
 func (s *ResponseStandardizer) processResponseBody(body io.Reader, contentEncoding string, vendor string) ([]byte, error) {
-	var reader io.Reader = body
-
-	// Handle gzip decompression
-	if strings.Contains(strings.ToLower(contentEncoding), "gzip") {
-		log.Printf("GZIP PROCESSING: Decompressing gzip response from vendor %s", vendor)
+	if contentEncoding == "gzip" {
+		logger.Debug("Decompressing gzip response", "vendor", vendor)
 		gzipReader, err := gzip.NewReader(body)
 		if err != nil {
-			log.Printf("GZIP ERROR: Failed to create gzip reader for vendor %s: %v", vendor, err)
-			return nil, fmt.Errorf("gzip decompression error for vendor %s: %w", vendor, err)
+			logger.Error("Failed to create gzip reader", "vendor", vendor, "error", err)
+			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
 		defer gzipReader.Close()
-		reader = gzipReader
+		body = gzipReader
 	}
 
-	// Read the response body
-	responseBody, err := io.ReadAll(reader)
+	// Read the entire response body
+	responseBody, err := io.ReadAll(body)
 	if err != nil {
-		log.Printf("BODY READ ERROR: Failed to read response from vendor %s: %v", vendor, err)
-		return nil, fmt.Errorf("failed to read response body from vendor %s: %w", vendor, err)
+		logger.Error("Failed to read response", "vendor", vendor, "error", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	log.Printf("BODY PROCESSING: Successfully processed %d bytes from vendor %s (gzip: %t)",
-		len(responseBody), vendor, strings.Contains(strings.ToLower(contentEncoding), "gzip"))
-
+	logger.Debug("Processed response body",
+		"bytes", len(responseBody),
+		"vendor", vendor,
+		"gzipped", contentEncoding == "gzip")
 	return responseBody, nil
 }
 
-// shouldCompress determines if we should compress based on client's Accept-Encoding header (HTTP compliance)
+// shouldCompress determines if compression should be applied
 func (s *ResponseStandardizer) shouldCompress(r *http.Request) bool {
 	if !s.enableGzip {
 		return false
 	}
 
-	// Check User-Agent for clients that have compression display issues
-	userAgent := strings.ToLower(r.Header.Get("User-Agent"))
-	if strings.Contains(userAgent, "postman") || strings.Contains(userAgent, "insomnia") || strings.Contains(userAgent, "paw") {
-		log.Printf("COMPRESSION CHECK: Detected client with display issues (%s), disabling compression", userAgent)
+	// Check Accept-Encoding header
+	acceptEncoding := r.Header.Get("Accept-Encoding")
+	userAgent := r.Header.Get("User-Agent")
+
+	// Disable compression for known problematic clients
+	if strings.Contains(userAgent, "curl/") && !strings.Contains(userAgent, "curl/8") {
+		logger.Debug("Disabling compression for older curl client", "user_agent", userAgent)
 		return false
 	}
 
-	// Only compress if client explicitly requests it via Accept-Encoding header
-	acceptEncoding := r.Header.Get("Accept-Encoding")
-	clientWantsGzip := strings.Contains(strings.ToLower(acceptEncoding), "gzip")
+	// Disable compression for Postman and Insomnia clients
+	if strings.Contains(userAgent, "PostmanRuntime") || strings.Contains(strings.ToLower(userAgent), "insomnia") {
+		logger.Debug("Disabling compression for API testing client", "user_agent", userAgent)
+		return false
+	}
 
-	log.Printf("COMPRESSION CHECK: Client Accept-Encoding='%s', User-Agent='%s', will compress=%t",
-		acceptEncoding, userAgent, clientWantsGzip)
-
-	return clientWantsGzip
+	logger.Debug("Compression check",
+		"accept_encoding", acceptEncoding,
+		"user_agent", userAgent,
+		"will_compress", strings.Contains(acceptEncoding, "gzip"))
+	return strings.Contains(acceptEncoding, "gzip")
 }
 
-// compressResponseMandatory compresses the response when client requests it
+// compressResponseMandatory compresses response data
 func (s *ResponseStandardizer) compressResponseMandatory(body []byte) ([]byte, error) {
-	// Compress the response (called only when client requests compression)
 	var buf bytes.Buffer
 	gzipWriter := gzip.NewWriter(&buf)
 
-	if _, err := gzipWriter.Write(body); err != nil {
-		log.Printf("GZIP COMPRESSION ERROR: %v", err)
-		return nil, fmt.Errorf("gzip compression error: %w", err)
+	_, err := gzipWriter.Write(body)
+	if err != nil {
+		logger.Error("Gzip compression error", "error", err)
+		return body, err
 	}
 
-	if err := gzipWriter.Close(); err != nil {
-		log.Printf("GZIP COMPRESSION CLOSE ERROR: %v", err)
-		return nil, fmt.Errorf("gzip compression close error: %w", err)
+	err = gzipWriter.Close()
+	if err != nil {
+		logger.Error("Gzip compression close error", "error", err)
+		return body, err
 	}
 
-	compressionRatio := float64(len(body)-buf.Len()) / float64(len(body)) * 100
-	log.Printf("GZIP COMPRESSION: Compressed %d bytes to %d bytes (%.1f%% reduction)",
-		len(body), buf.Len(), compressionRatio)
-
+	logger.Debug("Compressed response",
+		"original_bytes", len(body),
+		"compressed_bytes", buf.Len(),
+		"reduction_percent", float64(len(body)-buf.Len())*100/float64(len(body)))
 	return buf.Bytes(), nil
 }
 
-// compressStreamingChunk compresses individual streaming chunks (mandatory compression)
+// compressStreamingChunk compresses a streaming chunk
 func (s *ResponseStandardizer) compressStreamingChunk(body []byte) ([]byte, error) {
-	// Always compress streaming chunks for consistency
 	var buf bytes.Buffer
 	gzipWriter := gzip.NewWriter(&buf)
 
-	if _, err := gzipWriter.Write(body); err != nil {
-		log.Printf("STREAMING GZIP COMPRESSION ERROR: %v", err)
-		return nil, fmt.Errorf("streaming gzip compression error: %w", err)
+	_, err := gzipWriter.Write(body)
+	if err != nil {
+		logger.Error("Streaming gzip compression error", "error", err)
+		return body, err
 	}
 
-	if err := gzipWriter.Close(); err != nil {
-		log.Printf("STREAMING GZIP COMPRESSION CLOSE ERROR: %v", err)
-		return nil, fmt.Errorf("streaming gzip compression close error: %w", err)
+	err = gzipWriter.Close()
+	if err != nil {
+		logger.Error("Streaming gzip compression close error", "error", err)
+		return body, err
 	}
 
-	log.Printf("STREAMING GZIP: Compressed chunk from %d to %d bytes", len(body), buf.Len())
-
+	logger.Debug("Compressed streaming chunk", "original_bytes", len(body), "compressed_bytes", buf.Len())
 	return buf.Bytes(), nil
 }
 
-// processStreamingResponse handles the actual streaming response processing
+// processStreamingResponse handles streaming SSE responses
 func (c *APIClient) processStreamingResponse(w http.ResponseWriter, reader *bufio.Reader, streamProcessor *StreamProcessor, flusher http.Flusher) error {
 	for {
-		// Read a line up to \n
-		line, err := reader.ReadBytes('\n')
+		// Read the "data: " line
+		line, err := reader.ReadString('\n')
 		if err != nil {
-			if err != io.EOF {
-				log.Printf("Error reading stream: %v", err)
+			if err == io.EOF {
+				return nil
 			}
-			break
+			logger.Error("Error reading stream", "error", err)
+			return fmt.Errorf("error reading stream: %w", err)
 		}
 
-		// Process data lines
-		if bytes.HasPrefix(line, []byte("data: ")) {
-			// Check if it's the [DONE] marker
-			if bytes.Contains(line, []byte("[DONE]")) {
-				// Write the [DONE] marker with proper SSE format
-				w.Write([]byte("data: [DONE]\n\n"))
-				if flusher != nil {
-					flusher.Flush()
-				}
-				// Exit the loop after [DONE] to properly close the connection
-				break
-			}
-
-			// Use stream processor to handle all the modifications
-			modifiedLine := streamProcessor.ProcessChunk(line)
-
-			// Write the modified line which already includes proper SSE formatting
-			w.Write(modifiedLine)
-
-			// CRITICAL: Flush after each chunk
+		// Check for [DONE] message
+		if strings.Contains(line, "[DONE]") {
+			// Forward the [DONE] message
+			_, err = w.Write([]byte("data: [DONE]\n\n"))
 			if flusher != nil {
 				flusher.Flush()
 			}
+			return err
+		}
 
-			// Skip the empty line that follows a data line in SSE format
-			// since ProcessChunk already adds the required newlines
-			nextLine, err := reader.ReadBytes('\n')
+		// Process the chunk
+		processedChunk := streamProcessor.ProcessChunk([]byte(line))
+		if processedChunk == nil {
+			continue // Skip invalid chunks
+		}
+
+		// Handle SSE line endings (needs \n\n)
+		if !bytes.HasSuffix(processedChunk, []byte("\n\n")) {
+			if bytes.HasSuffix(processedChunk, []byte("\n")) {
+				processedChunk = append(processedChunk, '\n')
+			} else {
+				processedChunk = append(processedChunk, '\n', '\n')
+			}
+		}
+
+		// Write the processed chunk
+		_, err = w.Write(processedChunk)
+		if err != nil {
+			return fmt.Errorf("error writing chunk: %w", err)
+		}
+
+		// Flush to ensure streaming
+		if flusher != nil {
+			flusher.Flush()
+		}
+
+		// Some SSE implementations have an extra newline after data
+		if !strings.HasSuffix(line, "\n\n") {
+			_, err := reader.ReadString('\n')
 			if err != nil && err != io.EOF {
-				log.Printf("Error reading empty line after data: %v", err)
-			}
-			// If it's not an empty line, we need to process it
-			if len(bytes.TrimSpace(nextLine)) > 0 {
-				// Put it back by creating a new reader with the line prepended
-				remaining, _ := io.ReadAll(reader)
-				reader = bufio.NewReader(io.MultiReader(bytes.NewReader(nextLine), bytes.NewReader(remaining)))
-			}
-		} else if len(bytes.TrimSpace(line)) == 0 {
-			// This is an empty line not following a data line, pass it through
-			w.Write(line)
-			if flusher != nil {
-				flusher.Flush()
-			}
-		} else {
-			// For non-data, non-empty lines, pass through unchanged
-			w.Write(line)
-			if flusher != nil {
-				flusher.Flush()
+				logger.Error("Error reading empty line after data", "error", err)
 			}
 		}
 	}
-	return nil
 }
 
-// handleNonStreamingWithHeaders processes non-streaming responses and sets headers correctly
+// handleNonStreamingWithHeaders processes non-streaming responses
 func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string) error {
-	log.Printf("VERBOSE_DEBUG: SendRequest - Non-Streaming - Vendor passed for processing: '%s'", selection.Vendor)
+	logger.InfoCtx(r.Context(), "Processing non-streaming request", "vendor", selection.Vendor)
 
-	// Process response body with gzip support and validation
-	contentEncoding := resp.Header.Get("Content-Encoding")
-	processedBody, err := c.standardizer.processResponseBody(resp.Body, contentEncoding, selection.Vendor)
+	// 1. Process response body
+	responseBody, err := c.standardizer.processResponseBody(resp.Body, resp.Header.Get("Content-Encoding"), selection.Vendor)
 	if err != nil {
-		log.Printf("Error processing response body from vendor %s: %v", selection.Vendor, err)
+		logger.ErrorCtx(r.Context(), "Error processing response body",
+			"vendor", selection.Vendor,
+			"error", err)
 		return err
 	}
 
-	// Validate vendor response
-	if err := c.standardizer.validateVendorResponse(processedBody, selection.Vendor); err != nil {
-		log.Printf("Vendor response validation failed for %s: %v", selection.Vendor, err)
-		// Continue processing even if validation fails, but log the issue
+	// 2. Validate response
+	if c.standardizer.enableValidation {
+		if err := c.standardizer.validateVendorResponse(responseBody, selection.Vendor); err != nil {
+			logger.ErrorCtx(r.Context(), "Vendor response validation failed",
+				"vendor", selection.Vendor,
+				"error", err)
+			return err
+		}
 	}
 
-	// Process the response using the existing response processor to handle model name substitution
-	// Note: processedBody is already decompressed, so we pass empty contentEncoding
-	modifiedResponse, err := ProcessResponse(processedBody, selection.Vendor, "", originalModel)
+	// 3. Process response (replace model, format, etc.)
+	modifiedResponse, err := ProcessResponse(responseBody, selection.Vendor, resp.Header.Get("Content-Encoding"), originalModel)
 	if err != nil {
-		log.Printf("Error processing response from vendor %s: %v", selection.Vendor, err)
-		modifiedResponse = processedBody // Use original response if processing fails
+		logger.ErrorCtx(r.Context(), "Error processing response",
+			"vendor", selection.Vendor,
+			"error", err)
+		return err
 	}
 
-	// Determine compression based on client's Accept-Encoding header (HTTP compliance)
+	// 4. Determine compression
 	shouldCompress := c.standardizer.shouldCompress(r)
 	var finalResponse []byte
+	var compressErr error
 
 	if shouldCompress {
-		compressedResponse, compressErr := c.standardizer.compressResponseMandatory(modifiedResponse)
+		finalResponse, compressErr = c.standardizer.compressResponseMandatory(modifiedResponse)
 		if compressErr != nil {
-			log.Printf("Error compressing response for vendor %s: %v", selection.Vendor, compressErr)
-			// Fall back to uncompressed on compression error
+			logger.ErrorCtx(r.Context(), "Error compressing response",
+				"vendor", selection.Vendor,
+				"error", compressErr)
+			// Fall back to uncompressed if compression fails
 			finalResponse = modifiedResponse
 			shouldCompress = false
 		} else {
-			finalResponse = compressedResponse
+			// Set the Content-Encoding header for compressed responses
+			w.Header().Set("Content-Encoding", "gzip")
 		}
 	} else {
 		finalResponse = modifiedResponse
 	}
 
-	// Set all standard headers with complete compliance
+	// 5. Set headers
 	c.standardizer.setCompliantHeaders(w, selection.Vendor, len(finalResponse), shouldCompress)
 
-	// Write status and headers
-	w.WriteHeader(resp.StatusCode)
-
-	// Write the final response
+	// 6. Write the response
 	_, err = w.Write(finalResponse)
 	if err != nil {
-		log.Printf("Error writing response for vendor %s: %v", selection.Vendor, err)
+		logger.ErrorCtx(r.Context(), "Error writing response",
+			"vendor", selection.Vendor,
+			"error", err)
+		return err
 	}
 
 	return nil

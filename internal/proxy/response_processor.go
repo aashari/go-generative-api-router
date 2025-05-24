@@ -6,7 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+
+	"github.com/aashari/go-generative-api-router/internal/logger"
 )
 
 // ProcessResponse processes the API response, ensuring all required fields are present
@@ -27,7 +28,7 @@ func ProcessResponse(responseBody []byte, vendor string, contentEncoding string,
 	// 3. Parse JSON
 	var responseData map[string]interface{}
 	if err := json.Unmarshal(unwrapped, &responseData); err != nil {
-		log.Printf("Error unmarshaling response: %v", err)
+		logger.Error("Error unmarshaling response", "error", err)
 		return unwrapped, nil // Return original response if it's not valid JSON
 	}
 
@@ -51,7 +52,7 @@ func ProcessResponse(responseBody []byte, vendor string, contentEncoding string,
 	// 8. Marshal back to JSON
 	modifiedResponseBody, err := json.Marshal(responseData)
 	if err != nil {
-		log.Printf("Error marshaling modified response: %v", err)
+		logger.Error("Error marshaling modified response", "error", err)
 		return unwrapped, nil // Return original response if marshal fails
 	}
 
@@ -64,22 +65,23 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 		return responseBody, nil
 	}
 
-	log.Printf("Response is gzip encoded, decompressing...")
+	logger.Info("Response is gzip encoded, decompressing...")
 	gzipReader, err := gzip.NewReader(bytes.NewReader(responseBody))
 	if err != nil {
-		log.Printf("Error creating gzip reader: %v", err)
+		logger.Error("Error creating gzip reader", "error", err)
 		return responseBody, fmt.Errorf("error creating gzip reader: %w", err)
 	}
 	defer gzipReader.Close()
 
 	decompressedBody, err := io.ReadAll(gzipReader)
 	if err != nil {
-		log.Printf("Error decompressing gzip response: %v", err)
+		logger.Error("Error decompressing gzip response", "error", err)
 		return responseBody, fmt.Errorf("error decompressing gzip response: %w", err)
 	}
 
-	log.Printf("Successfully decompressed gzip response. Original size: %d, Decompressed size: %d",
-		len(responseBody), len(decompressedBody))
+	logger.Info("Successfully decompressed gzip response",
+		"original_size_bytes", len(responseBody),
+		"decompressed_size_bytes", len(decompressedBody))
 	return decompressedBody, nil
 }
 
@@ -122,20 +124,22 @@ func addOpenAICompatibilityFields(responseData map[string]interface{}) {
 	if !systemFingerprintExists || systemFingerprintValue == nil {
 		generatedFP := SystemFingerprint()
 		responseData["system_fingerprint"] = generatedFP
-		log.Printf("Generated system_fingerprint because it was missing or null. New value: %s", generatedFP)
+		logger.Info("Generated system_fingerprint", "reason", "missing_or_null", "value", generatedFP)
 	} else if _, isString := systemFingerprintValue.(string); !isString {
 		// If it exists but is not a string
 		generatedFP := SystemFingerprint()
 		responseData["system_fingerprint"] = generatedFP
-		log.Printf("Replaced non-string system_fingerprint with generated one. New value: %s", generatedFP)
+		logger.Info("Replaced non-string system_fingerprint", "value", generatedFP)
 	}
 }
 
 // replaceModelField replaces the model field with the original requested model
 func replaceModelField(responseData map[string]interface{}, vendor string, originalModel string) {
 	if model, ok := responseData["model"].(string); ok {
-		log.Printf("Processing response from actual model: %s (vendor: %s), will be presented as: %s",
-			model, vendor, originalModel)
+		logger.Info("Processing response from actual model",
+			"actual_model", model,
+			"vendor", vendor,
+			"presented_as", originalModel)
 	}
 
 	if originalModel != "" {
@@ -178,11 +182,11 @@ func processNormalResponse(responseData map[string]interface{}, vendor string) {
 
 // processChoices processes the choices array in the response
 func processChoices(choices []interface{}, vendor string) {
-	log.Printf("Processing %d choices", len(choices))
+	logger.Info("Processing choices", "count", len(choices))
 	for i, choice := range choices {
 		choiceMap, ok := choice.(map[string]interface{})
 		if !ok {
-			log.Printf("Choice %d is not a map", i)
+			logger.Warn("Choice is not a map", "index", i)
 			continue
 		}
 
@@ -203,7 +207,7 @@ func processChoices(choices []interface{}, vendor string) {
 
 // processMessage processes a message within a choice
 func processMessage(message map[string]interface{}, vendor string) {
-	log.Printf("Processing message")
+	logger.Debug("Processing message")
 
 	// Add annotations array if missing
 	if _, ok := message["annotations"]; !ok {
@@ -217,11 +221,11 @@ func processMessage(message map[string]interface{}, vendor string) {
 
 	// Handle tool_calls if present
 	if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
-		log.Printf("Processing %d tool calls in message", len(toolCalls))
+		logger.Info("Processing tool calls in message", "count", len(toolCalls))
 		processedToolCalls := ProcessToolCalls(toolCalls, vendor)
 		message["tool_calls"] = processedToolCalls
 	} else {
-		log.Printf("No tool calls found in message")
+		logger.Debug("No tool calls found in message")
 	}
 }
 
