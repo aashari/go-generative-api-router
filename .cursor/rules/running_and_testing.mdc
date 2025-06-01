@@ -10,6 +10,30 @@ This guide provides step-by-step instructions for setting up, running, and testi
 > **Development Workflow**: For development best practices and Git workflow, see [Development Guide](mdc:development_guide.mdc)  
 > **Codex Integration**: For AI-assisted development, see [Codex Guide](mdc:codex.mdc)
 
+## 📚 **Documentation Quick Reference**
+
+### **Core Development Guides** (.cursor/rules/)
+- **[Development Guide](mdc:development_guide.mdc)** - Complete workflow, Git practices, architecture principles
+- **[Running & Testing Guide](mdc:running_and_testing.mdc)** - Setup, testing procedures, debugging techniques (this document)
+- **[Codex Guide](mdc:codex.mdc)** - AI-assisted development workflow
+
+### **User & API Documentation** (docs/)
+- **[User Guide](mdc:../docs/user/README.md)** - *When integrating with the service* - API usage, configuration, client examples
+- **[API Reference](mdc:../docs/api)** - *When implementing API calls* - OpenAPI specs, endpoint documentation
+- **[Examples](mdc:../examples)** - *When writing client code* - Ready-to-use examples in Python, Node.js, Go
+
+### **Development Documentation** (docs/development/)
+- **[Development Guide](mdc:../docs/development/DEVELOPMENT.md)** - *When setting up locally* - Quick start, project structure, daily commands
+- **[Contributing Guide](mdc:../docs/development/CONTRIBUTING.md)** - *When contributing code* - PR process, coding standards, review guidelines
+- **[Testing Guide](mdc:../docs/development/TESTING.md)** - *When writing/running tests* - Test strategies, coverage, debugging
+- **[Deployment Guide](mdc:../docs/development/DEPLOYMENT.md)** - *When managing AWS infrastructure* - xyz-aduh-genapi service, monitoring, troubleshooting
+
+### **Project Overview**
+- **[Main README](mdc:../README.md)** - *When getting project overview* - Features, quick start, architecture summary
+- **[Documentation Index](mdc:../docs/README.md)** - *When navigating docs* - Complete documentation roadmap
+
+---
+
 ## Table of Contents
 
 - [Setup and Configuration](mdc:#setup-and-configuration) - Initial project setup
