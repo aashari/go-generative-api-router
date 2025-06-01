@@ -18,9 +18,6 @@ func SetupRoutes(apiHandlers *handlers.APIHandlers) http.Handler {
 	mux.HandleFunc("/v1/chat/completions", apiHandlers.ChatCompletionsHandler)
 	mux.HandleFunc("/v1/models", apiHandlers.ModelsHandler)
 
-	// Add metrics endpoint
-	mux.HandleFunc("/metrics", monitoring.MetricsHandler)
-
 	// Add pprof endpoints for performance profiling
 	monitoring.SetupPprofRoutes(mux)
 
@@ -32,9 +29,8 @@ func SetupRoutes(apiHandlers *handlers.APIHandlers) http.Handler {
 		httpSwagger.DomID("swagger-ui"),
 	))
 
-	// Wrap with middleware stack (order matters: correlation -> metrics)
-	handler := monitoring.MetricsMiddleware(mux)
-	handler = middleware.RequestCorrelationMiddleware(handler)
+	// Wrap with middleware stack
+	handler := middleware.RequestCorrelationMiddleware(mux)
 
 	return handler
 }

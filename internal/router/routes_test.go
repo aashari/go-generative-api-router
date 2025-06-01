@@ -51,13 +51,7 @@ func TestSetupRoutes(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			description:    "Models endpoint should return model list",
 		},
-		{
-			name:           "metrics endpoint",
-			method:         http.MethodGet,
-			path:           "/metrics",
-			expectedStatus: http.StatusOK,
-			description:    "Metrics endpoint should return prometheus metrics",
-		},
+
 		{
 			name:           "swagger ui endpoint",
 			method:         http.MethodGet,
@@ -173,41 +167,7 @@ func TestSetupRoutes_ChatCompletions(t *testing.T) {
 	}
 }
 
-func TestSetupRoutes_MetricsMiddleware(t *testing.T) {
-	// Create test dependencies
-	creds := []config.Credential{
-		{Platform: "openai", Type: "api-key", Value: "test"},
-	}
-	models := []config.VendorModel{
-		{Vendor: "openai", Model: "gpt-4"},
-	}
-	client := proxy.NewAPIClient()
-	sel := selector.NewRandomSelector()
-	apiHandlers := handlers.NewAPIHandlers(creds, models, client, sel)
 
-	// Setup routes
-	handler := SetupRoutes(apiHandlers)
-
-	// Make a request to verify metrics middleware is working
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	// Verify metrics endpoint has data
-	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	metricsW := httptest.NewRecorder()
-
-	handler.ServeHTTP(metricsW, metricsReq)
-
-	assert.Equal(t, http.StatusOK, metricsW.Code)
-
-	// Check that metrics contain expected data (JSON format)
-	body := metricsW.Body.String()
-	assert.Contains(t, body, "total_requests", "Metrics should contain request counter")
-}
 
 func TestSetupRoutes_UnregisteredPath(t *testing.T) {
 	// Create test dependencies

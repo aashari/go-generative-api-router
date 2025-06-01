@@ -274,21 +274,7 @@ func LogError(ctx context.Context, component string, err error, details map[stri
 	WithContext(ctx).Error("Operation failed", args...)
 }
 
-// LogMetrics logs performance metrics
-func LogMetrics(ctx context.Context, operation string, duration time.Duration, success bool, details map[string]any) {
-	args := []any{
-		"component", "metrics",
-		"operation", operation,
-		"duration_ms", duration.Milliseconds(),
-		"success", success,
-	}
 
-	for k, v := range details {
-		args = append(args, k, v)
-	}
-
-	WithContext(ctx).Info("Operation metrics", args...)
-}
 
 // Sanitize a map of data for logging
 func SanitizeMap(data map[string]any) map[string]any {

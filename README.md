@@ -22,7 +22,7 @@ A Go microservice that proxies OpenAI-compatible API calls to multiple LLM vendo
 - **Tool Calling**: Supports function calling/tools for AI agents with proper validation
 - **Modular Design**: Clean separation of concerns with selector, validator, and client components
 - **Configuration Driven**: Easily configure available models and credentials via JSON files
-- **Metrics & Monitoring**: Built-in Prometheus metrics and health check endpoints
+- **Health Check**: Built-in health check endpoint
 - **Comprehensive Testing**: Full test coverage with unit tests for all components
 
 ## Quick Start
@@ -184,13 +184,7 @@ GET /health
 
 **Response**: `200 OK` with body `OK` if the service is running properly.
 
-### Metrics
 
-```http
-GET /metrics
-```
-
-**Response**: Prometheus-formatted metrics including request counts, durations, and error rates.
 
 ### Models Listing
 
@@ -298,7 +292,7 @@ generative-api-router/
 │   ├── errors/          # Error handling
 │   ├── filter/          # Filtering utilities
 │   ├── handlers/        # HTTP handlers
-│   ├── monitoring/      # Metrics collection
+│   ├── monitoring/      # Performance profiling (pprof)
 │   ├── proxy/           # Proxy functionality
 │   ├── router/          # Route definitions
 │   ├── selector/        # Vendor/model selection

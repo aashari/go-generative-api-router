@@ -10,6 +10,7 @@
 - `GET /v1/models` - List available models
 - `POST /v1/chat/completions` - Chat completions (streaming supported)
 
+
 ## Examples
 See the `examples/` directory for usage examples in various languages.
 

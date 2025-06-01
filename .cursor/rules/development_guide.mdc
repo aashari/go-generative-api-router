@@ -23,7 +23,7 @@ This guide provides instructions and tips for developing, testing, and maintaini
 - **`internal/handlers/api_handlers.go`**: HTTP handlers for health, chat completions, and models endpoints. ([internal/handlers/api_handlers.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/handlers/api_handlers.go))
 - **`internal/errors/errors.go`**: Standardized error types and JSON error responses. ([internal/errors/errors.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/errors/errors.go))
 - **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor. ([internal/filter/utils.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/filter/utils.go))
-- **`internal/monitoring/metrics.go`**: Metrics collection, middleware, and monitoring endpoints. ([internal/monitoring/metrics.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/monitoring/metrics.go))
+- **`internal/monitoring/metrics.go`**: Performance profiling endpoints (pprof). ([internal/monitoring/metrics.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/monitoring/metrics.go))
 - **`internal/router/routes.go`**: Centralized route setup with middleware integration. ([internal/router/routes.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/router/routes.go))
 
 ### Configuration Files
@@ -290,7 +290,7 @@ Test files are available for:
 - `internal/errors/errors_test.go` - Error handling tests
 - `internal/filter/utils_test.go` - Filter utility tests
 - `internal/handlers/api_handlers_test.go` - HTTP handler tests
-- `internal/monitoring/metrics_test.go` - Metrics collection tests
+
 
 ### Manual Testing
 
@@ -356,7 +356,7 @@ The project includes `scripts/deploy.sh` for AWS ECS deployment:
     *   `github.com/go-playground/validator/v10` v10.26.0 - Struct validation
 *   **Configuration Updates**: API keys (`configs/credentials.json`) and model lists (`configs/models.json`) can be updated without code changes. Restart the server for changes to take effect.
 *   **Logging**: Review logs in the `logs/` directory or console output. The server logs selected vendors/models for each request, the original requested model, and how the response model is being presented. Key log lines for debugging model handling include `VERBOSE_DEBUG: ProxyRequest - Original requested model:`, `VERBOSE_DEBUG: ProxyRequest - Selected Vendor:`, and `Processing response from actual model: ... will be presented as:`.
-*   **Monitoring**: Access metrics at `/metrics` endpoint for request counts, durations, and error rates. The service also includes pprof endpoints for profiling.
+*   **Profiling**: The service includes pprof endpoints for performance profiling at `/debug/pprof/`.
 *   **Code Quality**: 
     ```bash
     # Format code
