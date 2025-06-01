@@ -5,7 +5,20 @@ alwaysApply: true
 ---
 # Running and Testing Guide for Generative API Router
 
-This guide provides step-by-step instructions for running and testing the Generative API Router service.
+This guide provides step-by-step instructions for setting up, running, and testing the Generative API Router service.
+
+> **Development Workflow**: For development best practices and Git workflow, see [Development Guide](mdc:development_guide.mdc)  
+> **Codex Integration**: For AI-assisted development, see [Codex Guide](mdc:codex.mdc)
+
+## Table of Contents
+
+- [Setup and Configuration](mdc:#setup-and-configuration) - Initial project setup
+- [Running the Service](mdc:#running-the-service) - All methods to run the service
+- [Running Tests](mdc:#running-tests) - Unit tests and test coverage
+- [Log Monitoring & Debugging](mdc:#log-monitoring--debugging) - Essential debugging skills
+- [Testing the Service](mdc:#testing-the-service) - Manual API testing
+- [Troubleshooting](mdc:#troubleshooting) - Common issues and solutions
+- [Quick Commands Reference](mdc:#quick-commands-reference) - Daily development commands
 
 ## Setup and Configuration
 
@@ -117,48 +130,9 @@ This guide provides step-by-step instructions for running and testing the Genera
    make docker-stop
    ```
 
-## Deployment to Production
+## Production Deployment
 
-### AWS ECS Fargate Deployment
-
-1. **Pre-deployment Security Check**:
-   ```bash
-   # CRITICAL: Check for sensitive data before deploying
-   grep -r -E '\b[0-9]{12}\b' --exclude-dir={.git,node_modules,vendor,.terraform,build} --exclude="*.log" . | grep -v "created.*1715" | cat
-   grep -r -E '(AKIA|ASIA|aws_access_key|aws_secret|AWS_ACCESS|AWS_SECRET)' --exclude-dir={.git,node_modules,vendor,.terraform,build} --exclude="*.log" . | cat
-   ```
-
-2. **Prepare for Deployment**:
-   ```bash
-   # The deploy script expects Dockerfile in root
-   # If using new structure, create symlink:
-   ln -s deployments/docker/Dockerfile Dockerfile
-   
-   # Ensure AWS profile is configured
-   aws configure list-profiles | grep <your-profile-name>
-   ```
-
-3. **Deploy**:
-   ```bash
-   # Stop local containers first
-   make docker-stop
-   
-   # Run deployment
-   ./scripts/deploy.sh 2>&1 | tee deploy-output.log
-   ```
-
-4. **Post-deployment Verification**:
-   ```bash
-   # Wait for deployment to complete (check the output URL)
-   # Then verify:
-   curl http://<load-balancer-url>/health | cat
-   ```
-
-5. **Cleanup**:
-   ```bash
-   # Remove symlink if created
-   rm -f Dockerfile
-   ```
+> **Deployment Guide**: For complete deployment instructions including AWS ECS setup, see [Development Guide - Deployment Section](mdc:development_guide.mdc#deployment)
 
 ## Running Tests
 
@@ -201,6 +175,109 @@ The project uses:
 - `github.com/go-playground/validator/v10` v10.26.0 - For struct validation
 
 Note: Some tests may skip if `configs/credentials.json` is not present, which is expected behavior.
+
+## Log Monitoring & Debugging
+
+### 📋 Essential Log Monitoring (CRITICAL SKILL)
+
+**Log Structure:**
+The service generates structured JSON logs in the `logs/` directory:
+
+```json
+{
+  "level": "info",
+  "timestamp": "2025-01-27T10:30:45.123Z",
+  "message": "Processing chat completion request",
+  "request_id": "req_abc123",
+  "component": "ProxyHandler",
+  "vendor": "openai",
+  "model": "gpt-4o"
+}
+```
+
+**🔍 Essential Log Commands:**
+
+```bash
+# Monitor in real-time (ALWAYS do this during testing)
+tail -f logs/server.log
+
+# Check recent activity
+tail -50 logs/server.log | cat
+
+# Find specific errors
+grep -i "error" logs/server.log | tail -10 | cat
+
+# Track specific request flow
+grep "request_id.*abc123" logs/server.log | cat
+
+# Component-specific logs
+grep "ProxyHandler" logs/server.log | tail -5 | cat
+grep "VendorSelector" logs/server.log | tail -5 | cat
+```
+
+**🕵️ Log Debugging Workflow:**
+
+1. **Before Testing**: Clear understanding with `tail -10 logs/server.log | cat`
+2. **During Testing**: Monitor with `tail -f logs/server.log` in separate terminal
+3. **After Testing**: Review with `tail -20 logs/server.log | cat`
+4. **Error Investigation**: Use `grep` to find error patterns
+
+### 🚨 Emergency Commands
+
+**Quick Recovery Commands:**
+
+```bash
+# Server crashed - quick recovery
+pgrep -f "build/server$" | xargs -r kill -9 && make run && sleep 3 && curl http://localhost:8082/health | cat
+
+# Check if API is responding
+curl http://localhost:8082/health && echo "✅ Local OK" | cat
+
+# Check recent logs for errors
+grep -i "error" logs/server.log | tail -5 | cat
+
+# Process health check
+ps aux | grep -E "(server|generative)" | grep -v grep | cat
+
+# Memory usage check
+free -h | cat
+```
+
+**🔧 Process Management:**
+
+```bash
+# Check running processes
+ps aux | grep -E "(server|go)" | grep -v grep | cat
+
+# Find and kill server processes
+pgrep -f "build/server$" | xargs -r kill -9 && echo "Server stopped" | cat
+
+# Check port usage
+lsof -i :8082 | cat
+
+# Start server in background with logging
+./build/server > logs/server.log 2>&1 & echo "Server started with PID $!" | cat
+```
+
+### 🔍 Debugging Checklist
+
+**🚨 When something is broken:**
+
+1. **Server Health**: `curl -v http://localhost:8082/health | cat`
+2. **Check Logs**: `tail -20 logs/server.log | cat`
+3. **Process Status**: `ps aux | grep server | grep -v grep | cat`
+4. **Port Conflicts**: `lsof -i :8082 | cat`
+5. **Recent Errors**: `grep -i "error" logs/server.log | tail -10 | cat`
+6. **Configuration**: `cat configs/credentials.json | jq | cat` (check if valid JSON)
+
+**🔧 Common Issues & Solutions:**
+
+| Issue | Symptoms | Solution |
+|-------|----------|----------|
+| Server Crash | `curl` connection refused | `pgrep -f "build/server$" \| xargs -r kill -9 && make run` |
+| Port Conflict | "address already in use" | `lsof -i :8082 \| grep LISTEN \| awk '{print $2}' \| xargs -r kill -9` |
+| Config Error | Server won't start | `cat configs/credentials.json \| jq` to validate JSON |
+| Memory Issues | Slow responses | `free -h && ps aux --sort=-%mem \| head -10` |
 
 ## Testing the Service
 
@@ -270,15 +347,7 @@ Example scripts are provided in the `examples/` directory:
      `VERBOSE_DEBUG: ProxyRequest - Original requested model: 'any-model-name-you-like', will route to: 'actual-selected-model'`
    - Also check for `Processing response from actual model:` log line.
 
-4. **Metrics Endpoint**:
-   ```bash
-   curl -X GET http://localhost:8082/metrics | cat
-   ```
-   - Returns Prometheus-formatted metrics including:
-     - `http_requests_total` - Total request count by endpoint and status
-     - `http_request_duration_seconds` - Request duration histogram
-     - `vendor_requests_total` - Requests per vendor
-     - `vendor_errors_total` - Errors per vendor
+
 
 ### Advanced Testing
 
@@ -399,6 +468,56 @@ pgrep -f "build/server$" | xargs kill -9 || echo "Server not found or already st
 ### Docker:
 ```bash
 docker-compose -f deployments/docker/docker-compose.yml down
+```
+
+## Quick Commands Reference
+
+### 🚀 Daily Development Commands
+
+```bash
+# Complete development session startup
+make build && ./build/server > logs/server.log 2>&1 & sleep 3 && curl http://localhost:8082/health | cat
+
+# Full API test cycle
+curl http://localhost:8082/health && echo "✅ Health OK" && curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"Hello"}]}' | jq '.model' && echo "✅ Chat OK" | cat
+
+# Quick health check all endpoints
+echo "Health:" && curl -s http://localhost:8082/health | head -c 20 && echo "..." && echo "Models:" && curl -s http://localhost:8082/v1/models | jq '.data | length' && echo "models available" | cat
+
+# Log monitoring with error filtering
+tail -f logs/server.log | grep -E "(error|Error|failed|Failed|panic)" --color=always
+
+# Process and memory status
+echo "=== PROCESS STATUS ===" && ps aux | grep -E "(server|go)" | grep -v grep && echo "=== MEMORY USAGE ===" && free -h | cat
+```
+
+### 🔧 Maintenance Commands
+
+```bash
+# Clean restart
+pgrep -f "build/server$" | xargs -r kill -9 && make clean && make build && ./build/server > logs/server.log 2>&1 & sleep 3 && curl http://localhost:8082/health | cat
+
+# Log file management
+ls -lh logs/ && echo "=== Recent Errors ===" && grep -i "error" logs/server.log | tail -3 | cat
+
+# Configuration validation
+echo "=== Credentials Check ===" && cat configs/credentials.json | jq length && echo "credentials configured" && echo "=== Models Check ===" && cat configs/models.json | jq length && echo "models configured" | cat
+
+# Performance check
+echo "=== Response Time Test ===" && time curl -s http://localhost:8082/health > /dev/null && echo "=== Memory Usage ===" && ps aux --sort=-%mem | head -5 | cat
+```
+
+### 🧪 Testing Commands
+
+```bash
+# Comprehensive API test
+echo "=== HEALTH TEST ===" && curl http://localhost:8082/health && echo "" && echo "=== MODELS TEST ===" && curl -s http://localhost:8082/v1/models | jq '.data[0].id' && echo "=== CHAT TEST ===" && curl -s -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' | jq '.model' | cat
+
+# Streaming test
+curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"stream-test","messages":[{"role":"user","content":"Count 1 to 3"}],"stream":true,"max_tokens":20}' | head -10 | cat
+
+# Error handling test
+echo "=== VALIDATION ERROR TEST ===" && curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test"}' | jq '.error.message' | cat
 ```
 
 ## Additional Resources

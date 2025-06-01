@@ -3,14 +3,32 @@ description:
 globs: 
 alwaysApply: true
 ---
-## Instruction: Using Codex as a Planning Assistant
+# Codex Integration Guide
+
+This guide explains how to use Codex as an AI-powered development assistant for the Generative API Router project.
+
+> **Development Workflow**: For general development practices, see [Development Guide](mdc:development_guide.mdc)  
+> **Testing & Running**: For setup and testing instructions, see [Running and Testing Guide](mdc:running_and_testing.mdc)
+
+## Table of Contents
+
+- [Purpose & Overview](mdc:#purpose--overview) - Why and how to use Codex
+- [Project-Specific Context](mdc:#project-specific-context) - Generative API Router details
+- [Codex Workflow](mdc:#codex-workflow) - Step-by-step usage instructions
+- [Query Composition](mdc:#query-composition) - How to write effective queries
+- [Examples](mdc:#examples) - Practical query examples
+- [Quality Checklist](mdc:#quality-checklist) - Pre-submission verification
+
+---
+
+## Purpose & Overview
 
 **Purpose:**
 Whenever you need to plan, design, review, or implement changes, Codex is your critical peer—serving as planner, reviewer, and software architect. Use Codex not just as a tool executor, but as an expert collaborator whose feedback, verification, and judgment you must actively seek and enforce.
 
 ---
 
-### **Project-Specific Context: Generative API Router**
+## Project-Specific Context: Generative API Router
 
 When working with the Generative API Router project, include this context in your queries to Codex:
 
@@ -31,9 +49,9 @@ When working with the Generative API Router project, include this context in you
 
 ---
 
-### **How to Use Codex in Your Workflow**
+## Codex Workflow
 
-**1. Always Interact via Single-Line Command**
+### 1. Always Interact via Single-Line Command
 
 ```bash
 GENAPI_API_KEY=HaloHaloBandung codex -p genapi -q "{your query}" | cat
@@ -41,9 +59,7 @@ GENAPI_API_KEY=HaloHaloBandung codex -p genapi -q "{your query}" | cat
 
 * *Note: Your query must be a single line. Multi-line input will cause errors.*
 
----
-
-**2. How to Compose Your Query to Codex**
+### 2. Query Composition
 
 Your query to Codex **must always** include:
 
@@ -82,7 +98,7 @@ Your query to Codex **must always** include:
 
 ---
 
-**3. Example Query to Codex**
+## Examples
 
 Suppose you want Codex to implement and verify a secure user authentication API. Your query should be:
 
@@ -98,7 +114,7 @@ Review the proxy implementation in internal/proxy/ directory for the generative-
 
 ---
 
-**4. Summary Checklist Before Submitting a Query to Codex**
+## Quality Checklist
 
 * [ ] Have I included all relevant project context, goals, and constraints?
 * [ ] Did I specify exactly what Codex should plan, review, or verify?
@@ -108,9 +124,7 @@ Review the proxy implementation in internal/proxy/ directory for the generative-
 * [ ] Did I require Codex to loop, never declaring completion until *everything* is fully checked and passes?
 * [ ] For generative-api-router: Did I mention the transparent proxy requirement and Makefile usage?
 
----
-
-**5. Tone and Output Expectations**
+### Expected Output Quality
 
 * Codex is to respond with direct, detailed, and constructive feedback—never shallow approval.
 * Expect Codex to surface edge cases, ambiguities, and make actionable recommendations for improvement.

@@ -5,7 +5,22 @@ alwaysApply: true
 ---
 # Generative API Router Development Guide
 
-This guide provides instructions and tips for developing, testing, and maintaining the Generative API Router project.
+This guide provides development workflow, best practices, and architectural guidance for the Generative API Router project.
+
+> **Quick Start**: For setup and running instructions, see [Running and Testing Guide](mdc:running_and_testing.mdc)  
+> **Codex Integration**: For AI-assisted development, see [Codex Guide](mdc:codex.mdc)
+
+## Table of Contents
+
+- [Project Structure](mdc:#project-structure) - Architecture and file organization
+- [Terminal Command Rules](mdc:#terminal-command-rules) - Essential command-line best practices
+- [Development Workflow](mdc:#development-workflow) - Core development cycle
+- [Security Best Practices](mdc:#security-best-practices) - Sensitive data management
+- [Git Workflow](mdc:#git-workflow) - PR creation and CI/CD monitoring
+- [Release Process](mdc:#release-process) - Version management and releases
+- [Deployment](mdc:#deployment) - AWS ECS production deployment
+- [Maintenance](mdc:#maintenance) - Ongoing maintenance tasks
+- [Common Pitfalls](mdc:#common-pitfalls--lessons-learned) - Lessons learned and troubleshooting
 
 ## Project Structure
 
@@ -42,39 +57,68 @@ This guide provides instructions and tips for developing, testing, and maintaini
 - **`docs/`**: Comprehensive documentation (API, development, user guides)
 - **`.golangci.yml`**: Linter configuration for code quality
 
-## Development
+## Terminal Command Rules
 
-1.  **Initial Setup**:
-    ```bash
-    # Clone and setup the project
-    git clone <repository-url>
-    cd generative-api-router
-    make setup
-    ```
+### 🚨 CRITICAL CONSTRAINTS
 
-2.  **Configuration**:
-    *   Edit `configs/credentials.json` with valid API keys (created from example during setup)
-    *   Modify `configs/models.json` to define your desired vendor/model pool
+When using terminal commands in development, follow these essential rules:
 
-3.  **Building**:
-    ```bash
-    # Build the application
-    make build
-    
-    # Output will be in build/server
-    ```
+- **SINGLE-LINE ONLY**: No newline characters (`\n`) in commands
+- **ALWAYS PIPE TO CAT**: End every command with `| cat` to avoid terminal issues
+- **PROPER ESCAPING**: Use single quotes inside double quotes
+- **NO LINE CONTINUATION**: Use semicolons (`;`) instead of backslashes (`\`)
+- **COMMAND CHAINING**: Use `&&` for conditional execution, `;` for sequential execution
 
-4.  **Running Locally**:
-    ```bash
-    # Build and run
-    make run
-    
-    # Run without building (development mode)
-    make run-dev
-    
-    # Run with logging
-    make run-with-logs
-    ```
+### ✅ Correct Terminal Patterns
+
+```bash
+# Git commits with multiple messages
+git commit -m "feat: main commit message" -m "- First bullet point" -m "- Second bullet point" | cat
+
+# Command chaining with proper error handling
+make build && ./build/server > logs/server.log 2>&1 & echo "Server started" | cat
+
+# Process checking and cleanup
+pgrep -f "build/server$" | xargs -r kill -9 && echo "Server stopped" | cat
+
+# Log monitoring with grep
+tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
+
+# AWS commands with proper formatting
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER --services $AWS_SERVICE | cat
+```
+
+### ❌ Common Terminal Mistakes to Avoid
+
+```bash
+# These patterns will fail - avoid them
+echo "multiline \
+command"                         # Line continuation doesn't work
+
+command_without_pipe             # Missing | cat can cause issues
+
+curl http://example.com          # Should be: curl http://example.com | cat
+```
+
+## Development Workflow
+
+> **Prerequisites**: Complete setup instructions are in [Running and Testing Guide](mdc:running_and_testing.mdc)
+
+### Core Development Cycle
+
+```bash
+# 1. Make code changes
+# 2. Run tests and linting
+make test && make lint
+
+# 3. Build and test locally  
+make build && ./build/server > logs/server.log 2>&1 & sleep 3 && curl http://localhost:8082/health | cat
+
+# 4. Check logs for issues
+tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
+
+# 5. Commit when ready (see Git Workflow section)
+```
 
 ## Security Best Practices
 
@@ -267,61 +311,166 @@ This repository enforces the following rules:
 
 
 
+### Core Architecture Principle
+
 **Key Principle**: This service acts as a *transparent proxy* with a key modification. The router selects an actual vendor/model based on its internal logic (e.g., random selection, vendor filter). The `model` field in the request to the downstream vendor is overridden with this *actual selected model*. However, the `model` field in the final response back to the client is modified to reflect the *original model name the client sent in its initial request*. All other request and response data (headers, body structure excluding the model field, status code) from the vendor **must** be passed *exactly* to the client, and vice-versa. Changes must not interfere with this.
 
-### Running Tests
+### Testing
 
-The project includes comprehensive test coverage for all packages:
+> **Complete Testing Guide**: For comprehensive testing instructions including unit tests, manual testing, and debugging, see [Running and Testing Guide](mdc:running_and_testing.mdc)
+
+## Release Process
+
+### 🏷️ MANDATORY Release Workflow
+
+Follow this systematic approach for creating releases:
+
+#### 1. Pre-Commit Review Process
 
 ```bash
-# Run all tests
-go test ./...
+# 1. List modified files
+git status --porcelain | grep '^ M' | cut -c 4- | cat
 
-# Run tests with verbose output
-go test -v ./...
+# 2. Review each file (replace <file> with actual path)
+git diff --color <file> | cat
 
-# Run tests for a specific package
-go test ./internal/handlers
+# 3. Check final logs for any issues
+tail -10 logs/server.log | cat
+
+# 4. Stage and commit with proper message
+git add .
+git commit -m "feat: describe changes based on diff review" -m "Detailed description if needed" | cat
 ```
 
-Test files are available for:
-- `internal/app/app_test.go` - Application initialization tests
-- `internal/config/validation_test.go` - Configuration validation tests
-- `internal/errors/errors_test.go` - Error handling tests
-- `internal/filter/utils_test.go` - Filter utility tests
-- `internal/handlers/api_handlers_test.go` - HTTP handler tests
+#### 2. Version Management
 
+```bash
+# 1. Get current version and prepare for bump
+CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") && echo "Current version: $CURRENT_VERSION" | cat
 
-### Manual Testing
+# 2. Review changes since last release
+git log $(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD~10")..HEAD --oneline | cat
 
-1.  **Prerequisites for Testing**:
-    *   **Kill Existing Processes**: Before starting a new server instance for testing, ensure no other instance is running on the same port (typically `:8082`).
-        *   Use `sudo lsof -i :8082 | cat` to check for processes.
-        *   Use `sudo kill -9 <PID>` to terminate any conflicting process (use with caution).
-        *   A safer way to stop the local server if run as `./build/server &` is `pgrep -f "server$" | xargs kill -9`.
-        *   If a Docker container is using the port, use `docker ps | grep 8082 | cat` to find it and `docker stop <container_id_or_name> | cat` to stop it.
-    *   **Wait for Server Initialization**: After starting the server, *wait a few seconds* (e.g., `sleep 3`) before sending requests. This is crucial to avoid "Connection refused" errors.
-2.  **Health Check**:
-    ```bash
-    curl -X GET http://localhost:8082/health | cat
-    ```
-3.  **Basic Chat Completion (Verify Model Reflection)**:
-    ```bash
-    curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{\"model\": \"my-test-model\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}]}' | jq | cat
-    ```
-    *   Verify the `model` field in the response is `"my-test-model"`.
-    *   Check server logs for `VERBOSE_DEBUG: ProxyRequest - Original requested model: 'my-test-model', will route to: 'some-actual-model'` and `Processing response from actual model: some-actual-model ... will be presented as: my-test-model`.
-4.  **Tool Calling Test**:
-    ```bash
-    curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{\"model\":\"any-model\",\"messages\":[{\"role\":\"user\",\"content\":\"What is the weather in Boston?\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"get_current_weather\",\"description\":\"Get current weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"City name\"}},\"required\":[\"location\"]}}}],\"tool_choice\":\"auto\"}' | cat
-    ```
-    *   Verify the response includes a valid `tool_calls` section and the `model` field reflects what was sent.
-5.  **Error Handling Tests**:
-    *   **Invalid Request (Missing Messages)**:
-        ```bash
-        curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{\"model\":\"any-model\"}' | cat
-        ```
-        *   Expected: Error message about missing `messages` field, HTTP 400.
+# 3. Determine version bump type:
+# - patch: Bug fixes, small improvements
+# - minor: New features, non-breaking changes  
+# - major: Breaking changes, API changes
+
+# 4. Create new version tag (replace X.X.X with new version)
+NEW_VERSION="v2.1.0"  # Example: increment based on changes
+```
+
+#### 3. Create Release Tag
+
+```bash
+# Create annotated tag with detailed release notes
+git tag -a $NEW_VERSION -m "$NEW_VERSION: Brief release title" \
+  -m "" \
+  -m "FEATURES:" \
+  -m "- New feature descriptions" \
+  -m "" \
+  -m "IMPROVEMENTS:" \
+  -m "- Performance improvements" \
+  -m "- Code quality enhancements" \
+  -m "" \
+  -m "FIXES:" \
+  -m "- Bug fix descriptions" \
+  -m "" \
+  -m "BREAKING CHANGES:" \
+  -m "- Any breaking changes (if major version)" | cat
+```
+
+#### 4. Push and Create GitHub Release
+
+```bash
+# 1. Push the tag to remote
+git push origin $NEW_VERSION | cat
+
+# 2. Create release notes file (temp file for GitHub release)
+cat > temp-release-notes.md << 'EOF'
+## ✨ What's New
+
+### Features
+- New feature descriptions with details
+- Enhanced functionality explanations
+
+### Improvements  
+- Performance optimizations
+- Code quality enhancements
+- Better error handling
+
+### Bug Fixes
+- Fixed specific issues
+- Resolved edge cases
+
+### Technical Changes
+- Updated dependencies
+- Improved test coverage
+- Enhanced documentation
+
+## 🔧 Migration Guide
+
+If there are breaking changes, provide migration instructions here.
+
+## 📊 Impact
+
+- Performance improvements
+- Reduced memory usage
+- Better reliability
+
+## 🧪 Testing
+
+- ✅ All tests passing
+- ✅ Manual testing completed
+- ✅ Performance verified
+EOF
+
+# 3. Create and publish GitHub release
+gh release create $NEW_VERSION --title "🚀 Generative API Router $NEW_VERSION" --notes-file temp-release-notes.md | cat
+
+# 4. Cleanup temp files
+rm temp-release-notes.md && echo "Cleaned up release notes file" | cat
+```
+
+#### 5. Post-Release Verification
+
+```bash
+# 1. Verify release was created
+gh release view $NEW_VERSION | cat
+
+# 2. Check latest releases
+gh release list --limit 3 | cat
+
+# 3. Verify tag exists locally and remotely
+git tag --sort=-version:refname | head -5 | cat
+```
+
+### ✅ Good Commit Message Examples
+
+```bash
+# Feature commits
+git commit -m "feat: add health check monitoring" -m "Added comprehensive health check with dependency verification" | cat
+
+# Documentation commits  
+git commit -m "docs: update API documentation" -m "Added examples for streaming and tool calling endpoints" | cat
+
+# Fix commits
+git commit -m "fix: resolve proxy timeout issues" -m "Increased timeout values and added retry logic for vendor APIs" | cat
+
+# Breaking change commits
+git commit -m "feat!: remove metrics implementation" -m "BREAKING CHANGE: /metrics endpoint no longer available" | cat
+```
+
+### 📋 Pre-Release Checklist
+
+- [ ] All modified files reviewed (`git diff --color <file>`)
+- [ ] Logs checked for errors (`tail -20 logs/server.log`)
+- [ ] Tests passing (`make test`)
+- [ ] Linting clean (`make lint`)
+- [ ] Security scan clean (`make security-scan`)
+- [ ] Commit message follows conventional format
+- [ ] Version bump appropriate for changes
+- [ ] Release notes comprehensive and accurate
 
 ## Deployment
 
