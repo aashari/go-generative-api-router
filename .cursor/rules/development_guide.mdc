@@ -10,17 +10,114 @@ This guide provides development workflow, best practices, and architectural guid
 > **Quick Start**: For setup and running instructions, see [Running and Testing Guide](mdc:running_and_testing.mdc)  
 > **Codex Integration**: For AI-assisted development, see [Codex Guide](mdc:codex.mdc)
 
+## 📚 **Documentation Quick Reference**
+
+### **Core Development Guides** (.cursor/rules/)
+- **[Development Guide](mdc:development_guide.mdc)** - Complete workflow, Git practices, architecture principles (this document)
+- **[Running & Testing Guide](mdc:running_and_testing.mdc)** - Setup, testing procedures, debugging techniques
+- **[Codex Guide](mdc:codex.mdc)** - AI-assisted development workflow
+
+### **User & API Documentation** (docs/)
+- **[User Guide](mdc:../docs/user/README.md)** - *When integrating with the service* - API usage, configuration, client examples
+- **[API Reference](mdc:../docs/api)** - *When implementing API calls* - OpenAPI specs, endpoint documentation
+- **[Examples](mdc:../examples)** - *When writing client code* - Ready-to-use examples in Python, Node.js, Go
+
+### **Development Documentation** (docs/development/)
+- **[Development Guide](mdc:../docs/development/DEVELOPMENT.md)** - *When setting up locally* - Quick start, project structure, daily commands
+- **[Contributing Guide](mdc:../docs/development/CONTRIBUTING.md)** - *When contributing code* - PR process, coding standards, review guidelines
+- **[Testing Guide](mdc:../docs/development/TESTING.md)** - *When writing/running tests* - Test strategies, coverage, debugging
+- **[Deployment Guide](mdc:../docs/development/DEPLOYMENT.md)** - *When managing AWS infrastructure* - xyz-aduh-genapi service, monitoring, troubleshooting
+
+### **Project Overview**
+- **[Main README](mdc:../README.md)** - *When getting project overview* - Features, quick start, architecture summary
+- **[Documentation Index](mdc:../docs/README.md)** - *When navigating docs* - Complete documentation roadmap
+
+---
+
 ## Table of Contents
 
+- [Essential Development Rules](mdc:#essential-development-rules) - Core principles and mandatory approaches
+- [Environment Management](mdc:#environment-management) - AWS profiles, variables, and configuration
 - [Project Structure](mdc:#project-structure) - Architecture and file organization
 - [Terminal Command Rules](mdc:#terminal-command-rules) - Essential command-line best practices
-- [Development Workflow](mdc:#development-workflow) - Core development cycle
+- [Comprehensive Logging](mdc:#comprehensive-logging) - Complete logging without redaction or truncation
+- [Development Workflow](mdc:#development-workflow) - Core development cycle with sequential thinking
 - [Security Best Practices](mdc:#security-best-practices) - Sensitive data management
 - [Git Workflow](mdc:#git-workflow) - PR creation and CI/CD monitoring
 - [Release Process](mdc:#release-process) - Version management and releases
-- [Deployment](mdc:#deployment) - AWS ECS production deployment
+- [AWS Deployment & Monitoring](mdc:#aws-deployment--monitoring) - Enhanced ECS deployment and monitoring
 - [Maintenance](mdc:#maintenance) - Ongoing maintenance tasks
 - [Common Pitfalls](mdc:#common-pitfalls--lessons-learned) - Lessons learned and troubleshooting
+
+## Essential Development Rules
+
+### 🚨 MANDATORY APPROACH
+
+1. **Sequential Thinking**: Break down complex requests systematically using structured analysis
+2. **Research First**: Always investigate existing code, patterns, and conventions before implementing
+3. **Commit Discipline**: Only commit and push when explicitly requested by the user
+4. **Complete Logging**: Log full data without truncation, cherry-picking, or redaction (see Comprehensive Logging section)
+5. **Environment Variables**: Always use proper environment variables for AWS profiles, regions, and configurations
+6. **Monitor Logs**: Always check `logs/server.log` during development and debugging
+7. **Build Verification**: Run full CI checks locally before any commit
+
+### 🔄 Standard Development Workflow
+
+```bash
+# 1. Research and analyze the request
+# 2. Make code changes using sequential thinking
+# 3. Check logs for issues
+tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
+# 4. Run full verification
+make ci-check
+# 5. Only commit when user explicitly requests it
+```
+
+## Environment Management
+
+### 🔧 Key Environment Variables
+
+**AWS Configuration:**
+```bash
+# AWS Profiles and Regions
+AWS_PROFILE=your-aws-profile
+AWS_REGION=ap-southeast-3
+
+# ECS Clusters and Services
+AWS_CLUSTER_DEV=dev-generative-api-router
+AWS_SERVICE_DEV=dev-generative-api-router
+AWS_CLUSTER_PROD=prod-generative-api-router
+AWS_SERVICE_PROD=prod-generative-api-router
+
+# Application Configuration
+GENAPI_API_KEY=your-api-key
+PORT=8082
+LOG_LEVEL=info
+```
+
+**Environment Setup:**
+```bash
+# Load environment variables
+export $(cat .env | grep -v '^#' | xargs) && echo "Environment loaded" | cat
+
+# Verify AWS configuration
+echo "AWS Profile: $AWS_PROFILE" && echo "AWS Region: $AWS_REGION" | cat
+
+# Verify application configuration
+echo "Port: $PORT" && echo "Log Level: $LOG_LEVEL" | cat
+```
+
+**AWS Command Patterns:**
+```bash
+# ECS service status
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_DEV --services $AWS_SERVICE_DEV | cat
+
+# CloudWatch logs
+aws --profile $AWS_PROFILE --region $AWS_REGION logs describe-log-groups --log-group-name-prefix "/ecs/generative-api-router" | cat
+
+# Task definitions
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-task-definition --task-definition $AWS_SERVICE_DEV | cat
+```
 
 ## Project Structure
 
@@ -100,6 +197,113 @@ command_without_pipe             # Missing | cat can cause issues
 curl http://example.com          # Should be: curl http://example.com | cat
 ```
 
+## Comprehensive Logging
+
+### 🎯 Core Logging Principles
+
+The Generative API Router implements comprehensive, unfiltered logging that captures complete data structures without any redaction, truncation, or selective filtering.
+
+**FUNDAMENTAL RULE**: Log everything. External logging systems handle redaction, size management, and sensitive data filtering.
+
+### ✅ Logging Best Practices
+
+1. **Log Complete Data**: Always log entire objects, arrays, and strings without truncation
+2. **No Cherry-Picking**: Log complete data structures, not selected attributes
+3. **No Redaction**: Log everything including sensitive data (API keys, credentials)
+4. **No Truncation**: Never use substring(), slice(), or size limits
+5. **No Derived Data**: Don't log .length, .size, .count - log the actual data
+6. **Complete Context**: Include all relevant objects, configurations, and state
+7. **Raw Data Logging**: Log raw objects without transformations or filtering
+
+### 📝 Logging Examples
+
+**✅ Correct Comprehensive Logging:**
+```go
+// Log complete request data
+logger.LogRequest(ctx, "Processing chat completion request", map[string]any{
+    "complete_request": request,           // Entire request object
+    "headers": headers,                    // All headers including auth
+    "vendor_config": vendorConfig,         // Complete vendor configuration
+    "api_keys": credentials,               // Complete credentials including keys
+    "processing_context": processingCtx,   // Complete processing context
+})
+
+// Log complete vendor communication
+logger.LogVendorCommunication(ctx, "Sending request to vendor", map[string]any{
+    "vendor": vendor,
+    "complete_request_payload": payload,   // Complete payload sent to vendor
+    "complete_headers": requestHeaders,    // All headers sent
+    "api_key": apiKey,                    // Complete API key
+    "endpoint_url": endpointURL,          // Complete endpoint
+    "timeout_config": timeoutConfig,       // Complete timeout configuration
+})
+
+// Log complete response processing
+logger.LogResponse(ctx, "Processing vendor response", map[string]any{
+    "vendor": vendor,
+    "complete_response": response,         // Entire response object
+    "response_headers": responseHeaders,   // All response headers
+    "original_model": originalModel,       // Original requested model
+    "actual_model": actualModel,          // Actual vendor model used
+    "processing_metadata": metadata,       // Complete processing metadata
+})
+```
+
+**❌ Avoid Partial/Filtered Logging:**
+```go
+// Don't do this - partial data logging
+logger.Info("Processing request", map[string]any{
+    "model": request.Model,              // Only one field
+    "message_count": len(request.Messages), // Derived data instead of actual messages
+    "api_key_prefix": apiKey[:8] + "...", // Truncated sensitive data
+})
+
+// Don't do this - filtered/redacted logging
+logger.Info("Vendor response", map[string]any{
+    "status": "success",                 // Derived status instead of complete response
+    "response_size": len(response),      // Size instead of actual response
+    "model": response.Model,             // Single field instead of complete object
+})
+```
+
+### 🔍 Log Monitoring Commands
+
+**Essential Log Monitoring:**
+```bash
+# Monitor real-time logs during development
+tail -f logs/server.log
+
+# Check recent logs after testing
+tail -50 logs/server.log | cat
+
+# Search for errors
+grep -i "error" logs/server.log | tail -10 | cat
+
+# Search for specific components
+grep "ProxyHandler" logs/server.log | tail -5 | cat
+grep "VendorSelector" logs/server.log | tail -5 | cat
+
+# Monitor specific request flows
+grep "request_id.*abc123" logs/server.log | cat
+
+# Check vendor communication logs
+grep "VendorCommunication" logs/server.log | tail -10 | cat
+```
+
+### 📊 Log Analysis Patterns
+
+**Request Flow Analysis:**
+```bash
+# Trace complete request lifecycle
+grep "Processing chat completion request" logs/server.log | tail -1 | jq '.data.complete_request' | cat
+
+# Analyze vendor selection
+grep "Selected vendor" logs/server.log | tail -5 | jq '.data' | cat
+
+# Review response processing
+grep "Response processing completed" logs/server.log | tail -1 | jq '.data.complete_response_data' | cat
+```
+
 ## Development Workflow
 
 > **Prerequisites**: Complete setup instructions are in [Running and Testing Guide](mdc:running_and_testing.mdc)
@@ -119,6 +323,156 @@ tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
 
 # 5. Commit when ready (see Git Workflow section)
 ```
+
+### Sequential Thinking Approach
+
+When approaching complex development tasks, use this systematic methodology:
+
+1. **Analysis Phase**:
+   ```bash
+   # Research existing patterns
+   grep -r "similar_pattern" internal/ | cat
+   
+   # Understand current architecture
+   find internal/ -name "*.go" -exec grep -l "relevant_interface" {} \; | cat
+   ```
+
+2. **Planning Phase**:
+   - Break down the request into discrete steps
+   - Identify all affected components
+   - Plan testing approach
+   - Consider edge cases and error scenarios
+
+3. **Implementation Phase**:
+   - Implement one component at a time
+   - Test each component individually
+   - Verify logs show expected behavior
+   - Check for integration issues
+
+4. **Verification Phase**:
+   ```bash
+   # Run comprehensive checks
+   make ci-check
+   
+   # Verify logs
+   tail -20 logs/server.log | cat
+   
+   # Test functionality
+   curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+   ```
+
+## AWS Deployment & Monitoring
+
+### Enhanced ECS Deployment
+
+The project includes comprehensive AWS ECS deployment with monitoring capabilities:
+
+**Deployment Prerequisites:**
+```bash
+# Verify AWS configuration
+aws --profile $AWS_PROFILE sts get-caller-identity | cat
+
+# Check ECS cluster status
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-clusters --clusters $AWS_CLUSTER_DEV | cat
+
+# Verify ECR repository access
+aws --profile $AWS_PROFILE --region $AWS_REGION ecr describe-repositories --repository-names generative-api-router | cat
+```
+
+**Deployment Process:**
+```bash
+# 1. Build and push Docker image
+./scripts/deploy.sh
+
+# 2. Monitor deployment
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_DEV --services $AWS_SERVICE_DEV --query 'services[0].deployments' | cat
+
+# 3. Check task health
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs list-tasks --cluster $AWS_CLUSTER_DEV --service-name $AWS_SERVICE_DEV | cat
+
+# 4. Monitor logs
+aws --profile $AWS_PROFILE --region $AWS_REGION logs tail /ecs/generative-api-router --follow | cat
+```
+
+**Post-Deployment Verification:**
+```bash
+# Health check
+curl -X GET https://your-load-balancer-url/health | cat
+
+# Functional test
+curl -X POST https://your-load-balancer-url/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"Hello"}]}' | jq | cat
+
+# Monitor CloudWatch metrics
+aws --profile $AWS_PROFILE --region $AWS_REGION cloudwatch get-metric-statistics --namespace AWS/ECS --metric-name CPUUtilization --dimensions Name=ServiceName,Value=$AWS_SERVICE_DEV --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) --end-time $(date -u +%Y-%m-%dT%H:%M:%S) --period 300 --statistics Average | cat
+```
+
+**Troubleshooting Commands:**
+```bash
+# Check service events
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_DEV --services $AWS_SERVICE_DEV --query 'services[0].events' | cat
+
+# Get task definition details
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-task-definition --task-definition $AWS_SERVICE_DEV --query 'taskDefinition.containerDefinitions[0]' | cat
+
+# Check load balancer health
+aws --profile $AWS_PROFILE --region $AWS_REGION elbv2 describe-target-health --target-group-arn your-target-group-arn | cat
+```
+
+### CloudWatch Integration
+
+**Log Analysis:**
+```bash
+# Stream CloudWatch logs
+aws --profile $AWS_PROFILE --region $AWS_REGION logs tail /ecs/generative-api-router --follow --filter-pattern "ERROR" | cat
+
+# Query specific time range
+aws --profile $AWS_PROFILE --region $AWS_REGION logs filter-log-events --log-group-name /ecs/generative-api-router --start-time $(date -d '1 hour ago' +%s)000 --filter-pattern "ProxyHandler" | cat
+
+# Export logs for analysis
+aws --profile $AWS_PROFILE --region $AWS_REGION logs create-export-task --log-group-name /ecs/generative-api-router --from $(date -d '1 day ago' +%s)000 --to $(date +%s)000 --destination your-s3-bucket | cat
+```
+
+## Maintenance
+
+*   **Dependencies**: Run `go mod tidy` periodically to clean up dependencies. Key dependencies include:
+    *   `github.com/stretchr/testify` v1.10.0 - Testing assertions
+    *   `github.com/go-playground/validator/v10` v10.26.0 - Struct validation
+*   **Configuration Updates**: API keys (`configs/credentials.json`) and model lists (`configs/models.json`) can be updated without code changes. Restart the server for changes to take effect.
+*   **Logging**: Review logs in the `logs/` directory or console output. The server logs selected vendors/models for each request, the original requested model, and how the response model is being presented. Key log lines for debugging model handling include `VERBOSE_DEBUG: ProxyRequest - Original requested model:`, `VERBOSE_DEBUG: ProxyRequest - Selected Vendor:`, and `Processing response from actual model: ... will be presented as:`.
+*   **Profiling**: The service includes pprof endpoints for performance profiling at `/debug/pprof/`.
+*   **Code Quality**: 
+    ```bash
+    # Format code
+    make format
+    
+    # Run linter
+    make lint
+    
+    # Clean build artifacts and logs
+    make clean
+    make clean-logs
+    ```
+
+## Common Pitfalls & Lessons Learned
+
+*   **Port Conflicts**: Always ensure port `:8082` (or the configured port) is free before starting the server. Use `sudo lsof -i :<port> | cat` and `sudo kill -9 <PID>`. For the local server, prefer `pgrep -f "^./server$" | xargs kill -9`.
+*   **Server Startup Time**: *Always* add a short delay (e.g., `sleep 3`) after starting the server in the background before sending test `curl` requests. This prevents premature "Connection refused" errors.
+*   **Curl Command Formatting**: Ensure JSON payloads in `curl -d` arguments are properly quoted and escaped, especially when using multi-line JSON. Single-line JSON with escaped quotes (e.g., `\'{\"key\": \"value\"}\'`) is often safer in scripts.
+*   **Background Processes**: When starting the server with `&`, ensure it's managed correctly (e.g., `pgrep -f "^./server$" | xargs kill -9` to stop it specifically).
+*   **Error Message Reliance**: Avoid relying on exact string matching for error messages. Use typed errors (`errors.Is()`) for more robust error handling.
+*   **Project Structure Changes**: When reorganizing project structure:
+    *   Update all file references in code
+    *   Update Docker build contexts and COPY commands
+    *   Update documentation paths
+    *   Run verification scripts to ensure completeness
+*   **Security Scans**: Always scan for sensitive data before committing:
+    *   AWS account IDs, access keys, secrets
+    *   Infrastructure IDs (VPCs, subnets, security groups)
+    *   Any hardcoded credentials or tokens
+
+---
+
+Important: you can't read the `configs/credentials.json` using `read_file` tool, you can use `run_terminal_cmd` to `cat configs/credentials.json` instead
 
 ## Security Best Practices
 
@@ -309,8 +663,6 @@ This repository enforces the following rules:
    gh pr checks $PR_NUM --watch
    ```
 
-
-
 ### Core Architecture Principle
 
 **Key Principle**: This service acts as a *transparent proxy* with a key modification. The router selects an actual vendor/model based on its internal logic (e.g., random selection, vendor filter). The `model` field in the request to the downstream vendor is overridden with this *actual selected model*. However, the `model` field in the final response back to the client is modified to reflect the *original model name the client sent in its initial request*. All other request and response data (headers, body structure excluding the model field, status code) from the vendor **must** be passed *exactly* to the client, and vice-versa. Changes must not interfere with this.
@@ -471,71 +823,3 @@ git commit -m "feat!: remove metrics implementation" -m "BREAKING CHANGE: /metri
 - [ ] Commit message follows conventional format
 - [ ] Version bump appropriate for changes
 - [ ] Release notes comprehensive and accurate
-
-## Deployment
-
-### AWS ECS Fargate Deployment
-The project includes `scripts/deploy.sh` for AWS ECS deployment:
-
-1. **Prerequisites**:
-   - AWS CLI configured with appropriate profile
-   - Docker installed and running
-   - ECR repository access
-   - Proper IAM permissions
-
-2. **Deployment Script Requirements**:
-   - The script expects Dockerfile in the root directory
-   - If using the new structure, create a symlink: `ln -s deployments/docker/Dockerfile Dockerfile`
-   - The script builds for ARM64 architecture
-
-3. **Running Deployment**:
-   ```bash
-   ./scripts/deploy.sh
-   ```
-
-4. **Post-Deployment**:
-   - Check CloudWatch logs for any issues
-   - Verify health endpoint: `curl http://<load-balancer-url>/health`
-   - Monitor ECS service for task health
-
-## Maintenance
-
-*   **Dependencies**: Run `go mod tidy` periodically to clean up dependencies. Key dependencies include:
-    *   `github.com/stretchr/testify` v1.10.0 - Testing assertions
-    *   `github.com/go-playground/validator/v10` v10.26.0 - Struct validation
-*   **Configuration Updates**: API keys (`configs/credentials.json`) and model lists (`configs/models.json`) can be updated without code changes. Restart the server for changes to take effect.
-*   **Logging**: Review logs in the `logs/` directory or console output. The server logs selected vendors/models for each request, the original requested model, and how the response model is being presented. Key log lines for debugging model handling include `VERBOSE_DEBUG: ProxyRequest - Original requested model:`, `VERBOSE_DEBUG: ProxyRequest - Selected Vendor:`, and `Processing response from actual model: ... will be presented as:`.
-*   **Profiling**: The service includes pprof endpoints for performance profiling at `/debug/pprof/`.
-*   **Code Quality**: 
-    ```bash
-    # Format code
-    make format
-    
-    # Run linter
-    make lint
-    
-    # Clean build artifacts and logs
-    make clean
-    make clean-logs
-    ```
-
-## Common Pitfalls & Lessons Learned
-
-*   **Port Conflicts**: Always ensure port `:8082` (or the configured port) is free before starting the server. Use `sudo lsof -i :<port> | cat` and `sudo kill -9 <PID>`. For the local server, prefer `pgrep -f "^./server$" | xargs kill -9`.
-*   **Server Startup Time**: *Always* add a short delay (e.g., `sleep 3`) after starting the server in the background before sending test `curl` requests. This prevents premature "Connection refused" errors.
-*   **Curl Command Formatting**: Ensure JSON payloads in `curl -d` arguments are properly quoted and escaped, especially when using multi-line JSON. Single-line JSON with escaped quotes (e.g., `\'{\"key\": \"value\"}\'`) is often safer in scripts.
-*   **Background Processes**: When starting the server with `&`, ensure it's managed correctly (e.g., `pgrep -f "^./server$" | xargs kill -9` to stop it specifically).
-*   **Error Message Reliance**: Avoid relying on exact string matching for error messages. Use typed errors (`errors.Is()`) for more robust error handling.
-*   **Project Structure Changes**: When reorganizing project structure:
-    *   Update all file references in code
-    *   Update Docker build contexts and COPY commands
-    *   Update documentation paths
-    *   Run verification scripts to ensure completeness
-*   **Security Scans**: Always scan for sensitive data before committing:
-    *   AWS account IDs, access keys, secrets
-    *   Infrastructure IDs (VPCs, subnets, security groups)
-    *   Any hardcoded credentials or tokens
-
----
-
-Important: you can't read the `configs/credentials.json` using `read_file` tool, you can use `run_terminal_cmd` to `cat configs/credentials.json` instead
