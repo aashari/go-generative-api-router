@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,16 @@ import (
 
 // ProcessResponse processes the API response, ensuring all required fields are present
 func ProcessResponse(responseBody []byte, vendor string, contentEncoding string, originalModel string) ([]byte, error) {
+	// Log complete response processing start
+	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Processing response with complete data", map[string]any{
+		"vendor": vendor,
+		"content_encoding": contentEncoding,
+		"original_model": originalModel,
+		"response_body": string(responseBody),
+		"response_body_bytes": responseBody,
+		"response_size": len(responseBody),
+	})
+
 	if len(responseBody) == 0 {
 		return responseBody, nil
 	}
@@ -19,7 +30,7 @@ func ProcessResponse(responseBody []byte, vendor string, contentEncoding string,
 	// 1. Handle gzip decompression
 	decompressed, err := decompressResponse(responseBody, contentEncoding)
 	if err != nil {
-		return responseBody, err
+		return nil, err
 	}
 
 	// 2. Unwrap array responses (Gemini errors)
@@ -28,9 +39,25 @@ func ProcessResponse(responseBody []byte, vendor string, contentEncoding string,
 	// 3. Parse JSON
 	var responseData map[string]interface{}
 	if err := json.Unmarshal(unwrapped, &responseData); err != nil {
-		logger.Error("Error unmarshaling response", "error", err)
-		return unwrapped, nil // Return original response if it's not valid JSON
+		// Log complete unmarshaling error
+		logger.LogError(context.Background(), "response_processor", err, map[string]any{
+			"response_body_bytes": unwrapped,
+			"response_size":       len(unwrapped),
+			"vendor":              vendor,
+			"content_encoding":    contentEncoding,
+			"original_model":      originalModel,
+			"response_body":       string(unwrapped),
+		})
+		return unwrapped, nil // Return original response on parse error
 	}
+
+	// Log complete parsed response data
+	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Response parsed successfully with complete data", map[string]any{
+		"vendor": vendor,
+		"original_model": originalModel,
+		"complete_parsed_response": responseData,
+		"response_body": string(unwrapped),
+	})
 
 	// 4. Generate missing IDs and add compatibility fields
 	addMissingIDs(responseData)
@@ -52,9 +79,26 @@ func ProcessResponse(responseBody []byte, vendor string, contentEncoding string,
 	// 8. Marshal back to JSON
 	modifiedResponseBody, err := json.Marshal(responseData)
 	if err != nil {
-		logger.Error("Error marshaling modified response", "error", err)
-		return unwrapped, nil // Return original response if marshal fails
+		// Log complete marshaling error
+		logger.LogError(context.Background(), "response_processor", err, map[string]any{
+			"vendor": vendor,
+			"original_model": originalModel,
+			"complete_response_data": responseData,
+			"original_response_body": string(unwrapped),
+		})
+		return unwrapped, fmt.Errorf("error marshaling modified response: %w", err)
 	}
+
+	// Log complete processing completion
+	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Response processing completed with complete data", map[string]any{
+		"vendor": vendor,
+		"original_model": originalModel,
+		"original_response": string(unwrapped),
+		"modified_response": string(modifiedResponseBody),
+		"original_size": len(unwrapped),
+		"modified_size": len(modifiedResponseBody),
+		"complete_response_data": responseData,
+	})
 
 	return modifiedResponseBody, nil
 }
@@ -65,23 +109,44 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 		return responseBody, nil
 	}
 
-	logger.Info("Response is gzip encoded, decompressing...")
+	// Log complete decompression start
+	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Response is gzip encoded, decompressing with complete data", map[string]any{
+		"content_encoding": contentEncoding,
+		"compressed_body": responseBody,
+		"compressed_size": len(responseBody),
+	})
+
 	gzipReader, err := gzip.NewReader(bytes.NewReader(responseBody))
 	if err != nil {
-		logger.Error("Error creating gzip reader", "error", err)
+		// Log complete gzip reader error
+		logger.LogError(context.Background(), "response_processor", err, map[string]any{
+			"content_encoding": contentEncoding,
+			"compressed_body": responseBody,
+			"compressed_size": len(responseBody),
+		})
 		return responseBody, fmt.Errorf("error creating gzip reader: %w", err)
 	}
 	defer gzipReader.Close()
 
 	decompressedBody, err := io.ReadAll(gzipReader)
 	if err != nil {
-		logger.Error("Error decompressing gzip response", "error", err)
+		// Log complete decompression error
+		logger.LogError(context.Background(), "response_processor", err, map[string]any{
+			"content_encoding": contentEncoding,
+			"compressed_body": responseBody,
+			"compressed_size": len(responseBody),
+		})
 		return responseBody, fmt.Errorf("error decompressing gzip response: %w", err)
 	}
 
-	logger.Info("Successfully decompressed gzip response",
-		"original_size_bytes", len(responseBody),
-		"decompressed_size_bytes", len(decompressedBody))
+	// Log complete decompression success
+	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Successfully decompressed gzip response with complete data", map[string]any{
+		"content_encoding": contentEncoding,
+		"compressed_body": responseBody,
+		"decompressed_body": decompressedBody,
+		"compressed_size": len(responseBody),
+		"decompressed_size": len(decompressedBody),
+	})
 	return decompressedBody, nil
 }
 
@@ -124,22 +189,38 @@ func addOpenAICompatibilityFields(responseData map[string]interface{}) {
 	if !systemFingerprintExists || systemFingerprintValue == nil {
 		generatedFP := SystemFingerprint()
 		responseData["system_fingerprint"] = generatedFP
-		logger.Info("Generated system_fingerprint", "reason", "missing_or_null", "value", generatedFP)
+		// Log complete system fingerprint generation
+		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Generated system_fingerprint with complete data", map[string]any{
+			"reason": "missing_or_null",
+			"generated_value": generatedFP,
+			"complete_response_data": responseData,
+			"original_value": systemFingerprintValue,
+			"value_existed": systemFingerprintExists,
+		})
 	} else if _, isString := systemFingerprintValue.(string); !isString {
 		// If it exists but is not a string
 		generatedFP := SystemFingerprint()
 		responseData["system_fingerprint"] = generatedFP
-		logger.Info("Replaced non-string system_fingerprint", "value", generatedFP)
+		// Log complete system fingerprint replacement
+		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Replaced non-string system_fingerprint with complete data", map[string]any{
+			"generated_value": generatedFP,
+			"original_value": systemFingerprintValue,
+			"original_type": fmt.Sprintf("%T", systemFingerprintValue),
+			"complete_response_data": responseData,
+		})
 	}
 }
 
 // replaceModelField replaces the model field with the original requested model
 func replaceModelField(responseData map[string]interface{}, vendor string, originalModel string) {
 	if model, ok := responseData["model"].(string); ok {
-		logger.Info("Processing response from actual model",
-			"actual_model", model,
-			"vendor", vendor,
-			"presented_as", originalModel)
+		// Log complete model field processing
+		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Processing response from actual model with complete data", map[string]any{
+			"actual_model": model,
+			"vendor": vendor,
+			"presented_as": originalModel,
+			"complete_response_data": responseData,
+		})
 	}
 
 	if originalModel != "" {
@@ -182,11 +263,24 @@ func processNormalResponse(responseData map[string]interface{}, vendor string) {
 
 // processChoices processes the choices array in the response
 func processChoices(choices []interface{}, vendor string) {
-	logger.Info("Processing choices", "count", len(choices))
+	// Log complete choices processing start
+	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Processing choices with complete data", map[string]any{
+		"choices_count": len(choices),
+		"complete_choices": choices,
+		"vendor": vendor,
+	})
+	
 	for i, choice := range choices {
 		choiceMap, ok := choice.(map[string]interface{})
 		if !ok {
-			logger.Warn("Choice is not a map", "index", i)
+			// Log complete non-map choice data
+			logger.LogMultipleData(context.Background(), logger.LevelWarn, "Choice is not a map with complete data", map[string]any{
+				"choice_index": i,
+				"complete_choice": choice,
+				"choice_type": fmt.Sprintf("%T", choice),
+				"all_choices": choices,
+				"vendor": vendor,
+			})
 			continue
 		}
 
@@ -203,11 +297,22 @@ func processChoices(choices []interface{}, vendor string) {
 
 		choices[i] = choiceMap
 	}
+
+	// Log complete choices processing completion
+	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Choices processing completed with complete data", map[string]any{
+		"processed_choices": choices,
+		"choices_count": len(choices),
+		"vendor": vendor,
+	})
 }
 
 // processMessage processes a message within a choice
 func processMessage(message map[string]interface{}, vendor string) {
-	logger.Debug("Processing message")
+	// Log complete message processing start
+	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing message with complete data", map[string]any{
+		"complete_message": message,
+		"vendor": vendor,
+	})
 
 	// Add annotations array if missing
 	if _, ok := message["annotations"]; !ok {
@@ -221,11 +326,21 @@ func processMessage(message map[string]interface{}, vendor string) {
 
 	// Handle tool_calls if present
 	if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
-		logger.Info("Processing tool calls in message", "count", len(toolCalls))
+		// Log complete tool calls processing in message
+		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Processing tool calls in message with complete data", map[string]any{
+			"tool_calls_count": len(toolCalls),
+			"complete_tool_calls": toolCalls,
+			"complete_message": message,
+			"vendor": vendor,
+		})
 		processedToolCalls := ProcessToolCalls(toolCalls, vendor)
 		message["tool_calls"] = processedToolCalls
 	} else {
-		logger.Debug("No tool calls found in message")
+		// Log complete no tool calls data
+		logger.LogMultipleData(context.Background(), logger.LevelDebug, "No tool calls found in message with complete data", map[string]any{
+			"complete_message": message,
+			"vendor": vendor,
+		})
 	}
 }
 

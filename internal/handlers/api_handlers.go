@@ -41,10 +41,25 @@ func NewAPIHandlers(creds []config.Credential, models []config.VendorModel, clie
 // @Success      200  {string}  string  "OK"
 // @Router       /health [get]
 func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
-	logger.DebugCtx(r.Context(), "Health check endpoint accessed")
+	// Log complete request data for health check
+	logger.LogRequest(r.Context(), r.Method, r.URL.Path, r.Header.Get("User-Agent"), 
+		map[string][]string(r.Header), []byte{})
+	
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte("OK")); err != nil {
-		logger.WarnCtx(r.Context(), "Failed to write health check response", "error", err)
+		logger.LogError(r.Context(), "health_handler", err, map[string]any{
+			"complete_request": map[string]any{
+				"method": r.Method,
+				"path": r.URL.Path,
+				"headers": map[string][]string(r.Header),
+				"remote_addr": r.RemoteAddr,
+				"user_agent": r.Header.Get("User-Agent"),
+			},
+			"response_data": map[string]any{
+				"status_code": http.StatusOK,
+				"response_body": "OK",
+			},
+		})
 	}
 }
 
@@ -63,7 +78,26 @@ func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure      500     {object}  ErrorResponse          "Internal server error"
 // @Router       /v1/chat/completions [post]
 func (h *APIHandlers) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
-	logger.InfoCtx(r.Context(), "Chat completions request received", "remote_addr", r.RemoteAddr)
+	// Log complete chat completions request data
+	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Chat completions request received with complete data", map[string]any{
+		"complete_request": map[string]any{
+			"method": r.Method,
+			"path": r.URL.Path,
+			"headers": map[string][]string(r.Header),
+			"query_params": r.URL.Query(),
+			"remote_addr": r.RemoteAddr,
+			"user_agent": r.Header.Get("User-Agent"),
+			"content_length": r.ContentLength,
+			"host": r.Host,
+			"request_uri": r.RequestURI,
+		},
+		"handler_state": map[string]any{
+			"credentials_available": len(h.Credentials),
+			"models_available": len(h.VendorModels),
+			"complete_credentials": h.Credentials,
+			"complete_models": h.VendorModels,
+		},
+	})
 
 	// Optional vendor filter via query parameter
 	vendorFilter := r.URL.Query().Get("vendor")
@@ -72,19 +106,59 @@ func (h *APIHandlers) ChatCompletionsHandler(w http.ResponseWriter, r *http.Requ
 	creds := h.Credentials
 	models := h.VendorModels
 	if vendorFilter != "" {
-		logger.DebugCtx(r.Context(), "Filtering by vendor", "vendor", vendorFilter)
+		// Log complete filtering operation
+		logger.LogMultipleData(r.Context(), logger.LevelDebug, "Filtering by vendor with complete data", map[string]any{
+			"vendor_filter": vendorFilter,
+			"original_credentials": creds,
+			"original_models": models,
+			"complete_query_params": r.URL.Query(),
+		})
+		
 		creds = filter.CredentialsByVendor(creds, vendorFilter)
 		models = filter.ModelsByVendor(models, vendorFilter)
 
+		// Log complete filtering results
+		logger.LogMultipleData(r.Context(), logger.LevelDebug, "Vendor filtering results with complete data", map[string]any{
+			"vendor_filter": vendorFilter,
+			"filtered_credentials": creds,
+			"filtered_models": models,
+			"original_credentials_count": len(h.Credentials),
+			"original_models_count": len(h.VendorModels),
+			"filtered_credentials_count": len(creds),
+			"filtered_models_count": len(models),
+		})
+
 		// Check if we have credentials and models for this vendor
 		if len(creds) == 0 {
-			logger.WarnCtx(r.Context(), "No credentials available for vendor", "vendor", vendorFilter)
+			logger.LogError(r.Context(), "vendor_filtering", 
+				fmt.Errorf("no credentials available for vendor: %s", vendorFilter), map[string]any{
+				"vendor_filter": vendorFilter,
+				"complete_original_credentials": h.Credentials,
+				"complete_filtered_credentials": creds,
+				"complete_request_data": map[string]any{
+					"method": r.Method,
+					"path": r.URL.Path,
+					"headers": map[string][]string(r.Header),
+					"query_params": r.URL.Query(),
+				},
+			})
 			err := errors.NewValidationError(fmt.Sprintf("No credentials available for vendor: %s", vendorFilter))
 			errors.HandleError(w, err, http.StatusBadRequest)
 			return
 		}
 		if len(models) == 0 {
-			logger.WarnCtx(r.Context(), "No models available for vendor", "vendor", vendorFilter)
+			logger.LogError(r.Context(), "vendor_filtering", 
+				fmt.Errorf("no models available for vendor: %s", vendorFilter), map[string]any{
+				"vendor_filter": vendorFilter,
+				"complete_original_models": h.VendorModels,
+				"complete_filtered_models": models,
+				"complete_request_data": map[string]any{
+					"method": r.Method,
+					"path": r.URL.Path,
+					"headers": map[string][]string(r.Header),
+					"query_params": r.URL.Query(),
+				},
+			})
 			err := errors.NewValidationError(fmt.Sprintf("No models available for vendor: %s", vendorFilter))
 			errors.HandleError(w, err, http.StatusBadRequest)
 			return
@@ -122,7 +196,17 @@ func (h *APIHandlers) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 	vendorFilter := r.URL.Query().Get("vendor")
 	models := h.VendorModels
 	if vendorFilter != "" {
-		logger.DebugCtx(r.Context(), "Filtering models by vendor", "vendor", vendorFilter)
+		// Log complete models filtering operation
+		logger.LogMultipleData(r.Context(), logger.LevelDebug, "Filtering models by vendor with complete data", map[string]any{
+			"vendor_filter": vendorFilter,
+			"original_models": models,
+			"complete_request": map[string]any{
+				"method": r.Method,
+				"path": r.URL.Path,
+				"headers": map[string][]string(r.Header),
+				"query_params": r.URL.Query(),
+			},
+		})
 		models = filter.ModelsByVendor(models, vendorFilter)
 	}
 
@@ -139,11 +223,34 @@ func (h *APIHandlers) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 		response.Data = append(response.Data, model)
 	}
 
-	logger.DebugCtx(r.Context(), "Models list generated", "count", len(response.Data), "vendor_filter", vendorFilter)
+	// Log complete models response generation
+	logger.LogMultipleData(r.Context(), logger.LevelDebug, "Models list generated with complete data", map[string]any{
+		"complete_response": response,
+		"vendor_filter": vendorFilter,
+		"original_models": h.VendorModels,
+		"filtered_models": models,
+		"response_count": len(response.Data),
+		"timestamp_used": timestamp,
+		"complete_request": map[string]any{
+			"method": r.Method,
+			"path": r.URL.Path,
+			"headers": map[string][]string(r.Header),
+			"query_params": r.URL.Query(),
+		},
+	})
 
 	jsonResp, err := json.Marshal(response)
 	if err != nil {
-		logger.ErrorCtx(r.Context(), "Failed to marshal models response", "error", err)
+		logger.LogError(r.Context(), "models_handler", err, map[string]any{
+			"complete_response_data": response,
+			"vendor_filter": vendorFilter,
+			"complete_models": models,
+			"complete_request": map[string]any{
+				"method": r.Method,
+				"path": r.URL.Path,
+				"headers": map[string][]string(r.Header),
+			},
+		})
 		apiErr := errors.NewInternalError("Failed to generate model list")
 		errors.HandleError(w, apiErr, http.StatusInternalServerError)
 		return
@@ -151,6 +258,15 @@ func (h *APIHandlers) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(jsonResp); err != nil {
-		logger.WarnCtx(r.Context(), "Failed to write models response", "error", err)
+		logger.LogError(r.Context(), "models_handler", err, map[string]any{
+			"complete_response_data": response,
+			"json_response": string(jsonResp),
+			"response_size": len(jsonResp),
+			"complete_request": map[string]any{
+				"method": r.Method,
+				"path": r.URL.Path,
+				"headers": map[string][]string(r.Header),
+			},
+		})
 	}
 }

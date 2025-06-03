@@ -2,7 +2,10 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
 )
@@ -29,36 +32,277 @@ func NewStreamProcessor(conversationID string, timestamp int64, systemFingerprin
 	}
 }
 
-// ProcessChunk processes a single chunk of a streaming response with consistent conversation-level values
+// ProcessChunk processes a single streaming chunk
 func (sp *StreamProcessor) ProcessChunk(chunk []byte) []byte {
-	// 1. Validate SSE format
-	if !sp.isValidStreamChunk(chunk) {
+	// Skip empty chunks
+	if len(chunk) == 0 {
 		return chunk
 	}
 
-	// 2. Parse JSON from chunk
-	chunkData, err := sp.parseStreamChunk(chunk)
+	// Log complete chunk processing start
+	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing streaming chunk with complete data", map[string]any{
+		"chunk": string(chunk),
+		"chunk_bytes": chunk,
+		"chunk_size": len(chunk),
+		"vendor": sp.Vendor,
+		"conversation_id": sp.ConversationID,
+		"timestamp": sp.Timestamp,
+		"system_fingerprint": sp.SystemFingerprint,
+		"original_model": sp.OriginalModel,
+	})
+
+	// Handle SSE format - look for "data: " prefix
+	chunkStr := string(chunk)
+	if !strings.HasPrefix(chunkStr, "data: ") {
+		return chunk // Return as-is if not SSE format
+	}
+
+	// Extract JSON data after "data: "
+	jsonData := strings.TrimPrefix(chunkStr, "data: ")
+	jsonData = strings.TrimSpace(jsonData)
+
+	// Skip [DONE] messages
+	if jsonData == "[DONE]" {
+		return chunk
+	}
+
+	// Parse the JSON chunk
+	var chunkData map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonData), &chunkData); err != nil {
+		// Log complete unmarshaling error
+		logger.LogError(context.Background(), "stream_processor", err, map[string]any{
+			"vendor": sp.Vendor,
+			"chunk": string(chunk),
+			"json_data": jsonData,
+			"conversation_id": sp.ConversationID,
+			"original_model": sp.OriginalModel,
+		})
+		return chunk // Return original chunk if parsing fails
+	}
+
+	// Log complete parsed chunk data
+	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Stream chunk parsed successfully with complete data", map[string]any{
+		"vendor": sp.Vendor,
+		"complete_chunk_data": chunkData,
+		"original_chunk": string(chunk),
+		"json_data": jsonData,
+		"conversation_id": sp.ConversationID,
+		"original_model": sp.OriginalModel,
+	})
+
+	// Process the chunk data
+	sp.processChunkData(chunkData)
+
+	// Convert back to JSON
+	modifiedJSON, err := json.Marshal(chunkData)
 	if err != nil {
-		return chunk
+		// Log complete marshaling error
+		logger.LogError(context.Background(), "stream_processor", err, map[string]any{
+			"vendor": sp.Vendor,
+			"complete_chunk_data": chunkData,
+			"original_chunk": string(chunk),
+			"conversation_id": sp.ConversationID,
+			"original_model": sp.OriginalModel,
+		})
+		return chunk // Return original chunk if marshaling fails
 	}
 
-	// 3. Apply conversation-level consistency
-	sp.applyConversationConsistency(chunkData)
+	// Log complete chunk processing completion
+	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Stream chunk processing completed with complete data", map[string]any{
+		"vendor": sp.Vendor,
+		"original_chunk": string(chunk),
+		"modified_chunk": string(modifiedJSON),
+		"complete_chunk_data": chunkData,
+		"conversation_id": sp.ConversationID,
+		"original_model": sp.OriginalModel,
+	})
 
-	// 4. Replace model field
-	sp.replaceModelField(chunkData)
+	// Return the modified chunk in SSE format
+	result := []byte("data: " + string(modifiedJSON))
+	// Add double newline for SSE format
+	result = append(result, '\n', '\n')
+	return result
+}
 
-	// 5. Process choices (delta vs message)
-	sp.processStreamChoices(chunkData)
+// processChunkData processes the parsed chunk data
+func (sp *StreamProcessor) processChunkData(chunkData map[string]interface{}) {
+	// Set consistent values
+	chunkData["id"] = sp.ConversationID
+	chunkData["created"] = sp.Timestamp
+	chunkData["system_fingerprint"] = sp.SystemFingerprint
+	chunkData["model"] = sp.OriginalModel
+	
+	// Add service_tier if missing (OpenAI compatibility)
+	if _, ok := chunkData["service_tier"]; !ok {
+		chunkData["service_tier"] = "default"
+	}
 
-	// 6. Handle usage for first chunk
-	if sp.isFirstChunk {
+	// Process choices if present
+	if choices, ok := chunkData["choices"].([]interface{}); ok && len(choices) > 0 {
+		// Log complete choices processing in stream chunk
+		logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing choices in stream chunk with complete data", map[string]any{
+			"choices_count": len(choices),
+			"complete_choices": choices,
+			"vendor": sp.Vendor,
+			"complete_chunk_data": chunkData,
+			"conversation_id": sp.ConversationID,
+			"original_model": sp.OriginalModel,
+		})
+		sp.processStreamChoices(choices)
+		
+		// Check if this is the first chunk and add usage if needed
 		sp.addUsageForFirstChunk(chunkData)
-		sp.isFirstChunk = false
+		
+		// Mark that we've processed the first chunk
+		if sp.isFirstChunk {
+			sp.isFirstChunk = false
+		}
+	} else {
+		// Log complete no choices data
+		logger.LogMultipleData(context.Background(), logger.LevelDebug, "No choices found in stream chunk with complete data", map[string]any{
+			"vendor": sp.Vendor,
+			"complete_chunk_data": chunkData,
+			"conversation_id": sp.ConversationID,
+			"original_model": sp.OriginalModel,
+		})
+	}
+}
+
+// processStreamChoices processes choices in streaming chunks
+func (sp *StreamProcessor) processStreamChoices(choices []interface{}) {
+	for i, choice := range choices {
+		choiceMap, ok := choice.(map[string]interface{})
+		if !ok {
+			// Log complete non-map choice data in stream
+			logger.LogMultipleData(context.Background(), logger.LevelWarn, "Stream chunk choice is not a map with complete data", map[string]any{
+				"choice_index": i,
+				"complete_choice": choice,
+				"choice_type": fmt.Sprintf("%T", choice),
+				"vendor": sp.Vendor,
+				"all_choices": choices,
+				"conversation_id": sp.ConversationID,
+				"original_model": sp.OriginalModel,
+			})
+			continue
+		}
+
+		// Add logprobs if missing
+		if _, ok := choiceMap["logprobs"]; !ok {
+			choiceMap["logprobs"] = nil
+		}
+
+		// Process delta or message
+		if delta, ok := choiceMap["delta"].(map[string]interface{}); ok {
+			sp.processStreamDelta(delta, i)
+		} else if message, ok := choiceMap["message"].(map[string]interface{}); ok {
+			sp.processStreamMessage(message, i)
+		} else {
+			// Log complete no delta or message data
+			logger.LogMultipleData(context.Background(), logger.LevelWarn, "No delta or message found in stream chunk choice with complete data", map[string]any{
+				"choice_index": i,
+				"complete_choice_map": choiceMap,
+				"vendor": sp.Vendor,
+				"conversation_id": sp.ConversationID,
+				"original_model": sp.OriginalModel,
+			})
+		}
+
+		choices[i] = choiceMap
+	}
+}
+
+// processStreamDelta processes delta in streaming chunks
+func (sp *StreamProcessor) processStreamDelta(delta map[string]interface{}, choiceIndex int) {
+	// Log complete delta processing start
+	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing delta in stream chunk with complete data", map[string]any{
+		"vendor": sp.Vendor,
+		"complete_delta": delta,
+		"choice_index": choiceIndex,
+		"conversation_id": sp.ConversationID,
+		"original_model": sp.OriginalModel,
+	})
+
+	// Add annotations if missing
+	if _, ok := delta["annotations"]; !ok {
+		delta["annotations"] = []interface{}{}
 	}
 
-	// 7. Reconstruct SSE format
-	return sp.reconstructSSE(chunkData)
+	// Add refusal if missing
+	if _, ok := delta["refusal"]; !ok {
+		delta["refusal"] = nil
+	}
+
+	// Handle tool_calls if present
+	if toolCalls, ok := delta["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
+		// Log complete tool calls processing in stream chunk delta
+		logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing tool calls in stream chunk delta with complete data", map[string]any{
+			"tool_calls_count": len(toolCalls),
+			"complete_tool_calls": toolCalls,
+			"vendor": sp.Vendor,
+			"complete_delta": delta,
+			"choice_index": choiceIndex,
+			"conversation_id": sp.ConversationID,
+			"original_model": sp.OriginalModel,
+		})
+		processedToolCalls := ProcessToolCalls(toolCalls, sp.Vendor)
+		delta["tool_calls"] = processedToolCalls
+	} else {
+		// Log complete no tool calls data in delta
+		logger.LogMultipleData(context.Background(), logger.LevelDebug, "No tool calls found in stream chunk delta with complete data", map[string]any{
+			"vendor": sp.Vendor,
+			"complete_delta": delta,
+			"choice_index": choiceIndex,
+			"conversation_id": sp.ConversationID,
+			"original_model": sp.OriginalModel,
+		})
+	}
+}
+
+// processStreamMessage processes message in streaming chunks
+func (sp *StreamProcessor) processStreamMessage(message map[string]interface{}, choiceIndex int) {
+	// Log complete message processing start in stream
+	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing message in stream chunk with complete data", map[string]any{
+		"vendor": sp.Vendor,
+		"complete_message": message,
+		"choice_index": choiceIndex,
+		"conversation_id": sp.ConversationID,
+		"original_model": sp.OriginalModel,
+	})
+
+	// Add annotations if missing
+	if _, ok := message["annotations"]; !ok {
+		message["annotations"] = []interface{}{}
+	}
+
+	// Add refusal if missing
+	if _, ok := message["refusal"]; !ok {
+		message["refusal"] = nil
+	}
+
+	// Handle tool_calls if present
+	if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
+		// Log complete tool calls processing in stream chunk message
+		logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing tool calls in stream chunk message with complete data", map[string]any{
+			"tool_calls_count": len(toolCalls),
+			"complete_tool_calls": toolCalls,
+			"vendor": sp.Vendor,
+			"complete_message": message,
+			"choice_index": choiceIndex,
+			"conversation_id": sp.ConversationID,
+			"original_model": sp.OriginalModel,
+		})
+		processedToolCalls := ProcessToolCalls(toolCalls, sp.Vendor)
+		message["tool_calls"] = processedToolCalls
+	} else {
+		// Log complete no tool calls data in message
+		logger.LogMultipleData(context.Background(), logger.LevelDebug, "No tool calls found in stream chunk message with complete data", map[string]any{
+			"vendor": sp.Vendor,
+			"complete_message": message,
+			"choice_index": choiceIndex,
+			"conversation_id": sp.ConversationID,
+			"original_model": sp.OriginalModel,
+		})
+	}
 }
 
 // isValidStreamChunk validates the SSE format
@@ -111,91 +355,6 @@ func (sp *StreamProcessor) applyConversationConsistency(chunkData map[string]int
 func (sp *StreamProcessor) replaceModelField(chunkData map[string]interface{}) {
 	if sp.OriginalModel != "" {
 		chunkData["model"] = sp.OriginalModel
-	}
-}
-
-// processStreamChoices processes choices in streaming response (delta vs message)
-func (sp *StreamProcessor) processStreamChoices(chunkData map[string]interface{}) {
-	choices, ok := chunkData["choices"].([]interface{})
-	if !ok || len(choices) == 0 {
-		logger.Debug("No choices found in stream chunk", "vendor", sp.Vendor)
-		return
-	}
-
-	logger.Debug("Processing choices in stream chunk", "count", len(choices), "vendor", sp.Vendor)
-	for i, choice := range choices {
-		choiceMap, ok := choice.(map[string]interface{})
-		if !ok {
-			logger.Warn("Stream chunk choice is not a map", "index", i, "vendor", sp.Vendor)
-			continue
-		}
-
-		// Add logprobs if missing
-		if _, ok := choiceMap["logprobs"]; !ok {
-			choiceMap["logprobs"] = nil
-		}
-
-		// Check for delta (streaming) or message (first chunk)
-		if delta, ok := choiceMap["delta"].(map[string]interface{}); ok {
-			sp.processStreamDelta(delta)
-			choiceMap["delta"] = delta
-		} else if message, ok := choiceMap["message"].(map[string]interface{}); ok {
-			sp.processStreamMessage(message)
-			choiceMap["message"] = message
-		} else {
-			logger.Warn("No delta or message found in stream chunk choice", "index", i, "vendor", sp.Vendor)
-		}
-
-		choices[i] = choiceMap
-	}
-	chunkData["choices"] = choices
-}
-
-// processStreamDelta processes delta content in streaming response
-func (sp *StreamProcessor) processStreamDelta(delta map[string]interface{}) {
-	logger.Debug("Processing delta in stream chunk", "vendor", sp.Vendor)
-
-	// Add annotations array if missing in delta
-	if _, ok := delta["annotations"]; !ok {
-		delta["annotations"] = []interface{}{}
-	}
-
-	// Add refusal if missing in delta
-	if _, ok := delta["refusal"]; !ok {
-		delta["refusal"] = nil
-	}
-
-	// Process tool_calls if present
-	if toolCalls, ok := delta["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
-		logger.Debug("Processing tool calls in stream chunk delta", "count", len(toolCalls), "vendor", sp.Vendor)
-		processedToolCalls := ProcessToolCalls(toolCalls, sp.Vendor)
-		delta["tool_calls"] = processedToolCalls
-	} else {
-		logger.Debug("No tool calls found in stream chunk delta", "vendor", sp.Vendor)
-	}
-}
-
-// processStreamMessage processes message content in streaming response
-func (sp *StreamProcessor) processStreamMessage(message map[string]interface{}) {
-	logger.Debug("Processing message in stream chunk", "vendor", sp.Vendor)
-
-	// Add annotations array if missing
-	if _, ok := message["annotations"]; !ok {
-		message["annotations"] = []interface{}{}
-	}
-
-	// Add refusal if missing
-	if _, ok := message["refusal"]; !ok {
-		message["refusal"] = nil
-	}
-
-	// Process tool_calls if present
-	if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
-		logger.Debug("Processing tool calls in stream chunk message", "count", len(toolCalls), "vendor", sp.Vendor)
-		processedToolCalls := ProcessToolCalls(toolCalls, sp.Vendor)
-		message["tool_calls"] = processedToolCalls
-	} else {
-		logger.Debug("No tool calls found in stream chunk message", "vendor", sp.Vendor)
 	}
 }
 

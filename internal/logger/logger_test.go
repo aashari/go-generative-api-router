@@ -3,6 +3,7 @@ package logger
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"strings"
@@ -53,72 +54,6 @@ func TestLoggerInitialization(t *testing.T) {
 	}
 }
 
-func TestSensitiveDataSanitization(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "OpenAI API Key",
-			input:    "sk-1234567890abcdef",
-			expected: "sk-1****cdef",
-		},
-		{
-			name:     "Google API Key",
-			input:    "AIzaSyExample_Fake_Key_For_Testing_Only",
-			expected: "AIza****Only",
-		},
-		{
-			name:     "Short sensitive value",
-			input:    "secret",
-			expected: "****",
-		},
-		{
-			name:     "Non-sensitive value",
-			input:    "normal-value",
-			expected: "normal-value",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := sanitizeValue(tt.input)
-			if result != tt.expected {
-				t.Errorf("sanitizeValue(%s) = %s, expected %s", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestSensitiveKeyDetection(t *testing.T) {
-	tests := []struct {
-		key         string
-		isSensitive bool
-	}{
-		{"api_key", true},
-		{"api-key", true},
-		{"apikey", true},
-		{"token", true},
-		{"secret", true},
-		{"password", true},
-		{"authorization", true},
-		{"auth", true},
-		{"normal_field", false},
-		{"username", false},
-		{"model", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.key, func(t *testing.T) {
-			result := isSensitiveKey(tt.key)
-			if result != tt.isSensitive {
-				t.Errorf("isSensitiveKey(%s) = %v, expected %v", tt.key, result, tt.isSensitive)
-			}
-		})
-	}
-}
-
 func TestContextAwareLogging(t *testing.T) {
 	var buf bytes.Buffer
 
@@ -151,6 +86,174 @@ func TestContextAwareLogging(t *testing.T) {
 	}
 }
 
+func TestCompleteDataLogging(t *testing.T) {
+	var buf bytes.Buffer
+
+	// Setup logger with buffer
+	originalLogger := Logger
+	defer func() { Logger = originalLogger }()
+
+	opts := &slog.HandlerOptions{Level: LevelDebug}
+	handler := slog.NewJSONHandler(&buf, opts)
+	Logger = slog.New(handler)
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "test-123")
+
+	// Test complex data structure
+	testData := map[string]interface{}{
+		"api_key":     "sk-1234567890abcdef", // Should NOT be sanitized
+		"model":       "gpt-4",
+		"secret_data": "very-secret-value",
+		"nested": map[string]interface{}{
+			"credentials": "sensitive-info",
+			"tokens":      []string{"token1", "token2"},
+		},
+	}
+
+	// Test LogCompleteDataInfo
+	LogCompleteDataInfo(ctx, "Test complete data logging", testData)
+
+	output := buf.String()
+	
+	// Verify complete data is logged as JSON
+	if !strings.Contains(output, "sk-1234567890abcdef") {
+		t.Errorf("Expected complete API key in log output (no sanitization): %s", output)
+	}
+	if !strings.Contains(output, "very-secret-value") {
+		t.Errorf("Expected complete secret data in log output: %s", output)
+	}
+	if !strings.Contains(output, "sensitive-info") {
+		t.Errorf("Expected complete nested sensitive data in log output: %s", output)
+	}
+	if !strings.Contains(output, "complete_data") {
+		t.Errorf("Expected complete_data field in log output: %s", output)
+	}
+}
+
+func TestLogMultipleData(t *testing.T) {
+	var buf bytes.Buffer
+
+	// Setup logger with buffer
+	originalLogger := Logger
+	defer func() { Logger = originalLogger }()
+
+	opts := &slog.HandlerOptions{Level: LevelDebug}
+	handler := slog.NewJSONHandler(&buf, opts)
+	Logger = slog.New(handler)
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "test-123")
+
+	// Test multiple data logging with complete data structures
+	requestData := map[string]string{
+		"method": "POST",
+		"path":   "/v1/chat/completions",
+	}
+	
+	credentialsData := map[string]string{
+		"api_key": "sk-secret-key",
+		"token":   "bearer-token",
+	}
+	
+	responseData := []byte(`{"id":"chatcmpl-123","object":"chat.completion"}`)
+
+	LogMultipleData(ctx, LevelInfo, "Test multiple data logging", map[string]any{
+		"request":     requestData,
+		"credentials": credentialsData,
+		"response":    responseData,
+	})
+
+	output := buf.String()
+	t.Logf("Expected complete response data in log: %s", output)
+	
+	// Verify all data is logged completely
+	if !strings.Contains(output, "sk-secret-key") {
+		t.Errorf("Expected complete API key in multiple data log: %s", output)
+	}
+	if !strings.Contains(output, "bearer-token") {
+		t.Errorf("Expected complete token in multiple data log: %s", output)
+	}
+	// The response data is base64 encoded, so check for the base64 representation
+	expectedBase64 := base64.StdEncoding.EncodeToString(responseData)
+	if !strings.Contains(output, expectedBase64) {
+		t.Errorf("Expected complete response data (base64) in log: %s", output)
+	}
+}
+
+func TestLogRequest(t *testing.T) {
+	var buf bytes.Buffer
+
+	// Setup logger with buffer
+	originalLogger := Logger
+	defer func() { Logger = originalLogger }()
+
+	opts := &slog.HandlerOptions{Level: LevelDebug}
+	handler := slog.NewJSONHandler(&buf, opts)
+	Logger = slog.New(handler)
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "test-123")
+
+	headers := map[string][]string{
+		"Authorization": {"Bearer sk-secret-token"},
+		"Content-Type":  {"application/json"},
+	}
+	body := []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}]}`)
+
+	LogRequest(ctx, "POST", "/v1/chat/completions", "curl/8.0", headers, body)
+
+	output := buf.String()
+	
+	// Verify complete request data is logged
+	if !strings.Contains(output, "sk-secret-token") {
+		t.Errorf("Expected complete authorization header in request log: %s", output)
+	}
+	if !strings.Contains(output, "Hello") {
+		t.Errorf("Expected complete request body in log: %s", output)
+	}
+	if !strings.Contains(output, "Complete HTTP request data") {
+		t.Errorf("Expected request log message: %s", output)
+	}
+}
+
+func TestLogVendorCommunication(t *testing.T) {
+	var buf bytes.Buffer
+
+	// Setup logger with buffer
+	originalLogger := Logger
+	defer func() { Logger = originalLogger }()
+
+	opts := &slog.HandlerOptions{Level: LevelDebug}
+	handler := slog.NewJSONHandler(&buf, opts)
+	Logger = slog.New(handler)
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "test-123")
+
+	requestBody := []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}],"api_key":"sk-secret"}`)
+	responseBody := []byte(`{"id":"chatcmpl-123","choices":[{"message":{"content":"Hi there!"}}]}`)
+	
+	requestHeaders := map[string][]string{
+		"Authorization": {"Bearer sk-secret-key"},
+	}
+	responseHeaders := map[string][]string{
+		"Content-Type": {"application/json"},
+	}
+
+	LogVendorCommunication(ctx, "openai", "https://api.openai.com/v1/chat/completions", 
+		requestBody, responseBody, requestHeaders, responseHeaders)
+
+	output := buf.String()
+	
+	// Verify complete vendor communication is logged
+	if !strings.Contains(output, "sk-secret") {
+		t.Errorf("Expected complete API key in vendor communication log: %s", output)
+	}
+	if !strings.Contains(output, "sk-secret-key") {
+		t.Errorf("Expected complete authorization header in vendor communication log: %s", output)
+	}
+	if !strings.Contains(output, "Hi there!") {
+		t.Errorf("Expected complete response content in vendor communication log: %s", output)
+	}
+}
+
 func TestSpecializedLoggingFunctions(t *testing.T) {
 	var buf bytes.Buffer
 
@@ -164,12 +267,23 @@ func TestSpecializedLoggingFunctions(t *testing.T) {
 
 	ctx := context.WithValue(context.Background(), RequestIDKey, "test-123")
 
-	// Test LogProxyRequest
-	LogProxyRequest(ctx, "my-model", "openai", "gpt-4", 10)
+	// Test LogProxyRequest with complete data
+	requestData := map[string]interface{}{
+		"model":   "my-model",
+		"api_key": "sk-secret-key",
+		"messages": []map[string]string{
+			{"role": "user", "content": "Hello"},
+		},
+	}
+	
+	LogProxyRequest(ctx, "my-model", "openai", "gpt-4", 10, requestData)
 
 	output := buf.String()
-	if !strings.Contains(output, "Proxy request initiated") {
+	if !strings.Contains(output, "Proxy request initiated with complete data") {
 		t.Errorf("Expected proxy request log message: %s", output)
+	}
+	if !strings.Contains(output, "sk-secret-key") {
+		t.Errorf("Expected complete API key in proxy request log: %s", output)
 	}
 	if !strings.Contains(output, "my-model") {
 		t.Errorf("Expected original model in log: %s", output)
@@ -181,71 +295,108 @@ func TestSpecializedLoggingFunctions(t *testing.T) {
 	// Reset buffer for next test
 	buf.Reset()
 
-	// Test LogVendorResponse
-	LogVendorResponse(ctx, "openai", "gpt-4-actual", "my-model", 1024, 500*time.Millisecond)
+	// Test LogVendorResponse with complete data
+	responseData := map[string]interface{}{
+		"id":      "chatcmpl-123",
+		"choices": []map[string]interface{}{
+			{"message": map[string]string{"content": "Hello there!"}},
+		},
+		"usage": map[string]int{
+			"prompt_tokens":     10,
+			"completion_tokens": 5,
+		},
+	}
+	
+	LogVendorResponse(ctx, "openai", "gpt-4-actual", "my-model", 1024, 500*time.Millisecond, responseData)
 
 	output = buf.String()
-	if !strings.Contains(output, "Vendor response processed") {
+	if !strings.Contains(output, "Vendor response processed with complete data") {
 		t.Errorf("Expected vendor response log message: %s", output)
+	}
+	if !strings.Contains(output, "Hello there!") {
+		t.Errorf("Expected complete response content in log: %s", output)
 	}
 	if !strings.Contains(output, "1024") {
 		t.Errorf("Expected response size in log: %s", output)
 	}
 }
 
-func TestSanitizeMap(t *testing.T) {
-	input := map[string]any{
-		"api_key":     "sk-1234567890abcdef",
-		"model":       "gpt-4",
-		"secret_key":  "very-secret-value",
-		"normal_data": "public-info",
+func TestLogCredentials(t *testing.T) {
+	var buf bytes.Buffer
+
+	// Setup logger with buffer
+	originalLogger := Logger
+	defer func() { Logger = originalLogger }()
+
+	opts := &slog.HandlerOptions{Level: LevelDebug}
+	handler := slog.NewJSONHandler(&buf, opts)
+	Logger = slog.New(handler)
+
+	ctx := context.Background()
+
+	// Test logging complete credentials (including sensitive data)
+	credentials := []map[string]string{
+		{
+			"platform": "openai",
+			"type":     "api-key",
+			"value":    "sk-1234567890abcdef",
+		},
+		{
+			"platform": "gemini",
+			"type":     "api-key", 
+			"value":    "AIzaSyExample_Secret_Key",
+		},
 	}
 
-	result := SanitizeMap(input)
+	LogCredentials(ctx, credentials)
 
-	// Check that sensitive fields are sanitized
-	if result["api_key"] == input["api_key"] {
-		t.Error("API key should be sanitized")
+	output := buf.String()
+	
+	// Verify complete credentials are logged (no sanitization)
+	if !strings.Contains(output, "sk-1234567890abcdef") {
+		t.Errorf("Expected complete OpenAI API key in credentials log: %s", output)
 	}
-	if result["secret_key"] == input["secret_key"] {
-		t.Error("Secret key should be sanitized")
+	if !strings.Contains(output, "AIzaSyExample_Secret_Key") {
+		t.Errorf("Expected complete Gemini API key in credentials log: %s", output)
 	}
-
-	// Check that non-sensitive fields are preserved
-	if result["model"] != input["model"] {
-		t.Error("Model field should be preserved")
-	}
-	if result["normal_data"] != input["normal_data"] {
-		t.Error("Normal data should be preserved")
+	if !strings.Contains(output, "Complete credentials data") {
+		t.Errorf("Expected credentials log message: %s", output)
 	}
 }
 
 func TestLogLevels(t *testing.T) {
 	var buf bytes.Buffer
 
-	// Setup logger with INFO level
+	// Setup logger with buffer
 	originalLogger := Logger
 	defer func() { Logger = originalLogger }()
 
-	opts := &slog.HandlerOptions{Level: LevelInfo}
+	opts := &slog.HandlerOptions{Level: LevelDebug}
 	handler := slog.NewJSONHandler(&buf, opts)
 	Logger = slog.New(handler)
 
-	// Debug should not appear
-	Debug("Debug message")
-	if strings.Contains(buf.String(), "Debug message") {
-		t.Error("Debug message should not appear with INFO level")
-	}
+	ctx := context.Background()
+	testData := map[string]string{"key": "value"}
 
-	// Info should appear
-	Info("Info message")
-	if !strings.Contains(buf.String(), "Info message") {
-		t.Error("Info message should appear with INFO level")
-	}
+	// Test all log levels with complete data
+	LogCompleteDataDebug(ctx, "Debug message", testData)
+	LogCompleteDataInfo(ctx, "Info message", testData)
+	LogCompleteDataWarn(ctx, "Warn message", testData)
+	LogCompleteDataError(ctx, "Error message", testData)
 
-	// Error should appear
-	Error("Error message")
-	if !strings.Contains(buf.String(), "Error message") {
-		t.Error("Error message should appear with INFO level")
+	output := buf.String()
+	
+	// Verify all levels are logged
+	if !strings.Contains(output, "Debug message") {
+		t.Errorf("Expected debug message in log output: %s", output)
+	}
+	if !strings.Contains(output, "Info message") {
+		t.Errorf("Expected info message in log output: %s", output)
+	}
+	if !strings.Contains(output, "Warn message") {
+		t.Errorf("Expected warn message in log output: %s", output)
+	}
+	if !strings.Contains(output, "Error message") {
+		t.Errorf("Expected error message in log output: %s", output)
 	}
 }

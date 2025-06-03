@@ -2,10 +2,10 @@ package logger
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -70,10 +70,7 @@ func Init(config Config) error {
 			if a.Key == slog.TimeKey {
 				return slog.String(slog.TimeKey, a.Value.Time().Format(config.TimeFormat))
 			}
-			// Sanitize sensitive data
-			if isSensitiveKey(a.Key) {
-				return slog.String(a.Key, sanitizeValue(a.Value.String()))
-			}
+			// NO SANITIZATION - log everything as-is
 			return a
 		},
 	}
@@ -88,39 +85,6 @@ func Init(config Config) error {
 
 	Logger = slog.New(handler)
 	return nil
-}
-
-// Sensitive field patterns
-var sensitivePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)(api[_-]?key|token|secret|password|credential)`),
-	regexp.MustCompile(`(?i)(authorization|auth)`),
-	regexp.MustCompile(`sk-[a-zA-Z0-9]+`),       // OpenAI API keys
-	regexp.MustCompile(`AIza[a-zA-Z0-9_-]{35}`), // Google API keys
-	regexp.MustCompile(`[A-Z0-9]{20}`),          // AWS access keys
-	regexp.MustCompile(`[a-zA-Z0-9/+=]{40}`),    // AWS secret keys
-}
-
-// Check if a key is sensitive
-func isSensitiveKey(key string) bool {
-	for _, pattern := range sensitivePatterns {
-		if pattern.MatchString(key) {
-			return true
-		}
-	}
-	return false
-}
-
-// Sanitize sensitive values
-func sanitizeValue(value string) string {
-	for _, pattern := range sensitivePatterns {
-		if pattern.MatchString(value) {
-			if len(value) > 8 {
-				return value[:4] + "****" + value[len(value)-4:]
-			}
-			return "****"
-		}
-	}
-	return value
 }
 
 // Context-aware logging functions
@@ -197,100 +161,188 @@ func ErrorCtx(ctx context.Context, msg string, args ...any) {
 	WithContext(ctx).Error(msg, args...)
 }
 
+// Comprehensive data logging functions - log entire data structures
+
+// LogCompleteData logs any data structure in its entirety as JSON
+func LogCompleteData(ctx context.Context, level slog.Level, msg string, data any) {
+	logger := WithContext(ctx)
+	
+	// Convert data to JSON for complete logging
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		logger.Log(ctx, level, msg, "data_marshal_error", err.Error(), "raw_data", fmt.Sprintf("%+v", data))
+		return
+	}
+	
+	logger.Log(ctx, level, msg, "complete_data", string(jsonData), "data_type", fmt.Sprintf("%T", data))
+}
+
+// LogCompleteDataDebug logs complete data at DEBUG level
+func LogCompleteDataDebug(ctx context.Context, msg string, data any) {
+	LogCompleteData(ctx, LevelDebug, msg, data)
+}
+
+// LogCompleteDataInfo logs complete data at INFO level
+func LogCompleteDataInfo(ctx context.Context, msg string, data any) {
+	LogCompleteData(ctx, LevelInfo, msg, data)
+}
+
+// LogCompleteDataWarn logs complete data at WARN level
+func LogCompleteDataWarn(ctx context.Context, msg string, data any) {
+	LogCompleteData(ctx, LevelWarn, msg, data)
+}
+
+// LogCompleteDataError logs complete data at ERROR level
+func LogCompleteDataError(ctx context.Context, msg string, data any) {
+	LogCompleteData(ctx, LevelError, msg, data)
+}
+
+// LogMultipleData logs multiple data structures completely
+func LogMultipleData(ctx context.Context, level slog.Level, msg string, dataMap map[string]any) {
+	logger := WithContext(ctx)
+	
+	args := []any{}
+	for key, value := range dataMap {
+		// Convert each value to JSON for complete logging
+		jsonData, err := json.Marshal(value)
+		if err != nil {
+			args = append(args, key+"_marshal_error", err.Error())
+			args = append(args, key+"_raw", fmt.Sprintf("%+v", value))
+		} else {
+			args = append(args, key+"_complete", string(jsonData))
+		}
+		args = append(args, key+"_type", fmt.Sprintf("%T", value))
+	}
+	
+	logger.Log(ctx, level, msg, args...)
+}
+
+// LogRequest logs complete HTTP request data
+func LogRequest(ctx context.Context, method, path, userAgent string, headers map[string][]string, body []byte) {
+	LogMultipleData(ctx, LevelInfo, "Complete HTTP request data", map[string]any{
+		"method":     method,
+		"path":       path,
+		"user_agent": userAgent,
+		"headers":    headers,
+		"body":       string(body),
+		"body_bytes": body,
+	})
+}
+
+// LogResponse logs complete HTTP response data
+func LogResponse(ctx context.Context, statusCode int, headers map[string][]string, body []byte) {
+	LogMultipleData(ctx, LevelInfo, "Complete HTTP response data", map[string]any{
+		"status_code": statusCode,
+		"headers":     headers,
+		"body":        string(body),
+		"body_bytes":  body,
+		"body_size":   len(body),
+	})
+}
+
+// LogVendorCommunication logs complete vendor request/response cycle
+func LogVendorCommunication(ctx context.Context, vendor, url string, requestBody, responseBody []byte, requestHeaders, responseHeaders map[string][]string) {
+	LogMultipleData(ctx, LevelInfo, "Complete vendor communication", map[string]any{
+		"vendor":           vendor,
+		"url":              url,
+		"request_body":     string(requestBody),
+		"request_body_bytes": requestBody,
+		"response_body":    string(responseBody),
+		"response_body_bytes": responseBody,
+		"request_headers":  requestHeaders,
+		"response_headers": responseHeaders,
+	})
+}
+
 // Specialized logging functions for the proxy service
 
-// LogProxyRequest logs the initial proxy request with vendor selection
-func LogProxyRequest(ctx context.Context, originalModel, selectedVendor, selectedModel string, totalCombinations int) {
-	WithContext(ctx).Info("Proxy request initiated",
-		"component", "proxy",
-		"original_model", originalModel,
-		"selected_vendor", selectedVendor,
-		"selected_model", selectedModel,
-		"total_combinations", totalCombinations,
-	)
+// LogProxyRequest logs the initial proxy request with complete data
+func LogProxyRequest(ctx context.Context, originalModel, selectedVendor, selectedModel string, totalCombinations int, requestData any) {
+	LogMultipleData(ctx, LevelInfo, "Proxy request initiated with complete data", map[string]any{
+		"component":          "proxy",
+		"original_model":     originalModel,
+		"selected_vendor":    selectedVendor,
+		"selected_model":     selectedModel,
+		"total_combinations": totalCombinations,
+		"complete_request":   requestData,
+	})
 }
 
-// LogVendorResponse logs vendor response processing
-func LogVendorResponse(ctx context.Context, vendor, actualModel, presentedModel string, responseSize int, processingTime time.Duration) {
-	WithContext(ctx).Info("Vendor response processed",
-		"component", "response_processor",
-		"vendor", vendor,
-		"actual_model", actualModel,
-		"presented_model", presentedModel,
-		"response_size_bytes", responseSize,
-		"processing_time_ms", processingTime.Milliseconds(),
-	)
+// LogVendorResponse logs vendor response processing with complete data
+func LogVendorResponse(ctx context.Context, vendor, actualModel, presentedModel string, responseSize int, processingTime time.Duration, completeResponse any) {
+	LogMultipleData(ctx, LevelInfo, "Vendor response processed with complete data", map[string]any{
+		"component":         "response_processor",
+		"vendor":            vendor,
+		"actual_model":      actualModel,
+		"presented_model":   presentedModel,
+		"response_size_bytes": responseSize,
+		"processing_time_ms": processingTime.Milliseconds(),
+		"complete_response": completeResponse,
+	})
 }
 
-// LogValidationResult logs response validation results
-func LogValidationResult(ctx context.Context, vendor string, success bool, validationError error) {
-	logger := WithContext(ctx)
+// LogValidationResult logs response validation results with complete data
+func LogValidationResult(ctx context.Context, vendor string, success bool, validationError error, validatedData any) {
 	if success {
-		logger.Debug("Response validation successful",
-			"component", "validation",
-			"vendor", vendor,
-		)
+		LogMultipleData(ctx, LevelDebug, "Response validation successful with complete data", map[string]any{
+			"component":      "validation",
+			"vendor":         vendor,
+			"validated_data": validatedData,
+		})
 	} else {
-		logger.Warn("Response validation failed",
-			"component", "validation",
-			"vendor", vendor,
-			"error", validationError.Error(),
-		)
+		LogMultipleData(ctx, LevelWarn, "Response validation failed with complete data", map[string]any{
+			"component":      "validation",
+			"vendor":         vendor,
+			"error":          validationError.Error(),
+			"failed_data":    validatedData,
+		})
 	}
 }
 
-// LogCompressionInfo logs compression-related information
-func LogCompressionInfo(ctx context.Context, vendor string, originalSize, compressedSize int, compressionRatio float64) {
-	WithContext(ctx).Debug("Response compression applied",
-		"component", "compression",
-		"vendor", vendor,
-		"original_size_bytes", originalSize,
-		"compressed_size_bytes", compressedSize,
-		"compression_ratio", compressionRatio,
-	)
+// LogStreamingInfo logs streaming-related information with complete data
+func LogStreamingInfo(ctx context.Context, vendor, model string, chunkCount int, completeStreamData any) {
+	LogMultipleData(ctx, LevelDebug, "Streaming response processed with complete data", map[string]any{
+		"component":           "streaming",
+		"vendor":              vendor,
+		"model":               model,
+		"chunk_count":         chunkCount,
+		"complete_stream_data": completeStreamData,
+	})
 }
 
-// LogStreamingInfo logs streaming-related information
-func LogStreamingInfo(ctx context.Context, vendor, model string, chunkCount int) {
-	WithContext(ctx).Debug("Streaming response processed",
-		"component", "streaming",
-		"vendor", vendor,
-		"model", model,
-		"chunk_count", chunkCount,
-	)
-}
-
-// LogError logs errors with appropriate context
-func LogError(ctx context.Context, component string, err error, details map[string]any) {
+// LogError logs errors with complete context and data
+func LogError(ctx context.Context, component string, err error, completeDetails map[string]any) {
 	args := []any{
 		"component", component,
 		"error", err.Error(),
 	}
 
-	for k, v := range details {
+	// Log all details completely without any filtering
+	for k, v := range completeDetails {
+		// Convert complex data to JSON for complete logging
+		if jsonData, jsonErr := json.Marshal(v); jsonErr == nil {
+			args = append(args, k+"_complete", string(jsonData))
+		}
 		args = append(args, k, v)
+		args = append(args, k+"_type", fmt.Sprintf("%T", v))
 	}
 
-	WithContext(ctx).Error("Operation failed", args...)
+	WithContext(ctx).Error("Operation failed with complete details", args...)
 }
 
+// LogConfiguration logs complete configuration data
+func LogConfiguration(ctx context.Context, configData any) {
+	LogCompleteDataInfo(ctx, "Complete configuration loaded", configData)
+}
 
+// LogCredentials logs complete credentials (including sensitive data as requested)
+func LogCredentials(ctx context.Context, credentials any) {
+	LogCompleteDataInfo(ctx, "Complete credentials data", credentials)
+}
 
-// Sanitize a map of data for logging
-func SanitizeMap(data map[string]any) map[string]any {
-	sanitized := make(map[string]any)
-	for k, v := range data {
-		if isSensitiveKey(k) {
-			if str, ok := v.(string); ok {
-				sanitized[k] = sanitizeValue(str)
-			} else {
-				sanitized[k] = "[REDACTED]"
-			}
-		} else {
-			sanitized[k] = v
-		}
-	}
-	return sanitized
+// LogModels logs complete model configuration
+func LogModels(ctx context.Context, models any) {
+	LogCompleteDataInfo(ctx, "Complete models configuration", models)
 }
 
 // Initialize with environment-based configuration

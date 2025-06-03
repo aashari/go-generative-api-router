@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -51,6 +52,18 @@ func NewApp() (*App, error) {
 	modelSelector := selector.NewEvenDistributionSelector()
 	apiHandlers := handlers.NewAPIHandlers(creds, models, apiClient, modelSelector)
 
+	// Log configuration loaded with complete data
+	logger.LogConfiguration(context.Background(), map[string]any{
+		"credentials": creds,
+		"models":      models,
+		"config_summary": map[string]any{
+			"credentials_count":    len(creds),
+			"vendor_model_pairs":   len(models),
+			"available_vendors":    getUniqueVendors(models),
+			"available_platforms":  getUniquePlatforms(creds),
+		},
+	})
+
 	return &App{
 		Credentials:   creds,
 		VendorModels:  models,
@@ -63,4 +76,31 @@ func NewApp() (*App, error) {
 // SetupRoutes configures all routes for the application
 func (a *App) SetupRoutes() http.Handler {
 	return router.SetupRoutes(a.APIHandlers)
+}
+
+// Helper functions for comprehensive logging
+func getUniqueVendors(models []config.VendorModel) []string {
+	vendorMap := make(map[string]bool)
+	for _, model := range models {
+		vendorMap[model.Vendor] = true
+	}
+	
+	vendors := make([]string, 0, len(vendorMap))
+	for vendor := range vendorMap {
+		vendors = append(vendors, vendor)
+	}
+	return vendors
+}
+
+func getUniquePlatforms(credentials []config.Credential) []string {
+	platformMap := make(map[string]bool)
+	for _, cred := range credentials {
+		platformMap[cred.Platform] = true
+	}
+	
+	platforms := make([]string, 0, len(platformMap))
+	for platform := range platformMap {
+		platforms = append(platforms, platform)
+	}
+	return platforms
 }

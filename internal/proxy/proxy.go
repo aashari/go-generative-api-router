@@ -52,6 +52,10 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 		logger.WarnCtx(r.Context(), "Failed to close request body", "error", err)
 	}
 
+	// Log complete request data
+	logger.LogRequest(ctx, r.Method, r.URL.Path, r.Header.Get("User-Agent"), 
+		map[string][]string(r.Header), body)
+
 	// Validate and modify request
 	modifiedBody, originalModel, err := validator.ValidateAndModifyRequest(body, selection.Model)
 	if err != nil {
@@ -60,8 +64,22 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 		return
 	}
 
-	// Log the transparent proxy behavior
-	logger.LogProxyRequest(ctx, originalModel, selection.Vendor, selection.Model, len(creds)*len(models))
+	// Log the complete proxy request with all data
+	logger.LogProxyRequest(ctx, originalModel, selection.Vendor, selection.Model, len(creds)*len(models), map[string]any{
+		"original_request_body": string(body),
+		"modified_request_body": string(modifiedBody),
+		"request_headers": r.Header,
+		"selection_details": map[string]any{
+			"vendor": selection.Vendor,
+			"model": selection.Model,
+			"credentials_available": len(creds),
+			"models_available": len(models),
+		},
+		"validation_result": map[string]any{
+			"original_model": originalModel,
+			"target_model": selection.Model,
+		},
+	})
 
 	// Use the provided API client
 	err = apiClient.SendRequest(w, r, selection, modifiedBody, originalModel)

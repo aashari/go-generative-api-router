@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -39,36 +40,57 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), logger.RequestIDKey, requestID)
 
 		// Extract vendor from query parameter if present
-		if vendor := r.URL.Query().Get("vendor"); vendor != "" {
+		vendor := r.URL.Query().Get("vendor")
+		if vendor != "" {
 			ctx = context.WithValue(ctx, logger.VendorKey, vendor)
 		}
 
-		// Log request start
+		// Log request start with complete data
 		start := time.Now()
-		logger.InfoCtx(ctx, "Request started",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"remote_addr", r.RemoteAddr,
-			"user_agent", r.Header.Get("User-Agent"),
-			"content_length", r.ContentLength,
-		)
+		logger.LogMultipleData(ctx, logger.LevelInfo, "Complete request started", map[string]any{
+			"request_details": map[string]any{
+				"method":         r.Method,
+				"path":           r.URL.Path,
+				"query_params":   r.URL.Query(),
+				"remote_addr":    r.RemoteAddr,
+				"user_agent":     r.Header.Get("User-Agent"),
+				"content_length": r.ContentLength,
+				"host":           r.Host,
+				"request_uri":    r.RequestURI,
+			},
+			"headers_complete": map[string][]string(r.Header),
+			"context_data": map[string]any{
+				"request_id": requestID,
+				"vendor":     vendor,
+			},
+		})
 
-		// Create response writer wrapper to capture status
+		// Create response writer wrapper to capture status and response data
 		wrapper := &responseWriterWrapper{
 			ResponseWriter: w,
 			statusCode:     http.StatusOK,
+			responseData:   &bytes.Buffer{},
 		}
 
 		// Process request
 		next.ServeHTTP(wrapper, r.WithContext(ctx))
 
-		// Log request completion
+		// Log request completion with complete response data
 		duration := time.Since(start)
-		logger.InfoCtx(ctx, "Request completed",
-			"status_code", wrapper.statusCode,
-			"duration_ms", duration.Milliseconds(),
-			"response_size", wrapper.bytesWritten,
-		)
+		logger.LogMultipleData(ctx, logger.LevelInfo, "Complete request completed", map[string]any{
+			"response_details": map[string]any{
+				"status_code":    wrapper.statusCode,
+				"duration_ms":    duration.Milliseconds(),
+				"response_size":  wrapper.bytesWritten,
+				"response_body":  wrapper.responseData.String(),
+			},
+			"response_headers": map[string][]string(wrapper.Header()),
+			"timing": map[string]any{
+				"start_time": start,
+				"end_time":   time.Now(),
+				"duration":   duration,
+			},
+		})
 	})
 }
 
@@ -77,6 +99,7 @@ type responseWriterWrapper struct {
 	http.ResponseWriter
 	statusCode   int
 	bytesWritten int64
+	responseData *bytes.Buffer
 }
 
 func (w *responseWriterWrapper) WriteHeader(statusCode int) {
@@ -87,6 +110,12 @@ func (w *responseWriterWrapper) WriteHeader(statusCode int) {
 func (w *responseWriterWrapper) Write(data []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(data)
 	w.bytesWritten += int64(n)
+	
+	// Capture response data for complete logging
+	if w.responseData != nil {
+		w.responseData.Write(data[:n]) // Only write successfully written bytes
+	}
+	
 	return n, err
 }
 
