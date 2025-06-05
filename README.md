@@ -359,7 +359,12 @@ make run-with-logs
 The service supports the following environment variables:
 
 - `PORT`: Server port (default: 8082)
+- `SERVER_ADDR`: Full server address (default: 0.0.0.0:8082, overridden by PORT if set)
 - `LOG_LEVEL`: Logging level (default: info)
+- `READ_TIMEOUT`: Server read timeout in seconds (default: 600)
+- `WRITE_TIMEOUT`: Server write timeout in seconds (default: 600)
+- `IDLE_TIMEOUT`: Server idle timeout in seconds (default: 900)
+- `CLIENT_TIMEOUT`: HTTP client timeout for vendor API calls in seconds (default: 300)
 
 ### Configuration Files
 

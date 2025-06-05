@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,16 @@ var (
 	ErrUnknownVendor   = errors.New("unknown vendor")
 	ErrInvalidResponse = errors.New("invalid vendor response")
 )
+
+// getEnvDuration gets a duration from environment variable with a default fallback
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+	return defaultValue
+}
 
 // ResponseStandardizer handles vendor response standardization
 type ResponseStandardizer struct {
@@ -55,9 +66,19 @@ type APIClient struct {
 
 // NewAPIClient creates a new API client with configured base URLs
 func NewAPIClient() *APIClient {
+	// Configure client timeout from environment variable
+	// Default to 300 seconds (5 minutes) to allow for longer AI model responses
+	clientTimeout := getEnvDuration("CLIENT_TIMEOUT", 300*time.Second)
+	
 	httpClient := &http.Client{
-		Timeout: 60 * time.Second,
+		Timeout: clientTimeout,
 	}
+
+	logger.Info("API client initialized", 
+		"client_timeout", clientTimeout,
+		"openai_base_url", "https://api.openai.com/v1",
+		"gemini_base_url", "https://generativelanguage.googleapis.com/v1beta/openai",
+	)
 
 	return &APIClient{
 		BaseURLs: map[string]string{

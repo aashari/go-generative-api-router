@@ -244,17 +244,25 @@ Configure the service behavior using these environment variables:
 | Variable | Description | Values | Default |
 |----------|-------------|--------|---------|
 | `PORT` | Server port | Any valid port | `8082` |
+| `SERVER_ADDR` | Full server address | IP:PORT format | `0.0.0.0:8082` |
+| `READ_TIMEOUT` | Server read timeout | Seconds (integer) | `600` |
+| `WRITE_TIMEOUT` | Server write timeout | Seconds (integer) | `600` |
+| `IDLE_TIMEOUT` | Server idle timeout | Seconds (integer) | `900` |
+| `CLIENT_TIMEOUT` | HTTP client timeout for vendor APIs | Seconds (integer) | `300` |
 | `LOG_LEVEL` | Logging detail level | `DEBUG`, `INFO`, `WARN`, `ERROR` | `INFO` |
 | `LOG_FORMAT` | Log output format | `json`, `text` | `json` |
 | `LOG_OUTPUT` | Log destination | `stdout`, `stderr` | `stdout` |
 
 **Examples**:
 ```bash
-# Development configuration
-PORT=8080 LOG_LEVEL=DEBUG LOG_FORMAT=text ./server
+# Development configuration with custom timeouts
+PORT=8080 LOG_LEVEL=DEBUG LOG_FORMAT=text READ_TIMEOUT=300 WRITE_TIMEOUT=300 CLIENT_TIMEOUT=180 ./server
 
-# Production configuration
-PORT=8082 LOG_LEVEL=INFO LOG_FORMAT=json ./server
+# Production configuration with extended timeouts for AI workloads
+PORT=8082 LOG_LEVEL=INFO LOG_FORMAT=json READ_TIMEOUT=600 WRITE_TIMEOUT=600 CLIENT_TIMEOUT=300 ./server
+
+# Quick timeout configuration for testing
+CLIENT_TIMEOUT=60 READ_TIMEOUT=90 WRITE_TIMEOUT=90 ./server
 ```
 
 ### Model Configuration
