@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -32,7 +33,17 @@ func TestNewAPIHandlers(t *testing.T) {
 }
 
 func TestHealthHandler(t *testing.T) {
-	handlers := &APIHandlers{}
+	// Create handlers with proper dependencies
+	creds := []config.Credential{
+		{Platform: "openai", Type: "api-key", Value: "test"},
+	}
+	models := []config.VendorModel{
+		{Vendor: "openai", Model: "gpt-4"},
+	}
+	client := proxy.NewAPIClient()
+	sel := selector.NewRandomSelector()
+	
+	handlers := NewAPIHandlers(creds, models, client, sel)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -40,7 +51,97 @@ func TestHealthHandler(t *testing.T) {
 	handlers.HealthHandler(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "OK", w.Body.String())
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	// Parse the JSON response
+	var healthResponse HealthResponse
+	err := json.Unmarshal(w.Body.Bytes(), &healthResponse)
+	require.NoError(t, err)
+
+	// Verify the structure
+	assert.Equal(t, "healthy", healthResponse.Status)
+	assert.NotEmpty(t, healthResponse.Timestamp)
+	assert.NotNil(t, healthResponse.Services)
+	assert.NotNil(t, healthResponse.Details)
+
+	// Verify services are up
+	assert.Equal(t, "up", healthResponse.Services["api"])
+	assert.Equal(t, "up", healthResponse.Services["credentials"])
+	assert.Equal(t, "up", healthResponse.Services["models"])
+	assert.Equal(t, "up", healthResponse.Services["selector"])
+
+	// Verify details
+	assert.Contains(t, healthResponse.Details, "version")
+	assert.Contains(t, healthResponse.Details, "uptime")
+	
+	// Uptime should be a number (int64)
+	uptime, ok := healthResponse.Details["uptime"].(float64) // JSON unmarshals numbers as float64
+	assert.True(t, ok)
+	assert.GreaterOrEqual(t, uptime, float64(0))
+}
+
+func TestHealthHandler_Degraded(t *testing.T) {
+	// Create handlers with missing credentials (degraded state)
+	var creds []config.Credential // Empty credentials
+	models := []config.VendorModel{
+		{Vendor: "openai", Model: "gpt-4"},
+	}
+	client := proxy.NewAPIClient()
+	sel := selector.NewRandomSelector()
+	
+	handlers := NewAPIHandlers(creds, models, client, sel)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+
+	handlers.HealthHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code) // Still 200 for degraded
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	// Parse the JSON response
+	var healthResponse HealthResponse
+	err := json.Unmarshal(w.Body.Bytes(), &healthResponse)
+	require.NoError(t, err)
+
+	// Verify degraded status
+	assert.Equal(t, "degraded", healthResponse.Status)
+	assert.Equal(t, "down", healthResponse.Services["credentials"])
+	assert.Equal(t, "up", healthResponse.Services["models"])
+}
+
+func TestHealthHandler_Unhealthy(t *testing.T) {
+	// Create handlers with nil API client (unhealthy state)
+	creds := []config.Credential{
+		{Platform: "openai", Type: "api-key", Value: "test"},
+	}
+	models := []config.VendorModel{
+		{Vendor: "openai", Model: "gpt-4"},
+	}
+	
+	handlers := &APIHandlers{
+		Credentials:   creds,
+		VendorModels:  models,
+		APIClient:     nil, // This will cause unhealthy status
+		ModelSelector: selector.NewRandomSelector(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+
+	handlers.HealthHandler(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code) // 503 for unhealthy
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	// Parse the JSON response
+	var healthResponse HealthResponse
+	err := json.Unmarshal(w.Body.Bytes(), &healthResponse)
+	require.NoError(t, err)
+
+	// Verify unhealthy status
+	assert.Equal(t, "unhealthy", healthResponse.Status)
+	assert.Equal(t, "down", healthResponse.Services["api"])
 }
 
 func TestModelsHandler(t *testing.T) {

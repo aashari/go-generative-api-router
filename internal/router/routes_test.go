@@ -243,6 +243,14 @@ func TestSetupRoutes_CORS_Headers(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	// Verify it's valid JSON with expected structure
+	body := w.Body.String()
+	assert.Contains(t, body, "\"status\":")
+	assert.Contains(t, body, "\"timestamp\":")
+	assert.Contains(t, body, "\"services\":")
+	assert.Contains(t, body, "\"details\":")
 
 	// While not explicitly set in the router, check that basic functionality works
 	// In a real implementation, CORS headers might be added to the middleware

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/config"
@@ -13,6 +14,17 @@ import (
 	"github.com/aashari/go-generative-api-router/internal/proxy"
 	"github.com/aashari/go-generative-api-router/internal/selector"
 )
+
+// startTime tracks when the application started
+var startTime = time.Now()
+
+// HealthResponse represents the structured health check response
+type HealthResponse struct {
+	Status    string                 `json:"status"`
+	Timestamp string                 `json:"timestamp"`
+	Services  map[string]string      `json:"services"`
+	Details   map[string]interface{} `json:"details"`
+}
 
 // APIHandlers contains the dependencies needed for API handlers
 type APIHandlers struct {
@@ -34,19 +46,89 @@ func NewAPIHandlers(creds []config.Credential, models []config.VendorModel, clie
 
 // HealthHandler handles the health check endpoint
 // @Summary      Health check endpoint
-// @Description  Returns "OK" if the service is running properly
+// @Description  Returns structured health information including status, services, and version details
 // @Tags         health
 // @Accept       json
-// @Produce      plain
-// @Success      200  {string}  string  "OK"
+// @Produce      json
+// @Success      200  {object}  HealthResponse  "Structured health response"
 // @Router       /health [get]
 func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	// Log complete request data for health check
 	logger.LogRequest(r.Context(), r.Method, r.URL.Path, r.Header.Get("User-Agent"),
 		map[string][]string(r.Header), []byte{})
 
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte("OK")); err != nil {
+	// Calculate uptime in seconds
+	uptime := int64(time.Since(startTime).Seconds())
+
+	// Get version from environment variable (CI/CD pipeline sets this to git commit hash)
+	version := os.Getenv("VERSION")
+	if version == "" {
+		version = "unknown"
+	}
+
+	// Check service components status
+	services := make(map[string]string)
+	overallStatus := "healthy"
+
+	// Check API client status
+	if h.APIClient != nil {
+		services["api"] = "up"
+	} else {
+		services["api"] = "down"
+		overallStatus = "unhealthy"
+	}
+
+	// Check credentials availability
+	if len(h.Credentials) > 0 {
+		services["credentials"] = "up"
+	} else {
+		services["credentials"] = "down"
+		overallStatus = "degraded" // Service can run but with limited functionality
+	}
+
+	// Check models availability
+	if len(h.VendorModels) > 0 {
+		services["models"] = "up"
+	} else {
+		services["models"] = "down"
+		overallStatus = "degraded" // Service can run but with limited functionality
+	}
+
+	// Check model selector
+	if h.ModelSelector != nil {
+		services["selector"] = "up"
+	} else {
+		services["selector"] = "down"
+		overallStatus = "unhealthy"
+	}
+
+	// Create structured health response
+	healthResponse := HealthResponse{
+		Status:    overallStatus,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Services:  services,
+		Details: map[string]interface{}{
+			"version": version,
+			"uptime":  uptime,
+		},
+	}
+
+	// Set content type to JSON
+	w.Header().Set("Content-Type", "application/json")
+
+	// Determine HTTP status code based on overall health
+	statusCode := http.StatusOK
+	if overallStatus == "unhealthy" {
+		statusCode = http.StatusServiceUnavailable
+	} else if overallStatus == "degraded" {
+		statusCode = http.StatusOK // Still return 200 for degraded but functional service
+	}
+
+	w.WriteHeader(statusCode)
+
+	// Marshal and send JSON response
+	jsonResponse, err := json.Marshal(healthResponse)
+	if err != nil {
 		logger.LogError(r.Context(), "health_handler", err, map[string]any{
 			"complete_request": map[string]any{
 				"method":      r.Method,
@@ -55,12 +137,48 @@ func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 				"remote_addr": r.RemoteAddr,
 				"user_agent":  r.Header.Get("User-Agent"),
 			},
-			"response_data": map[string]any{
-				"status_code":   http.StatusOK,
-				"response_body": "OK",
+			"health_response": healthResponse,
+			"marshal_error":   err.Error(),
+		})
+		// Fallback to simple error response
+		http.Error(w, `{"status":"unhealthy","error":"failed to generate health response"}`, http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := w.Write(jsonResponse); err != nil {
+		logger.LogError(r.Context(), "health_handler", err, map[string]any{
+			"complete_request": map[string]any{
+				"method":      r.Method,
+				"path":        r.URL.Path,
+				"headers":     map[string][]string(r.Header),
+				"remote_addr": r.RemoteAddr,
+				"user_agent":  r.Header.Get("User-Agent"),
 			},
+			"health_response": healthResponse,
+			"json_response":   string(jsonResponse),
+			"write_error":     err.Error(),
 		})
 	}
+
+	// Log successful health check with complete data
+	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Health check completed", map[string]any{
+		"client_response": map[string]any{
+			"status_code":    statusCode,
+			"response_body":  string(jsonResponse),
+			"content_type":   "application/json",
+			"response_size":  len(jsonResponse),
+		},
+		"health_details": map[string]any{
+			"overall_status":     overallStatus,
+			"services_status":    services,
+			"version":            version,
+			"uptime_seconds":     uptime,
+			"credentials_count":  len(h.Credentials),
+			"models_count":       len(h.VendorModels),
+			"api_client_status":  h.APIClient != nil,
+			"selector_status":    h.ModelSelector != nil,
+		},
+	})
 }
 
 // ChatCompletionsHandler handles the chat completions endpoint
