@@ -7,15 +7,13 @@ alwaysApply: true
 
 This guide provides step-by-step instructions for setting up, running, and testing the Generative API Router service.
 
-> **Development Workflow**: For development best practices and Git workflow, see [Development Guide](mdc:development_guide.mdc)  
-> **Codex Integration**: For AI-assisted development, see [Codex Guide](mdc:codex.mdc)
+> **Development Workflow**: For development best practices and Git workflow, see [Development Guide](mdc:development_guide.mdc)
 
 ## 📚 **Documentation Quick Reference**
 
 ### **Core Development Guides** (.cursor/rules/)
 - **[Development Guide](mdc:development_guide.mdc)** - Complete workflow, Git practices, architecture principles
 - **[Running & Testing Guide](mdc:running_and_testing.mdc)** - Setup, testing procedures, debugging techniques (this document)
-- **[Codex Guide](mdc:codex.mdc)** - AI-assisted development workflow
 
 ### **User & API Documentation** (docs/)
 - **[User Guide](mdc:../docs/user/README.md)** - *When integrating with the service* - API usage, configuration, client examples
@@ -58,9 +56,13 @@ This guide provides step-by-step instructions for setting up, running, and testi
    make setup
    ```
 
-3. **Configure Credentials**:
+3. **Configure Environment Variables**:
+   - Copy `.env.example` to `.env` and configure your environment variables
+   - The application automatically loads environment variables from `.env` file (Node.js dotenv equivalent)
+   
+4. **Configure Credentials**:
    - The setup script creates `configs/credentials.json` from the example file
-   - Edit [configs/credentials.json](mdc:generative-api-router/generative-api-router/configs/credentials.json) with valid API keys (mostly you don't need to, because it might already exists with valid API keys already):
+   - Edit `configs/credentials.json` with valid API keys (mostly you don't need to, because it might already exists with valid API keys already):
      ```json
      [
        {
@@ -76,8 +78,8 @@ This guide provides step-by-step instructions for setting up, running, and testi
      ]
      ```
 
-4. **Configure Models**:
-   - Edit [configs/models.json](mdc:generative-api-router/generative-api-router/configs/models.json) to specify which models you want to use (mostly you don't need to, because it might already exists with valid models already):
+5. **Configure Models**:
+   - Edit `configs/models.json` to specify which models you want to use (mostly you don't need to, because it might already exists with valid models already):
      ```json
      [
        {
@@ -197,6 +199,7 @@ The project includes comprehensive test coverage added in Phase 2:
 The project uses:
 - `github.com/stretchr/testify` v1.10.0 - For assertions and test suites
 - `github.com/go-playground/validator/v10` v10.26.0 - For struct validation
+- `github.com/joho/godotenv` v1.5.1 - For environment variable loading from .env files
 
 Note: Some tests may skip if `configs/credentials.json` is not present, which is expected behavior.
 

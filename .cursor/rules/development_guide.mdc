@@ -7,15 +7,13 @@ alwaysApply: true
 
 This guide provides development workflow, best practices, and architectural guidance for the Generative API Router project.
 
-> **Quick Start**: For setup and running instructions, see [Running and Testing Guide](mdc:running_and_testing.mdc)  
-> **Codex Integration**: For AI-assisted development, see [Codex Guide](mdc:codex.mdc)
+> **Quick Start**: For setup and running instructions, see [Running and Testing Guide](mdc:running_and_testing.mdc)
 
 ## 📚 **Documentation Quick Reference**
 
 ### **Core Development Guides** (.cursor/rules/)
 - **[Development Guide](mdc:development_guide.mdc)** - Complete workflow, Git practices, architecture principles (this document)
 - **[Running & Testing Guide](mdc:running_and_testing.mdc)** - Setup, testing procedures, debugging techniques
-- **[Codex Guide](mdc:codex.mdc)** - AI-assisted development workflow
 
 ### **User & API Documentation** (docs/)
 - **[User Guide](mdc:../docs/user/README.md)** - *When integrating with the service* - API usage, configuration, client examples
@@ -93,18 +91,25 @@ AWS_SERVICE_PROD=prod-generative-api-router
 GENAPI_API_KEY=your-api-key
 PORT=8082
 LOG_LEVEL=info
+
+# Environment File Loading (Node.js dotenv equivalent)
+# The application automatically loads from .env file at startup
+# Supports multiple locations: .env, configs/.env, ../.env, ~/.env
 ```
 
 **Environment Setup:**
 ```bash
-# Load environment variables
-export $(cat .env | grep -v '^#' | xargs) && echo "Environment loaded" | cat
+# The application automatically loads .env file at startup (Node.js dotenv equivalent)
+# No manual export needed - just ensure .env file exists in project root
 
-# Verify AWS configuration
+# Verify environment variables are loaded
 echo "AWS Profile: $AWS_PROFILE" && echo "AWS Region: $AWS_REGION" | cat
 
 # Verify application configuration
 echo "Port: $PORT" && echo "Log Level: $LOG_LEVEL" | cat
+
+# Manual loading (if needed for scripts)
+export $(cat .env | grep -v '^#' | xargs) && echo "Environment manually loaded" | cat
 ```
 
 **AWS Command Patterns:**
@@ -122,33 +127,35 @@ aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-task-definition --t
 ## Project Structure
 
 ### Core Application Code
-- **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server. ([cmd/server/main.go](mdc:generative-api-router/generative-api-router/generative-api-router/cmd/server/main.go))
-- **`internal/app/app.go`**: Centralizes application configuration and dependencies (reduced to 64 lines after Phase 2 refactoring). ([internal/app/app.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/app/app.go))
-- **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication. ([internal/proxy/proxy.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/proxy/proxy.go))
-- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs. ([internal/proxy/client.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/proxy/client.go))
-- **`internal/proxy/response_processor.go`**: Processes non-streaming responses from vendors. ([internal/proxy/response_processor.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/proxy/response_processor.go))
-- **`internal/proxy/stream_processor.go`**: Handles streaming responses from vendors. ([internal/proxy/stream_processor.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/proxy/stream_processor.go))
-- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models. ([internal/selector/selector.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/selector/selector.go))
-- **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request. ([internal/validator/validator.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/validator/validator.go))
-- **`internal/config/config.go`**: Loads and manages configuration from JSON files. ([internal/config/config.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/config/config.go))
-- **`internal/config/validation.go`**: Validates credentials and model configurations. ([internal/config/validation.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/config/validation.go))
-- **`internal/handlers/api_handlers.go`**: HTTP handlers for health, chat completions, and models endpoints. ([internal/handlers/api_handlers.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/handlers/api_handlers.go))
-- **`internal/errors/errors.go`**: Standardized error types and JSON error responses. ([internal/errors/errors.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/errors/errors.go))
-- **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor. ([internal/filter/utils.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/filter/utils.go))
-- **`internal/monitoring/metrics.go`**: Performance profiling endpoints (pprof). ([internal/monitoring/metrics.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/monitoring/metrics.go))
-- **`internal/router/routes.go`**: Centralized route setup with middleware integration. ([internal/router/routes.go](mdc:generative-api-router/generative-api-router/generative-api-router/internal/router/routes.go))
+- **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server with automatic .env loading.
+- **`internal/app/app.go`**: Centralizes application configuration and dependencies.
+- **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication.
+- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs.
+- **`internal/proxy/response_processor.go`**: Processes non-streaming responses from vendors.
+- **`internal/proxy/stream_processor.go`**: Handles streaming responses from vendors.
+- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models.
+- **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request.
+- **`internal/config/config.go`**: Loads and manages configuration from JSON files.
+- **`internal/config/env.go`**: Handles environment variable loading from .env files (Node.js dotenv equivalent).
+- **`internal/config/validation.go`**: Validates credentials and model configurations.
+- **`internal/handlers/api_handlers.go`**: HTTP handlers for health, chat completions, and models endpoints.
+- **`internal/errors/errors.go`**: Standardized error types and JSON error responses.
+- **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor.
+- **`internal/monitoring/metrics.go`**: Performance profiling endpoints (pprof).
+- **`internal/router/routes.go`**: Centralized route setup with middleware integration.
 
 ### Configuration Files
-- **`configs/credentials.json`**: Stores API keys for different vendors (gitignored). ([configs/credentials.json.example](mdc:generative-api-router/generative-api-router/generative-api-router/configs/credentials.json.example))
-- **`configs/models.json`**: Defines the available models and their vendors. ([configs/models.json](mdc:generative-api-router/generative-api-router/generative-api-router/configs/models.json))
+- **`configs/credentials.json`**: Stores API keys for different vendors (gitignored).
+- **`configs/models.json`**: Defines the available models and their vendors.
+- **`.env`**: Environment variables file (gitignored, use `.env.example` as template).
 
 ### Deployment Files
-- **`deployments/docker/Dockerfile`**: For building the Docker image. ([deployments/docker/Dockerfile](mdc:generative-api-router/generative-api-router/generative-api-router/deployments/docker/Dockerfile))
-- **`deployments/docker/docker-compose.yml`**: For running the service with Docker Compose. ([deployments/docker/docker-compose.yml](mdc:generative-api-router/generative-api-router/generative-api-router/deployments/docker/docker-compose.yml))
-- **`scripts/deploy.sh`**: AWS ECS deployment script (contains sensitive data, gitignored). ([scripts/deploy.sh](mdc:generative-api-router/generative-api-router/generative-api-router/scripts/deploy.sh))
+- **`deployments/docker/Dockerfile`**: For building the Docker image.
+- **`deployments/docker/docker-compose.yml`**: For running the service with Docker Compose.
+- **`scripts/deploy.sh`**: AWS ECS deployment script (contains sensitive data, gitignored).
 
 ### Development Tools
-- **`Makefile`**: Build automation and common tasks. ([Makefile](mdc:generative-api-router/generative-api-router/generative-api-router/Makefile))
+- **`Makefile`**: Build automation and common tasks.
 - **`scripts/`**: Helper scripts for deployment, testing, and setup
 - **`examples/`**: Usage examples for cURL and various client languages
 - **`docs/`**: Comprehensive documentation (API, development, user guides)
@@ -437,6 +444,7 @@ aws --profile $AWS_PROFILE --region $AWS_REGION logs create-export-task --log-gr
 *   **Dependencies**: Run `go mod tidy` periodically to clean up dependencies. Key dependencies include:
     *   `github.com/stretchr/testify` v1.10.0 - Testing assertions
     *   `github.com/go-playground/validator/v10` v10.26.0 - Struct validation
+    *   `github.com/joho/godotenv` v1.5.1 - Environment variable loading from .env files
 *   **Configuration Updates**: API keys (`configs/credentials.json`) and model lists (`configs/models.json`) can be updated without code changes. Restart the server for changes to take effect.
 *   **Logging**: Review logs in the `logs/` directory or console output. The server logs selected vendors/models for each request, the original requested model, and how the response model is being presented. Key log lines for debugging model handling include `VERBOSE_DEBUG: ProxyRequest - Original requested model:`, `VERBOSE_DEBUG: ProxyRequest - Selected Vendor:`, and `Processing response from actual model: ... will be presented as:`.
 *   **Profiling**: The service includes pprof endpoints for performance profiling at `/debug/pprof/`.
