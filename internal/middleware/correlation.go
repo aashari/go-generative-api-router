@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"io"
 	"net/http"
 	"time"
 
@@ -45,7 +46,29 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 			ctx = context.WithValue(ctx, logger.VendorKey, vendor)
 		}
 
-		// Log request start with new structured format
+		// Read and capture request body for complete logging
+		var requestBody []byte
+		var err error
+		if r.Body != nil {
+			requestBody, err = io.ReadAll(r.Body)
+			if err != nil {
+				logger.LogError(ctx, "middleware", err, map[string]any{
+					"operation": "read_request_body",
+					"method":    r.Method,
+					"path":      r.URL.Path,
+					"headers":   map[string][]string(r.Header),
+				})
+				http.Error(w, "Failed to read request body", http.StatusBadRequest)
+				return
+			}
+			// Close the original body
+			r.Body.Close()
+			
+			// Create a new ReadCloser with the captured body for downstream handlers
+			r.Body = io.NopCloser(bytes.NewReader(requestBody))
+		}
+
+		// Log request start with new structured format including complete request body
 		start := time.Now()
 		requestData := map[string]interface{}{
 			"request_id":     requestID,
@@ -58,6 +81,7 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 			"host":           r.Host,
 			"request_uri":    r.RequestURI,
 			"headers":        map[string][]string(r.Header),
+			"body":           string(requestBody), // Complete request body logging
 		}
 
 		attributes := map[string]interface{}{
