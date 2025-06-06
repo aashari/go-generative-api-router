@@ -1,4 +1,4 @@
-# Contributing to Generative API Router
+# Contributing Guide
 
 Thank you for your interest in contributing! This guide will help you get started with contributing to the project.
 
@@ -287,10 +287,10 @@ Include:
 
 ## 📚 Additional Resources
 
-- **[Development Guide](./DEVELOPMENT.md)** - Complete development setup
-- **[Testing Guide](./TESTING.md)** - Detailed testing information
-- **[Logging Documentation](./LOGGING.md)** - Logging system details
-- **[API Reference](../api/)** - Complete API documentation
+- **[Development Guide](development-guide.md)** - Complete development setup
+- **[Testing Guide](testing-guide.md)** - Detailed testing information
+- **[Logging Guide](logging-guide.md)** - Logging system details
+- **[API Reference](api-reference.md)** - Complete API documentation
 
 ## 🤝 Community
 
@@ -307,4 +307,4 @@ Include:
 
 ---
 
-**Thank you for contributing!** Your efforts help make this project better for everyone. 🎉 
+**Thank you for contributing!** Your efforts help make this project better for everyone. 🎉

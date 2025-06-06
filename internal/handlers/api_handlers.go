@@ -53,9 +53,8 @@ func NewAPIHandlers(creds []config.Credential, models []config.VendorModel, clie
 // @Success      200  {object}  HealthResponse  "Structured health response"
 // @Router       /health [get]
 func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
-	// Log complete request data for health check
-	logger.LogRequest(r.Context(), r.Method, r.URL.Path, r.Header.Get("User-Agent"),
-		map[string][]string(r.Header), []byte{})
+	// Skip logging for health checks to reduce log noise
+	// Only errors will be logged if health check fails
 
 	// Calculate uptime in seconds
 	uptime := int64(time.Since(startTime).Seconds())
@@ -160,25 +159,28 @@ func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Log successful health check with complete data
-	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Health check completed", map[string]any{
-		"client_response": map[string]any{
-			"status_code":    statusCode,
-			"response_body":  string(jsonResponse),
-			"content_type":   "application/json",
-			"response_size":  len(jsonResponse),
-		},
-		"health_details": map[string]any{
-			"overall_status":     overallStatus,
-			"services_status":    services,
-			"version":            version,
-			"uptime_seconds":     uptime,
-			"credentials_count":  len(h.Credentials),
-			"models_count":       len(h.VendorModels),
-			"api_client_status":  h.APIClient != nil,
-			"selector_status":    h.ModelSelector != nil,
-		},
-	})
+	// Only log health checks when there are issues (not healthy status)
+	// This reduces log noise from frequent health check monitoring
+	if overallStatus != "healthy" {
+		logger.LogMultipleData(r.Context(), logger.LevelError, "Health check failed", map[string]any{
+			"client_response": map[string]any{
+				"status_code":    statusCode,
+				"response_body":  string(jsonResponse),
+				"content_type":   "application/json",
+				"response_size":  len(jsonResponse),
+			},
+			"health_details": map[string]any{
+				"overall_status":     overallStatus,
+				"services_status":    services,
+				"version":            version,
+				"uptime_seconds":     uptime,
+				"credentials_count":  len(h.Credentials),
+				"models_count":       len(h.VendorModels),
+				"api_client_status":  h.APIClient != nil,
+				"selector_status":    h.ModelSelector != nil,
+			},
+		})
+	}
 }
 
 // ChatCompletionsHandler handles the chat completions endpoint

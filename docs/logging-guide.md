@@ -1,4 +1,4 @@
-# Logging System
+# Logging Guide
 
 This document details the structured logging system used in the Generative API Router service.
 
@@ -155,45 +155,6 @@ The logging system logs complete data structures without any redaction, truncati
 
 **IMPORTANT**: External logging systems should handle redaction, size management, and sensitive data filtering.
 
-## Specialized Logging Functions
-
-The system provides specialized functions for common operations:
-
-### Request/Response Logging
-
-```go
-// Log HTTP request
-logger.LogRequest(ctx, "POST", "/v1/chat/completions", "curl/8.0", headers, body)
-
-// Log HTTP response  
-logger.LogResponse(ctx, 200, responseHeaders, responseBody)
-
-// Log vendor communication
-logger.LogVendorCommunication(ctx, "openai", "https://api.openai.com/v1/chat/completions",
-    requestBody, responseBody, requestHeaders, responseHeaders)
-```
-
-### Proxy Operations
-
-```go
-// Log proxy request with vendor selection
-logger.LogProxyRequest(ctx, originalModel, selectedVendor, selectedModel, totalCombinations, requestData)
-
-// Log vendor response processing
-logger.LogVendorResponse(ctx, vendor, actualModel, presentedModel, responseSize, duration, completeResponse)
-```
-
-### Error Logging
-
-```go
-// Log errors with complete context
-logger.LogError(ctx, "proxy", err, map[string]any{
-    "operation": "vendor_request",
-    "api_key": "sk-complete-key",
-    "request_data": completeRequestData,
-})
-```
-
 ## Usage in Code
 
 Import the logger package:
@@ -233,26 +194,43 @@ if err != nil {
 }
 ```
 
-### Structured Logging
+### Specialized Logging Functions
+
+The system provides specialized functions for common operations:
+
+#### Request/Response Logging
 
 ```go
-// Use the new structured format directly
-attributes := map[string]interface{}{
-    "component": "proxy",
-    "vendor": "openai",
-}
+// Log HTTP request
+logger.LogRequest(ctx, "POST", "/v1/chat/completions", "curl/8.0", headers, body)
 
-request := map[string]interface{}{
-    "method": "POST",
-    "path": "/v1/chat/completions",
-}
+// Log HTTP response  
+logger.LogResponse(ctx, 200, responseHeaders, responseBody)
 
-response := map[string]interface{}{
-    "status_code": 200,
-    "body": responseBody,
-}
+// Log vendor communication
+logger.LogVendorCommunication(ctx, "openai", "https://api.openai.com/v1/chat/completions",
+    requestBody, responseBody, requestHeaders, responseHeaders)
+```
 
-logger.LogWithStructure(ctx, logger.LevelInfo, "Request processed", attributes, request, response, nil)
+#### Proxy Operations
+
+```go
+// Log proxy request with vendor selection
+logger.LogProxyRequest(ctx, originalModel, selectedVendor, selectedModel, totalCombinations, requestData)
+
+// Log vendor response processing
+logger.LogVendorResponse(ctx, vendor, actualModel, presentedModel, responseSize, duration, completeResponse)
+```
+
+#### Error Logging
+
+```go
+// Log errors with complete context
+logger.LogError(ctx, "proxy", err, map[string]any{
+    "operation": "vendor_request",
+    "api_key": "sk-complete-key",
+    "request_data": completeRequestData,
+})
 ```
 
 ## Middleware Integration
@@ -296,41 +274,6 @@ The middleware logs complete request and response data:
 }
 ```
 
-## Testing Logs
-
-When writing tests, you can capture and verify logs:
-
-```go
-func TestWithLogs(t *testing.T) {
-    // Setup test logger with buffer
-    var buf bytes.Buffer
-    handler := &logger.StructuredJSONHandler{
-        Writer:      &buf,
-        ServiceName: "test-service",
-        Environment: "test",
-    }
-    
-    // Save original and restore after test
-    originalLogger := logger.Logger
-    defer func() { logger.Logger = originalLogger }()
-    logger.Logger = slog.New(handler)
-    
-    // Run code that produces logs
-    // ...
-    
-    // Verify log output
-    output := buf.String()
-    var logEntry logger.StructuredLogEntry
-    if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
-        t.Error("Invalid JSON log output")
-    }
-    
-    if logEntry.Message != "expected message" {
-        t.Error("Expected log message not found")
-    }
-}
-```
-
 ## Log Analysis Examples
 
 ### Query Request Flows
@@ -366,19 +309,47 @@ grep '"error"' logs/server.log | jq 'select(.error.type | contains("Auth"))'
 grep '"attributes"' logs/server.log | jq 'select(.attributes.api_key)'
 ```
 
-## Migration from Old Format
+## Testing Logs
 
-The new structured format is backward compatible through legacy functions:
+When writing tests, you can capture and verify logs:
 
 ```go
-// Old format (still works)
-logger.LogCompleteData(ctx, logger.LevelInfo, "Old format", data)
-
-// New format (recommended)
-logger.LogWithStructure(ctx, logger.LevelInfo, "New format", attributes, request, response, nil)
+func TestWithLogs(t *testing.T) {
+    // Setup test logger with buffer
+    var buf bytes.Buffer
+    handler := &logger.StructuredJSONHandler{
+        Writer:      &buf,
+        ServiceName: "test-service",
+        Environment: "test",
+    }
+    
+    // Save original and restore after test
+    originalLogger := logger.Logger
+    defer func() { logger.Logger = originalLogger }()
+    logger.Logger = slog.New(handler)
+    
+    // Run code that produces logs
+    // ...
+    
+    // Verify log output
+    output := buf.String()
+    var logEntry logger.StructuredLogEntry
+    if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
+        t.Error("Invalid JSON log output")
+    }
+    
+    if logEntry.Message != "expected message" {
+        t.Error("Expected log message not found")
+    }
+}
 ```
 
-Legacy functions automatically map to the new structure:
-- `LogCompleteData` → `attributes.complete_data`
-- `LogMultipleData` → `attributes.*_complete`
-- Context values → `request.request_id`, `attributes.vendor`, `attributes.model` 
+## 📚 Additional Resources
+
+- **[Development Guide](development-guide.md)** - Complete development setup
+- **[Testing Guide](testing-guide.md)** - Testing with logs
+- **[API Reference](api-reference.md)** - API documentation
+
+---
+
+**Remember**: Comprehensive logging is crucial for debugging, monitoring, and maintaining production systems. Log everything, let external systems handle filtering. 📝

@@ -1,0 +1,371 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "A router for generative AI models with OpenAI-compatible API.",
+        "title": "Generative API Router",
+        "termsOfService": "http://swagger.io/terms/",
+        "contact": {
+            "name": "API Support",
+            "url": "https://github.com/aashari/go-generative-api-router",
+            "email": "support@yourcompany.com"
+        },
+        "license": {
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT"
+        },
+        "version": "1.0"
+    },
+    "host": "genapi.aduh.xyz",
+    "basePath": "/",
+    "paths": {
+        "/health": {
+            "get": {
+                "description": "Returns \"OK\" if the service is running properly",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health check endpoint",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/chat/completions": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Routes chat completion requests to different language model providers",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Chat completions API",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Optional vendor to target (e.g., 'openai', 'gemini')",
+                        "name": "vendor",
+                        "in": "query"
+                    },
+                    {
+                        "description": "Chat completion request in OpenAI-compatible format",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/app.ChatCompletionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OpenAI-compatible chat completion response",
+                        "schema": {
+                            "$ref": "#/definitions/app.ChatCompletionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request error",
+                        "schema": {
+                            "$ref": "#/definitions/app.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized error",
+                        "schema": {
+                            "$ref": "#/definitions/app.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/app.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/models": {
+            "get": {
+                "description": "Returns a list of available language models in OpenAI-compatible format",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "models"
+                ],
+                "summary": "List available models",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Optional vendor to filter models (e.g., 'openai', 'gemini')",
+                        "name": "vendor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of available models",
+                        "schema": {
+                            "$ref": "#/definitions/app.ModelsResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "app.ChatCompletionRequest": {
+            "type": "object"
+        },
+        "app.ChatCompletionResponse": {
+            "type": "object",
+            "properties": {
+                "choices": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.Choice"
+                    }
+                },
+                "created": {
+                    "type": "integer",
+                    "example": 1677652288
+                },
+                "id": {
+                    "type": "string",
+                    "example": "chatcmpl-abc123"
+                },
+                "model": {
+                    "type": "string",
+                    "example": "gpt-4o"
+                },
+                "object": {
+                    "type": "string",
+                    "example": "chat.completion"
+                },
+                "service_tier": {
+                    "type": "string",
+                    "example": "default"
+                },
+                "system_fingerprint": {
+                    "type": "string",
+                    "example": "fp_abc123"
+                },
+                "usage": {
+                    "$ref": "#/definitions/app.Usage"
+                }
+            }
+        },
+        "app.Choice": {
+            "type": "object",
+            "properties": {
+                "finish_reason": {
+                    "type": "string",
+                    "example": "stop"
+                },
+                "index": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "logprobs": {
+                    "type": "string",
+                    "example": "null"
+                },
+                "message": {
+                    "$ref": "#/definitions/app.Message"
+                }
+            }
+        },
+        "app.ErrorInfo": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "invalid_model"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "Invalid model specified"
+                },
+                "param": {
+                    "type": "string",
+                    "example": "model"
+                },
+                "type": {
+                    "type": "string",
+                    "example": "invalid_request_error"
+                }
+            }
+        },
+        "app.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/app.ErrorInfo"
+                }
+            }
+        },
+        "app.Message": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "example": "Hello, how are you?"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "John"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "user"
+                },
+                "tool_call_id": {
+                    "type": "string"
+                },
+                "tool_calls": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.ToolCall"
+                    }
+                }
+            }
+        },
+        "app.Model": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "integer",
+                    "example": 1677610602
+                },
+                "id": {
+                    "type": "string",
+                    "example": "gpt-4o"
+                },
+                "object": {
+                    "type": "string",
+                    "example": "model"
+                },
+                "owned_by": {
+                    "type": "string",
+                    "example": "openai"
+                }
+            }
+        },
+        "app.ModelsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.Model"
+                    }
+                },
+                "object": {
+                    "type": "string",
+                    "example": "list"
+                }
+            }
+        },
+        "app.TokenDetails": {
+            "type": "object",
+            "properties": {
+                "accepted_prediction_tokens": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "audio_tokens": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "cached_tokens": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "reasoning_tokens": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "rejected_prediction_tokens": {
+                    "type": "integer",
+                    "example": 0
+                }
+            }
+        },
+        "app.ToolCall": {
+            "type": "object",
+            "properties": {
+                "function": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "id": {
+                    "type": "string",
+                    "example": "call_8qty38"
+                },
+                "type": {
+                    "type": "string",
+                    "example": "function"
+                }
+            }
+        },
+        "app.Usage": {
+            "type": "object",
+            "properties": {
+                "completion_tokens": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "completion_tokens_details": {
+                    "$ref": "#/definitions/app.TokenDetails"
+                },
+                "prompt_tokens": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "prompt_tokens_details": {
+                    "description": "Added additional usage details for OpenAI compatibility",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/app.TokenDetails"
+                        }
+                    ]
+                },
+                "total_tokens": {
+                    "type": "integer",
+                    "example": 30
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Type \"Bearer\" followed by a space and the API key value.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

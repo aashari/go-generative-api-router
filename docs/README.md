@@ -1,80 +1,130 @@
-# Documentation Index
+# Documentation
 
-Welcome to the Generative API Router documentation! This guide will help you find the right documentation for your needs.
+Welcome to the Generative API Router documentation! This comprehensive guide covers everything you need to know about using, developing, and deploying the service.
 
-## 📖 **Quick Navigation**
+## 📖 Quick Navigation
 
-### 👤 **For Users**
-- **[User Guide](user/README.md)** - Getting started, API usage, configuration
-- **[API Reference](api/)** - Complete API documentation with Swagger/OpenAPI specs
-- **[Examples](../examples/)** - Ready-to-use examples in multiple languages
+### 👤 For Users
+- **[User Guide](user-guide.md)** - Complete guide for integrating with and using the service
+- **[API Reference](api-reference.md)** - Complete API documentation with examples
+- **[Examples](../examples/)** - Ready-to-use code examples in multiple languages
 
-### 👨‍💻 **For Developers**
-- **[Development Guide](development/DEVELOPMENT.md)** - Setup, workflow, and best practices
-- **[Contributing Guidelines](development/CONTRIBUTING.md)** - How to contribute to the project
-- **[Testing Guide](development/TESTING.md)** - Running tests and writing new ones
-- **[Logging System](development/LOGGING.md)** - Comprehensive logging documentation
+### 👨‍💻 For Developers  
+- **[Development Guide](development-guide.md)** - Setup, workflow, and architecture overview
+- **[Contributing Guide](contributing-guide.md)** - How to contribute to the project
+- **[Testing Guide](testing-guide.md)** - Testing strategies and procedures
+- **[Logging Guide](logging-guide.md)** - Comprehensive logging documentation
 
-### 🚀 **For DevOps & Deployment**
-- **[Deployment Guide](development/DEPLOYMENT.md)** - AWS infrastructure and deployment procedures
-- **[xyz-aduh-genapi Service](development/DEPLOYMENT.md)** - Production deployment on AWS ECS
+### 🚀 For DevOps & Deployment
+- **[Deployment Guide](deployment-guide.md)** - AWS infrastructure and deployment procedures
+- **[Production Monitoring Guide](production-monitoring-guide.md)** - Practical log querying and monitoring
 
-### 🏗️ **Architecture & Design**
-- **[Main README](../README.md)** - Project overview, features, and quick start
-- **[Architecture Diagram](assets/)** - Visual system architecture (coming soon)
-
-## 📋 **Documentation Types**
-
-| Type | Purpose | Audience |
-|------|---------|----------|
-| **User Guides** | How to use the service | End users, integrators |
-| **API Reference** | Complete API specification | Developers, integrators |
-| **Development Docs** | Contributing and development | Contributors, maintainers |
-| **Deployment Docs** | Infrastructure and deployment | DevOps, maintainers |
-| **Examples** | Working code samples | All audiences |
-
-## 🚀 **Getting Started Paths**
+## 🚀 Getting Started Paths
 
 ### **I want to use the service**
-1. Read the [Main README](../README.md) for overview
-2. Follow the [User Guide](user/README.md) for setup
-3. Try the [Examples](../examples/) for your language
-4. Reference the [API Documentation](api/) as needed
+1. Read the [Main README](../README.md) for project overview
+2. Follow the [User Guide](user-guide.md) for setup and integration
+3. Reference the [API Documentation](api-reference.md) for detailed endpoints
+4. Try the [Examples](../examples/) for your programming language
 
 ### **I want to contribute**
-1. Read the [Development Guide](development/DEVELOPMENT.md)
-2. Follow the [Contributing Guidelines](development/CONTRIBUTING.md)
-3. Check the [Testing Guide](development/TESTING.md)
-4. Understand the [Logging System](development/LOGGING.md)
+1. Read the [Development Guide](development-guide.md) for setup
+2. Follow the [Contributing Guide](contributing-guide.md) for workflow
+3. Check the [Testing Guide](testing-guide.md) for testing procedures
+4. Understand the [Logging Guide](logging-guide.md) for debugging
 
 ### **I want to deploy or manage infrastructure**
-1. Review the [Deployment Guide](development/DEPLOYMENT.md)
-2. Understand the AWS infrastructure setup
-3. Learn monitoring and troubleshooting procedures
-4. Check the [Development Guide](development/DEVELOPMENT.md) for local setup
+1. Review the [Deployment Guide](deployment-guide.md) for AWS setup
+2. Understand monitoring and troubleshooting procedures
+3. Check the [Development Guide](development-guide.md) for local testing
 
-### **I want to understand the architecture**
-1. Start with the [Main README](../README.md)
-2. Review the [API Reference](api/)
-3. Check the [Development Guide](development/DEVELOPMENT.md)
-4. Explore the [source code](../internal/)
+## 📋 Documentation Overview
 
-## 🔗 **External Resources**
+| Document | Purpose | Audience |
+|----------|---------|----------|
+| **[User Guide](user-guide.md)** | Service integration and usage | End users, developers integrating the API |
+| **[API Reference](api-reference.md)** | Complete API specification | Developers, API consumers |
+| **[Development Guide](development-guide.md)** | Development setup and workflow | Contributors, maintainers |
+| **[Contributing Guide](contributing-guide.md)** | Contribution process and standards | Contributors |
+| **[Testing Guide](testing-guide.md)** | Testing strategies and procedures | Developers, maintainers |
+| **[Logging Guide](logging-guide.md)** | Logging system documentation | Developers, operations |
+| **[Deployment Guide](deployment-guide.md)** | Infrastructure and deployment | DevOps, maintainers |
+| **[Production Monitoring Guide](production-monitoring-guide.md)** | Log querying and monitoring | DevOps, operations |
 
-- **[GitHub Repository](https://github.com/aashari/go-generative-api-router)**
-- **[Go Report Card](https://goreportcard.com/report/github.com/aashari/go-generative-api-router)**
-- **[Production Service](https://genapi.aduh.xyz)** - Live xyz-aduh-genapi deployment
-- **[License](../LICENSE)**
+## 🔧 Service Overview
 
-## 📝 **Documentation Standards**
+The Generative API Router is a transparent proxy service that:
+
+- **Routes OpenAI-compatible requests** to multiple LLM vendors (OpenAI, Gemini)
+- **Preserves your model names** in responses while intelligently selecting vendors
+- **Maintains full API compatibility** with OpenAI's chat completions API
+- **Supports advanced features** including streaming, tool calling, and vendor selection
+- **Provides comprehensive logging** for monitoring and debugging
+
+### Key Features
+
+✅ **Transparent Proxy** - Original model names preserved in responses  
+✅ **Multi-Vendor Support** - OpenAI, Gemini, and more  
+✅ **Streaming Support** - Real-time response streaming  
+✅ **Tool Calling** - OpenAI-compatible function calling  
+✅ **Vendor Selection** - Force specific vendors via query parameters  
+✅ **Enterprise Logging** - Structured JSON logging with request correlation  
+✅ **Production Ready** - Deployed on AWS with monitoring  
+
+## 🎯 Quick Start
+
+### For End Users
+```bash
+curl -X POST https://genapi.aduh.xyz/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "my-preferred-model",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+### For Developers
+```bash
+git clone https://github.com/aashari/go-generative-api-router.git
+cd go-generative-api-router
+make setup
+make run
+```
+
+### For DevOps
+```bash
+# Check production status
+curl https://genapi.aduh.xyz/health
+
+# Monitor AWS deployment
+aws --profile 836322468413 --region ap-southeast-3 ecs describe-services \
+  --cluster prod-xyz-aduh-genapi --services prod-xyz-aduh-genapi
+```
+
+## 🔗 External Resources
+
+- **[GitHub Repository](https://github.com/aashari/go-generative-api-router)** - Source code and issues
+- **[Production Service](https://genapi.aduh.xyz)** - Live production deployment
+- **[Development Service](https://dev-genapi.aduh.xyz)** - Development environment
+- **[License](../LICENSE)** - MIT License
+
+## 📝 Documentation Standards
 
 All documentation follows these principles:
 - **Clear and concise** - Easy to understand and follow
-- **Up-to-date** - Reflects current codebase and features
+- **Up-to-date** - Reflects current implementation
 - **Comprehensive** - Covers all necessary information
 - **Well-organized** - Logical structure and navigation
-- **Example-driven** - Includes practical examples where helpful
+- **Example-driven** - Includes practical examples
+
+## 💡 Getting Help
+
+- **Documentation Issues**: Open an issue on [GitHub](https://github.com/aashari/go-generative-api-router/issues)
+- **Feature Requests**: Use GitHub issues with the "enhancement" label
+- **Bug Reports**: Follow the bug report template on GitHub
+- **General Questions**: Use GitHub Discussions
 
 ---
 
-**Need help?** Check the [Contributing Guidelines](development/CONTRIBUTING.md) for how to report issues or suggest improvements to the documentation. 
+**Need something specific?** Use the navigation above to jump to the right guide, or check the [main README](../README.md) for a project overview.

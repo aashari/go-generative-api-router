@@ -2,10 +2,9 @@
 
 This guide provides essential information for developers working on the Generative API Router project.
 
-> **📚 Complete Guides**: For comprehensive development workflows, testing procedures, and deployment instructions, see the detailed guides in [`.cursor/rules/`](../../.cursor/rules/):
-> - **[Development Guide](../../.cursor/rules/development_guide.mdc)** - Complete workflow, architecture, Git practices
-> - **[Running & Testing Guide](../../.cursor/rules/running_and_testing.mdc)** - Setup, testing, debugging
-> - **[Codex Integration](../../.cursor/rules/codex.mdc)** - AI-assisted development
+> **📚 Complete Guides**: For comprehensive development workflows, testing procedures, and deployment instructions, see the detailed guides in [`.cursor/rules/`](../.cursor/rules/):
+> - **[Development Guide](../.cursor/rules/development_guide.mdc)** - Complete workflow, architecture, Git practices
+> - **[Running & Testing Guide](../.cursor/rules/running_and_testing.mdc)** - Setup, testing, debugging
 
 ## 🚀 Quick Start
 
@@ -183,7 +182,7 @@ if err != nil {
 }
 ```
 
-**Complete documentation**: [LOGGING.md](./LOGGING.md)
+**Complete documentation**: [Logging Guide](logging-guide.md)
 
 ## 🐳 Docker Development
 
@@ -255,7 +254,7 @@ curl http://localhost:8082/v1/models
 ```
 
 ### Production Deployment
-The project is deployed on AWS as the `xyz-aduh-genapi` service. See the [Deployment Guide](./DEPLOYMENT.md) for comprehensive AWS infrastructure documentation and deployment procedures.
+The project is deployed on AWS as the `xyz-aduh-genapi` service. See the [Deployment Guide](deployment-guide.md) for comprehensive AWS infrastructure documentation and deployment procedures.
 
 **Quick Deployment Status Check**:
 ```bash
@@ -269,16 +268,17 @@ aws --profile 836322468413 --region ap-southeast-3 ecs describe-services \
 
 ## 📚 Additional Resources
 
-- **[Contributing Guidelines](./CONTRIBUTING.md)** - How to contribute
-- **[Testing Guide](./TESTING.md)** - Detailed testing information  
-- **[Logging Documentation](./LOGGING.md)** - Complete logging system docs
-- **[Deployment Guide](./DEPLOYMENT.md)** - AWS infrastructure and deployment procedures
-- **[API Reference](../api/)** - Complete API documentation
-- **[Examples](../../examples/)** - Usage examples in multiple languages
+- **[Contributing Guide](contributing-guide.md)** - How to contribute
+- **[Testing Guide](testing-guide.md)** - Detailed testing information  
+- **[Logging Guide](logging-guide.md)** - Complete logging system docs
+- **[Deployment Guide](deployment-guide.md)** - AWS infrastructure and deployment procedures
+- **[API Reference](api-reference.md)** - Complete API documentation
+- **[User Guide](user-guide.md)** - Service usage documentation
+- **[Examples](../examples/)** - Usage examples in multiple languages
 
 ---
 
 **Need Help?** 
-- Check the [complete development guide](../../.cursor/rules/development_guide.mdc)
-- Review [troubleshooting section](../../.cursor/rules/running_and_testing.mdc#troubleshooting)
-- Open an issue on [GitHub](https://github.com/aashari/go-generative-api-router/issues) 
+- Check the [complete development guide](../.cursor/rules/development_guide.mdc)
+- Review [troubleshooting section](../.cursor/rules/running_and_testing.mdc#troubleshooting)
+- Open an issue on [GitHub](https://github.com/aashari/go-generative-api-router/issues)

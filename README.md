@@ -398,10 +398,11 @@ Contributions are welcome! Please see our [Contributing Guide](docs/development/
 
 ## Documentation
 
-- [Development Guide](docs/development/DEVELOPMENT.md)
-- [Testing Guide](docs/development/TESTING.md)
-- [API Documentation](docs/api/)
-- [User Guide](docs/user/README.md)
+- [Development Guide](docs/development-guide.md)
+- [Testing Guide](docs/testing-guide.md)
+- [API Reference](docs/api-reference.md)
+- [User Guide](docs/user-guide.md)
+- [Production Monitoring Guide](docs/production-monitoring-guide.md)
 
 ## License
 

@@ -1,8 +1,8 @@
-# Deployment Guide - xyz-aduh-genapi
+# Deployment Guide
 
 This guide covers the AWS deployment infrastructure and procedures for the Generative API Router service deployed as `xyz-aduh-genapi`.
 
-## 🏗️ **Infrastructure Overview**
+## 🏗️ Infrastructure Overview
 
 ### AWS Account & Region
 - **AWS Account**: `836322468413`
@@ -15,7 +15,7 @@ The service is deployed using a modern AWS serverless architecture:
 - Separate environments for development and production
 - Automated CI/CD pipeline triggered by Git commits/tags
 
-## 🌍 **Environments**
+## 🌍 Environments
 
 ### Development Environment
 - **CodeBuild Project**: `dev-xyz-aduh-genapi`
@@ -33,7 +33,7 @@ The service is deployed using a modern AWS serverless architecture:
 - **Trigger**: Git tags (releases)
 - **Source**: Release tags (e.g., `v2.0.1`)
 
-## 🔄 **Deployment Pipeline**
+## 🔄 Deployment Pipeline
 
 ### Pipeline Flow
 ```
@@ -54,7 +54,7 @@ Git Commit/Tag → CodeBuild → Docker Build → ECR Push → ECS Deploy
 - **Architecture**: ARM64 (Graviton2)
 - **Tag Strategy**: `latest` for both environments
 
-## 📊 **Monitoring & Health Checks**
+## 📊 Monitoring & Health Checks
 
 ### Service Status Commands
 
@@ -120,7 +120,7 @@ curl -f https://genapi.aduh.xyz/health
 curl --max-time 5 https://genapi.aduh.xyz/health
 ```
 
-## 🚀 **Deployment Procedures**
+## 🚀 Deployment Procedures
 
 ### Development Deployment
 Development deployments are **automatic** when commits are pushed to the main branch:
@@ -146,7 +146,7 @@ Development deployments are **automatic** when commits are pushed to the main br
 ### Production Deployment
 Production deployments are **automatic** when release tags are created:
 
-1. **Create Release** (following [release process](../../.cursor/rules/development_guide.mdc#release-process)):
+1. **Create Release** (following [release process](../.cursor/rules/development_guide.mdc#release-process)):
    ```bash
    # Create and push tag
    git tag -a v2.0.2 -m "Release v2.0.2: Description"
@@ -164,7 +164,7 @@ Production deployments are **automatic** when release tags are created:
      --cluster prod-xyz-aduh-genapi --services prod-xyz-aduh-genapi
    ```
 
-## 🔍 **Troubleshooting**
+## 🔍 Troubleshooting
 
 ### Common Issues
 
@@ -242,7 +242,7 @@ aws --profile 836322468413 --region ap-southeast-3 ecs update-service \
   --desired-count 0
 ```
 
-## 📈 **Performance Monitoring**
+## 📈 Performance Monitoring
 
 ### CloudWatch Metrics
 Key metrics to monitor:
@@ -268,7 +268,7 @@ aws --profile 836322468413 --region ap-southeast-3 ecs describe-services \
   --query 'services[0].deployments[*].{Status:status,CreatedAt:createdAt,TaskDefinition:taskDefinition}'
 ```
 
-## 🔐 **Security & Access**
+## 🔐 Security & Access
 
 ### Required Permissions
 To manage deployments, you need:
@@ -286,13 +286,13 @@ aws --profile 836322468413 sts get-caller-identity
 aws --profile 836322468413 iam get-user
 ```
 
-## 📚 **Additional Resources**
+## 📚 Additional Resources
 
-- **[Development Guide](./DEVELOPMENT.md)** - Local development setup
-- **[Release Process](../../.cursor/rules/development_guide.mdc#release-process)** - Creating releases
+- **[Development Guide](development-guide.md)** - Local development setup
+- **[Release Process](../.cursor/rules/development_guide.mdc#release-process)** - Creating releases
 - **[AWS ECS Documentation](https://docs.aws.amazon.com/ecs/)** - Official AWS documentation
 - **[AWS CodeBuild Documentation](https://docs.aws.amazon.com/codebuild/)** - CI/CD pipeline documentation
 
 ---
 
-**Need Help?** Contact the infrastructure team or check the [troubleshooting section](../../.cursor/rules/running_and_testing.mdc#troubleshooting) for common issues. 
+**Need Help?** Contact the infrastructure team or check the [troubleshooting section](../.cursor/rules/running_and_testing.mdc#troubleshooting) for common issues.

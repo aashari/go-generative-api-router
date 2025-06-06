@@ -2,7 +2,7 @@
 
 This guide covers testing strategies, best practices, and detailed procedures for the Generative API Router project.
 
-> **📚 Complete Testing Guide**: For comprehensive testing procedures including manual testing, debugging, and troubleshooting, see [Running & Testing Guide](../../.cursor/rules/running_and_testing.mdc).
+> **📚 Complete Testing Guide**: For comprehensive testing procedures including manual testing, debugging, and troubleshooting, see [Running & Testing Guide](../.cursor/rules/running_and_testing.mdc).
 
 ## 🧪 Testing Overview
 
@@ -205,121 +205,6 @@ func TestProxyIntegration(t *testing.T) {
 }
 ```
 
-### Mock Testing
-```go
-type MockVendorClient struct {
-    mock.Mock
-}
-
-func (m *MockVendorClient) SendRequest(ctx context.Context, req Request) (*Response, error) {
-    args := m.Called(ctx, req)
-    return args.Get(0).(*Response), args.Error(1)
-}
-
-func TestProxyWithMock(t *testing.T) {
-    // Setup mock
-    mockClient := new(MockVendorClient)
-    mockClient.On("SendRequest", mock.Anything, mock.Anything).Return(
-        &Response{Model: "gpt-4o", Content: "Hello!"},
-        nil,
-    )
-    
-    // Test with mock
-    proxy := NewProxy(mockClient)
-    response, err := proxy.HandleRequest(context.Background(), testRequest)
-    
-    require.NoError(t, err)
-    assert.Equal(t, "test-model", response.Model) // Transparent proxy
-    
-    // Verify mock was called
-    mockClient.AssertExpectations(t)
-}
-```
-
-## 🎯 Testing Best Practices
-
-### Test Organization
-1. **Arrange, Act, Assert**: Structure tests clearly
-2. **One assertion per test**: Focus on single behavior
-3. **Descriptive names**: Test names should explain what's being tested
-4. **Independent tests**: Tests should not depend on each other
-5. **Clean up**: Use `defer` for cleanup or `t.Cleanup()`
-
-### Error Testing
-```go
-func TestValidationErrors(t *testing.T) {
-    tests := []struct {
-        name        string
-        input       Request
-        expectedErr string
-    }{
-        {
-            name:        "missing messages",
-            input:       Request{Model: "gpt-4o"},
-            expectedErr: "messages field is required",
-        },
-        {
-            name:        "empty model",
-            input:       Request{Messages: []Message{{Role: "user", Content: "hi"}}},
-            expectedErr: "model field is required",
-        },
-    }
-    
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            err := ValidateRequest(tt.input)
-            
-            require.Error(t, err)
-            assert.Contains(t, err.Error(), tt.expectedErr)
-        })
-    }
-}
-```
-
-### Context Testing
-```go
-func TestWithContext(t *testing.T) {
-    ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-    defer cancel()
-    
-    // Test that function respects context cancellation
-    err := LongRunningFunction(ctx)
-    
-    assert.Error(t, err)
-    assert.Contains(t, err.Error(), "context deadline exceeded")
-}
-```
-
-### Concurrent Testing
-```go
-func TestConcurrentAccess(t *testing.T) {
-    selector := NewSelector(credentials, models)
-    
-    var wg sync.WaitGroup
-    errors := make(chan error, 10)
-    
-    // Run 10 concurrent selections
-    for i := 0; i < 10; i++ {
-        wg.Add(1)
-        go func() {
-            defer wg.Done()
-            _, err := selector.Select("")
-            if err != nil {
-                errors <- err
-            }
-        }()
-    }
-    
-    wg.Wait()
-    close(errors)
-    
-    // Check for race conditions or errors
-    for err := range errors {
-        t.Errorf("Concurrent access error: %v", err)
-    }
-}
-```
-
 ## 📊 Test Coverage
 
 ### Coverage Goals
@@ -341,67 +226,6 @@ go tool cover -html=coverage.out -o coverage.html
 
 # Check coverage threshold
 go test -cover ./... | grep -E "coverage: [0-9]+\.[0-9]+%" | awk '{if($2 < 80.0) print "Low coverage: " $0}'
-```
-
-### Coverage Analysis
-```bash
-# Find uncovered lines
-go tool cover -html=coverage.out
-
-# Coverage by function
-go tool cover -func=coverage.out | sort -k3 -nr
-
-# Package-level coverage summary
-go test -coverprofile=coverage.out ./... && \
-go tool cover -func=coverage.out | grep "total:" | \
-awk '{print "Total coverage: " $3}'
-```
-
-## 🔧 Test Configuration
-
-### Environment Variables
-```bash
-# Skip integration tests
-export SKIP_INTEGRATION_TESTS=true
-
-# Use test credentials
-export TEST_CREDENTIALS_FILE=testdata/fixtures/test_credentials.json
-
-# Enable verbose logging in tests
-export LOG_LEVEL=DEBUG
-
-# Set test timeout
-export TEST_TIMEOUT=30s
-```
-
-### Test Helpers
-```go
-// testhelpers/setup.go
-func SetupTestApp(t *testing.T) *app.App {
-    t.Helper()
-    
-    // Load test configuration
-    config := loadTestConfig(t)
-    
-    // Create test app
-    app, err := app.New(config)
-    require.NoError(t, err)
-    
-    return app
-}
-
-func LoadTestCredentials(t *testing.T) []Credential {
-    t.Helper()
-    
-    data, err := os.ReadFile("testdata/fixtures/credentials.json")
-    require.NoError(t, err)
-    
-    var creds []Credential
-    err = json.Unmarshal(data, &creds)
-    require.NoError(t, err)
-    
-    return creds
-}
 ```
 
 ## 🚨 Manual Testing
@@ -433,29 +257,6 @@ The project includes manual testing scripts in `examples/curl/`:
 - [ ] Vendor filtering works via query parameters
 - [ ] Request IDs are consistent in streaming
 - [ ] Model names are preserved in responses
-
-## 🐛 Debugging Tests
-
-### Common Issues
-1. **Flaky tests**: Use `go test -count=100` to identify
-2. **Race conditions**: Run with `-race` flag
-3. **Memory leaks**: Use `-memprofile` for analysis
-4. **Slow tests**: Use `-timeout` and `-cpuprofile`
-
-### Debugging Techniques
-```bash
-# Run single test with verbose output
-go test -v -run TestSpecificFunction ./internal/proxy
-
-# Debug with delve
-dlv test ./internal/proxy -- -test.run TestSpecificFunction
-
-# Print test output even on success
-go test -v ./... | grep -E "(PASS|FAIL|RUN)"
-
-# Run tests with custom build tags
-go test -tags=integration ./...
-```
 
 ## 📈 Performance Testing
 
@@ -507,14 +308,54 @@ go test -bench=. -count=5 ./... > new.txt
 benchcmp old.txt new.txt
 ```
 
+## 🐛 Debugging Tests
+
+### Common Issues
+1. **Flaky tests**: Use `go test -count=100` to identify
+2. **Race conditions**: Run with `-race` flag
+3. **Memory leaks**: Use `-memprofile` for analysis
+4. **Slow tests**: Use `-timeout` and `-cpuprofile`
+
+### Debugging Techniques
+```bash
+# Run single test with verbose output
+go test -v -run TestSpecificFunction ./internal/proxy
+
+# Debug with delve
+dlv test ./internal/proxy -- -test.run TestSpecificFunction
+
+# Print test output even on success
+go test -v ./... | grep -E "(PASS|FAIL|RUN)"
+
+# Run tests with custom build tags
+go test -tags=integration ./...
+```
+
+## 🔧 Test Configuration
+
+### Environment Variables
+```bash
+# Skip integration tests
+export SKIP_INTEGRATION_TESTS=true
+
+# Use test credentials
+export TEST_CREDENTIALS_FILE=testdata/fixtures/test_credentials.json
+
+# Enable verbose logging in tests
+export LOG_LEVEL=DEBUG
+
+# Set test timeout
+export TEST_TIMEOUT=30s
+```
+
 ## 📚 Additional Resources
 
-- **[Development Guide](./DEVELOPMENT.md)** - Complete development setup
-- **[Contributing Guidelines](./CONTRIBUTING.md)** - How to contribute
-- **[Running & Testing Guide](../../.cursor/rules/running_and_testing.mdc)** - Comprehensive testing procedures
+- **[Development Guide](development-guide.md)** - Complete development setup
+- **[Contributing Guide](contributing-guide.md)** - How to contribute
+- **[Running & Testing Guide](../.cursor/rules/running_and_testing.mdc)** - Comprehensive testing procedures
 - **[Go Testing Documentation](https://golang.org/pkg/testing/)** - Official Go testing docs
 - **[Testify Documentation](https://github.com/stretchr/testify)** - Testing toolkit used in this project
 
 ---
 
-**Remember**: Good tests are as important as good code. They serve as documentation, catch regressions, and enable confident refactoring. 🧪 
+**Remember**: Good tests are as important as good code. They serve as documentation, catch regressions, and enable confident refactoring. 🧪

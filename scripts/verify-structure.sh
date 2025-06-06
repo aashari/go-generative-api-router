@@ -3,7 +3,7 @@
 echo "Verifying project structure..."
 
 # Check key directories exist
-dirs=("configs" "deployments/docker" "docs/api" "docs/development" "docs/user" 
+dirs=("configs" "deployments/docker" "docs" 
       "examples/curl" "examples/clients" "scripts" "testdata/fixtures" "testdata/analysis")
 
 for dir in "${dirs[@]}"; do
