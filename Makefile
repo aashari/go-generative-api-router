@@ -151,6 +151,7 @@ help:
 	@echo "  $(GREEN)pre-commit$(NC)    - Run pre-commit checks"
 	@echo "  $(GREEN)setup$(NC)         - Setup development environment"
 	@echo "  $(GREEN)deploy$(NC)        - Deploy to AWS"
+	@echo "  $(GREEN)swagger-generate$(NC) - Generate Swagger documentation"
 	@echo "  $(GREEN)help$(NC)          - Show this help message"
 
 # Log management
@@ -165,4 +166,12 @@ clean-logs:
 	@echo "$(GREEN)Cleaning log files...$(NC)"
 	@rm -f logs/*.log
 	@rm -f *.log
-	@echo "$(GREEN)Logs cleaned$(NC)" 
+	@echo "$(GREEN)Logs cleaned$(NC)"
+
+# Generate Swagger documentation
+swagger-generate:
+	@echo "$(GREEN)Generating Swagger documentation...$(NC)"
+	@$(shell go env GOPATH)/bin/swag init -g cmd/server/main.go --output docs/api/ --parseDependency --parseInternal
+	@cp docs/api/swagger.json docs/
+	@cp docs/api/swagger.yaml docs/
+	@echo "$(GREEN)Swagger documentation generated and copied to docs/$(NC)" 

@@ -88,7 +88,7 @@ func TestContextAwareLogging(t *testing.T) {
 
 	// Verify output contains context values
 	output := buf.String()
-	
+
 	var logEntry StructuredLogEntry
 	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
 		t.Errorf("Log output is not valid JSON: %v", err)
@@ -403,4 +403,3 @@ func TestLegacyCompatibility(t *testing.T) {
 		t.Errorf("Expected legacy message: %v", logEntry.Message)
 	}
 }
-

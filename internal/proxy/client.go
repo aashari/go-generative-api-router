@@ -567,8 +567,8 @@ func (c *APIClient) processStreamingResponse(w http.ResponseWriter, reader *bufi
 				"chunk_size_bytes": len(processedChunk),
 			},
 			"vendor_details": map[string]any{
-				"vendor":         streamProcessor.Vendor,
-				"model":          streamProcessor.OriginalModel,
+				"vendor":          streamProcessor.Vendor,
+				"model":           streamProcessor.OriginalModel,
 				"conversation_id": streamProcessor.ConversationID,
 			},
 		})

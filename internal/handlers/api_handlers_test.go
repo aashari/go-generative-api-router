@@ -42,7 +42,7 @@ func TestHealthHandler(t *testing.T) {
 	}
 	client := proxy.NewAPIClient()
 	sel := selector.NewRandomSelector()
-	
+
 	handlers := NewAPIHandlers(creds, models, client, sel)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -73,7 +73,7 @@ func TestHealthHandler(t *testing.T) {
 	// Verify details
 	assert.Contains(t, healthResponse.Details, "version")
 	assert.Contains(t, healthResponse.Details, "uptime")
-	
+
 	// Uptime should be a number (int64)
 	uptime, ok := healthResponse.Details["uptime"].(float64) // JSON unmarshals numbers as float64
 	assert.True(t, ok)
@@ -88,7 +88,7 @@ func TestHealthHandler_Degraded(t *testing.T) {
 	}
 	client := proxy.NewAPIClient()
 	sel := selector.NewRandomSelector()
-	
+
 	handlers := NewAPIHandlers(creds, models, client, sel)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -118,7 +118,7 @@ func TestHealthHandler_Unhealthy(t *testing.T) {
 	models := []config.VendorModel{
 		{Vendor: "openai", Model: "gpt-4"},
 	}
-	
+
 	handlers := &APIHandlers{
 		Credentials:   creds,
 		VendorModels:  models,

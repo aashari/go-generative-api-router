@@ -1,12 +1,12 @@
 basePath: /
 definitions:
-  app.ChatCompletionRequest:
+  internal_handlers.ChatCompletionRequest:
     type: object
-  app.ChatCompletionResponse:
+  internal_handlers.ChatCompletionResponse:
     properties:
       choices:
         items:
-          $ref: '#/definitions/app.Choice'
+          $ref: '#/definitions/internal_handlers.Choice'
         type: array
       created:
         example: 1677652288
@@ -27,9 +27,9 @@ definitions:
         example: fp_abc123
         type: string
       usage:
-        $ref: '#/definitions/app.Usage'
+        $ref: '#/definitions/internal_handlers.Usage'
     type: object
-  app.Choice:
+  internal_handlers.Choice:
     properties:
       finish_reason:
         example: stop
@@ -41,9 +41,9 @@ definitions:
         example: "null"
         type: string
       message:
-        $ref: '#/definitions/app.Message'
+        $ref: '#/definitions/internal_handlers.Message'
     type: object
-  app.ErrorInfo:
+  internal_handlers.ErrorInfo:
     properties:
       code:
         example: invalid_model
@@ -58,12 +58,26 @@ definitions:
         example: invalid_request_error
         type: string
     type: object
-  app.ErrorResponse:
+  internal_handlers.ErrorResponse:
     properties:
       error:
-        $ref: '#/definitions/app.ErrorInfo'
+        $ref: '#/definitions/internal_handlers.ErrorInfo'
     type: object
-  app.Message:
+  internal_handlers.HealthResponse:
+    properties:
+      details:
+        additionalProperties: true
+        type: object
+      services:
+        additionalProperties:
+          type: string
+        type: object
+      status:
+        type: string
+      timestamp:
+        type: string
+    type: object
+  internal_handlers.Message:
     properties:
       content:
         example: Hello, how are you?
@@ -78,10 +92,10 @@ definitions:
         type: string
       tool_calls:
         items:
-          $ref: '#/definitions/app.ToolCall'
+          $ref: '#/definitions/internal_handlers.ToolCall'
         type: array
     type: object
-  app.Model:
+  internal_handlers.Model:
     properties:
       created:
         example: 1677610602
@@ -96,17 +110,17 @@ definitions:
         example: openai
         type: string
     type: object
-  app.ModelsResponse:
+  internal_handlers.ModelsResponse:
     properties:
       data:
         items:
-          $ref: '#/definitions/app.Model'
+          $ref: '#/definitions/internal_handlers.Model'
         type: array
       object:
         example: list
         type: string
     type: object
-  app.TokenDetails:
+  internal_handlers.TokenDetails:
     properties:
       accepted_prediction_tokens:
         example: 0
@@ -124,7 +138,7 @@ definitions:
         example: 0
         type: integer
     type: object
-  app.ToolCall:
+  internal_handlers.ToolCall:
     properties:
       function:
         additionalProperties: true
@@ -136,19 +150,19 @@ definitions:
         example: function
         type: string
     type: object
-  app.Usage:
+  internal_handlers.Usage:
     properties:
       completion_tokens:
         example: 20
         type: integer
       completion_tokens_details:
-        $ref: '#/definitions/app.TokenDetails'
+        $ref: '#/definitions/internal_handlers.TokenDetails'
       prompt_tokens:
         example: 10
         type: integer
       prompt_tokens_details:
         allOf:
-        - $ref: '#/definitions/app.TokenDetails'
+        - $ref: '#/definitions/internal_handlers.TokenDetails'
         description: Added additional usage details for OpenAI compatibility
       total_tokens:
         example: 30
@@ -172,14 +186,15 @@ paths:
     get:
       consumes:
       - application/json
-      description: Returns "OK" if the service is running properly
+      description: Returns structured health information including status, services,
+        and version details
       produces:
-      - text/plain
+      - application/json
       responses:
         "200":
-          description: OK
+          description: Structured health response
           schema:
-            type: string
+            $ref: '#/definitions/internal_handlers.HealthResponse'
       summary: Health check endpoint
       tags:
       - health
@@ -198,26 +213,26 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/app.ChatCompletionRequest'
+          $ref: '#/definitions/internal_handlers.ChatCompletionRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OpenAI-compatible chat completion response
           schema:
-            $ref: '#/definitions/app.ChatCompletionResponse'
+            $ref: '#/definitions/internal_handlers.ChatCompletionResponse'
         "400":
           description: Bad request error
           schema:
-            $ref: '#/definitions/app.ErrorResponse'
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
         "401":
           description: Unauthorized error
           schema:
-            $ref: '#/definitions/app.ErrorResponse'
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/app.ErrorResponse'
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Chat completions API
@@ -240,7 +255,7 @@ paths:
         "200":
           description: List of available models
           schema:
-            $ref: '#/definitions/app.ModelsResponse'
+            $ref: '#/definitions/internal_handlers.ModelsResponse'
       summary: List available models
       tags:
       - models

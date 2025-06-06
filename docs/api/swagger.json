@@ -20,12 +20,12 @@
     "paths": {
         "/health": {
             "get": {
-                "description": "Returns \"OK\" if the service is running properly",
+                "description": "Returns structured health information including status, services, and version details",
                 "consumes": [
                     "application/json"
                 ],
                 "produces": [
-                    "text/plain"
+                    "application/json"
                 ],
                 "tags": [
                     "health"
@@ -33,9 +33,9 @@
                 "summary": "Health check endpoint",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Structured health response",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/internal_handlers.HealthResponse"
                         }
                     }
                 }
@@ -72,7 +72,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/app.ChatCompletionRequest"
+                            "$ref": "#/definitions/internal_handlers.ChatCompletionRequest"
                         }
                     }
                 ],
@@ -80,25 +80,25 @@
                     "200": {
                         "description": "OpenAI-compatible chat completion response",
                         "schema": {
-                            "$ref": "#/definitions/app.ChatCompletionResponse"
+                            "$ref": "#/definitions/internal_handlers.ChatCompletionResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request error",
                         "schema": {
-                            "$ref": "#/definitions/app.ErrorResponse"
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized error",
                         "schema": {
-                            "$ref": "#/definitions/app.ErrorResponse"
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/app.ErrorResponse"
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     }
                 }
@@ -129,7 +129,7 @@
                     "200": {
                         "description": "List of available models",
                         "schema": {
-                            "$ref": "#/definitions/app.ModelsResponse"
+                            "$ref": "#/definitions/internal_handlers.ModelsResponse"
                         }
                     }
                 }
@@ -137,16 +137,16 @@
         }
     },
     "definitions": {
-        "app.ChatCompletionRequest": {
+        "internal_handlers.ChatCompletionRequest": {
             "type": "object"
         },
-        "app.ChatCompletionResponse": {
+        "internal_handlers.ChatCompletionResponse": {
             "type": "object",
             "properties": {
                 "choices": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/app.Choice"
+                        "$ref": "#/definitions/internal_handlers.Choice"
                     }
                 },
                 "created": {
@@ -174,11 +174,11 @@
                     "example": "fp_abc123"
                 },
                 "usage": {
-                    "$ref": "#/definitions/app.Usage"
+                    "$ref": "#/definitions/internal_handlers.Usage"
                 }
             }
         },
-        "app.Choice": {
+        "internal_handlers.Choice": {
             "type": "object",
             "properties": {
                 "finish_reason": {
@@ -194,11 +194,11 @@
                     "example": "null"
                 },
                 "message": {
-                    "$ref": "#/definitions/app.Message"
+                    "$ref": "#/definitions/internal_handlers.Message"
                 }
             }
         },
-        "app.ErrorInfo": {
+        "internal_handlers.ErrorInfo": {
             "type": "object",
             "properties": {
                 "code": {
@@ -219,15 +219,36 @@
                 }
             }
         },
-        "app.ErrorResponse": {
+        "internal_handlers.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {
-                    "$ref": "#/definitions/app.ErrorInfo"
+                    "$ref": "#/definitions/internal_handlers.ErrorInfo"
                 }
             }
         },
-        "app.Message": {
+        "internal_handlers.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "details": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "services": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers.Message": {
             "type": "object",
             "properties": {
                 "content": {
@@ -248,12 +269,12 @@
                 "tool_calls": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/app.ToolCall"
+                        "$ref": "#/definitions/internal_handlers.ToolCall"
                     }
                 }
             }
         },
-        "app.Model": {
+        "internal_handlers.Model": {
             "type": "object",
             "properties": {
                 "created": {
@@ -274,13 +295,13 @@
                 }
             }
         },
-        "app.ModelsResponse": {
+        "internal_handlers.ModelsResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/app.Model"
+                        "$ref": "#/definitions/internal_handlers.Model"
                     }
                 },
                 "object": {
@@ -289,7 +310,7 @@
                 }
             }
         },
-        "app.TokenDetails": {
+        "internal_handlers.TokenDetails": {
             "type": "object",
             "properties": {
                 "accepted_prediction_tokens": {
@@ -314,7 +335,7 @@
                 }
             }
         },
-        "app.ToolCall": {
+        "internal_handlers.ToolCall": {
             "type": "object",
             "properties": {
                 "function": {
@@ -331,7 +352,7 @@
                 }
             }
         },
-        "app.Usage": {
+        "internal_handlers.Usage": {
             "type": "object",
             "properties": {
                 "completion_tokens": {
@@ -339,7 +360,7 @@
                     "example": 20
                 },
                 "completion_tokens_details": {
-                    "$ref": "#/definitions/app.TokenDetails"
+                    "$ref": "#/definitions/internal_handlers.TokenDetails"
                 },
                 "prompt_tokens": {
                     "type": "integer",
@@ -349,7 +370,7 @@
                     "description": "Added additional usage details for OpenAI compatibility",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/app.TokenDetails"
+                            "$ref": "#/definitions/internal_handlers.TokenDetails"
                         }
                     ]
                 },

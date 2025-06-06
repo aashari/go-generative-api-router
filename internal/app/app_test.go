@@ -275,7 +275,7 @@ func TestApp_SetupRoutes(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
-	
+
 	// Verify it's valid JSON with expected structure
 	body := w.Body.String()
 	assert.Contains(t, body, "\"status\":")

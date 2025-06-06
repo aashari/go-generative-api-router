@@ -340,29 +340,29 @@ func appendContextValues(ctx context.Context, args []any) []any {
 // LogWithStructure logs with the new structured format
 func LogWithStructure(ctx context.Context, level slog.Level, message string, attributes map[string]interface{}, request map[string]interface{}, response map[string]interface{}, errorData map[string]interface{}) {
 	logger := WithContext(ctx)
-	
+
 	args := []any{}
-	
+
 	// Add attributes
 	for k, v := range attributes {
 		args = append(args, k, v)
 	}
-	
+
 	// Add request data with prefix
 	for k, v := range request {
 		args = append(args, "request_"+k, v)
 	}
-	
+
 	// Add response data with prefix
 	for k, v := range response {
 		args = append(args, "response_"+k, v)
 	}
-	
+
 	// Add error data with prefix
 	for k, v := range errorData {
 		args = append(args, "error_"+k, v)
 	}
-	
+
 	logger.Log(ctx, level, message, args...)
 }
 
@@ -376,7 +376,7 @@ func LogRequest(ctx context.Context, method, path, userAgent string, headers map
 		"body":           string(body),
 		"content_length": len(body),
 	}
-	
+
 	LogWithStructure(ctx, LevelInfo, "HTTP request received", nil, request, nil, nil)
 }
 
@@ -388,7 +388,7 @@ func LogResponse(ctx context.Context, statusCode int, headers map[string][]strin
 		"body":           string(body),
 		"content_length": len(body),
 	}
-	
+
 	LogWithStructure(ctx, LevelInfo, "HTTP response sent", nil, nil, response, nil)
 }
 
@@ -398,17 +398,17 @@ func LogVendorCommunication(ctx context.Context, vendor, url string, requestBody
 		"vendor": vendor,
 		"url":    url,
 	}
-	
+
 	request := map[string]interface{}{
 		"body":    string(requestBody),
 		"headers": requestHeaders,
 	}
-	
+
 	response := map[string]interface{}{
 		"body":    string(responseBody),
 		"headers": responseHeaders,
 	}
-	
+
 	LogWithStructure(ctx, LevelInfo, "Vendor communication completed", attributes, request, response, nil)
 }
 
@@ -422,7 +422,7 @@ func LogProxyRequest(ctx context.Context, originalModel, selectedVendor, selecte
 		"total_combinations": totalCombinations,
 		"request_data":       requestData,
 	}
-	
+
 	LogWithStructure(ctx, LevelInfo, "Proxy request initiated", attributes, nil, nil, nil)
 }
 
@@ -437,7 +437,7 @@ func LogVendorResponse(ctx context.Context, vendor, actualModel, presentedModel 
 		"processing_time_ms":  processingTime.Milliseconds(),
 		"complete_response":   completeResponse,
 	}
-	
+
 	LogWithStructure(ctx, LevelInfo, "Vendor response processed", attributes, nil, nil, nil)
 }
 
@@ -449,7 +449,7 @@ func LogValidationResult(ctx context.Context, vendor string, success bool, valid
 		"success":        success,
 		"validated_data": validatedData,
 	}
-	
+
 	var errorData map[string]interface{}
 	if !success && validationError != nil {
 		errorData = map[string]interface{}{
@@ -457,14 +457,14 @@ func LogValidationResult(ctx context.Context, vendor string, success bool, valid
 			"type":    fmt.Sprintf("%T", validationError),
 		}
 	}
-	
+
 	level := LevelDebug
 	message := "Response validation successful"
 	if !success {
 		level = LevelWarn
 		message = "Response validation failed"
 	}
-	
+
 	LogWithStructure(ctx, level, message, attributes, nil, nil, errorData)
 }
 
@@ -477,7 +477,7 @@ func LogStreamingInfo(ctx context.Context, vendor, model string, chunkCount int,
 		"chunk_count":          chunkCount,
 		"complete_stream_data": completeStreamData,
 	}
-	
+
 	LogWithStructure(ctx, LevelDebug, "Streaming response processed", attributes, nil, nil, nil)
 }
 
@@ -486,17 +486,17 @@ func LogError(ctx context.Context, component string, err error, completeDetails 
 	attributes := map[string]interface{}{
 		"component": component,
 	}
-	
+
 	// Add complete details to attributes
 	for k, v := range completeDetails {
 		attributes[k] = v
 	}
-	
+
 	errorData := map[string]interface{}{
 		"message": err.Error(),
 		"type":    fmt.Sprintf("%T", err),
 	}
-	
+
 	LogWithStructure(ctx, LevelError, "Operation failed", attributes, nil, nil, errorData)
 }
 
@@ -505,7 +505,7 @@ func LogConfiguration(ctx context.Context, configData any) {
 	attributes := map[string]interface{}{
 		"configuration": configData,
 	}
-	
+
 	LogWithStructure(ctx, LevelInfo, "Configuration loaded", attributes, nil, nil, nil)
 }
 
@@ -514,7 +514,7 @@ func LogCredentials(ctx context.Context, credentials any) {
 	attributes := map[string]interface{}{
 		"credentials": credentials,
 	}
-	
+
 	LogWithStructure(ctx, LevelInfo, "Credentials loaded", attributes, nil, nil, nil)
 }
 
@@ -523,7 +523,7 @@ func LogModels(ctx context.Context, models any) {
 	attributes := map[string]interface{}{
 		"models": models,
 	}
-	
+
 	LogWithStructure(ctx, LevelInfo, "Models configuration loaded", attributes, nil, nil, nil)
 }
 
@@ -552,11 +552,11 @@ func InitFromEnv() error {
 	if output := os.Getenv("LOG_OUTPUT"); output != "" {
 		config.Output = output
 	}
-	
+
 	if serviceName := os.Getenv("SERVICE_NAME"); serviceName != "" {
 		config.ServiceName = serviceName
 	}
-	
+
 	if environment := os.Getenv("ENVIRONMENT"); environment != "" {
 		config.Environment = environment
 	} else if env := os.Getenv("ENV"); env != "" {
@@ -574,7 +574,7 @@ func LogCompleteData(ctx context.Context, level slog.Level, msg string, data any
 		"complete_data": data,
 		"data_type":     fmt.Sprintf("%T", data),
 	}
-	
+
 	LogWithStructure(ctx, level, msg, attributes, nil, nil, nil)
 }
 
@@ -603,7 +603,7 @@ func LogMultipleData(ctx context.Context, level slog.Level, msg string, dataMap 
 	attributes := make(map[string]interface{})
 	request := make(map[string]interface{})
 	response := make(map[string]interface{})
-	
+
 	for key, value := range dataMap {
 		// Route data to appropriate sections based on key patterns
 		switch {
@@ -639,7 +639,7 @@ func LogMultipleData(ctx context.Context, level slog.Level, msg string, dataMap 
 			attributes[key] = value
 		}
 	}
-	
+
 	// Clean up empty sections
 	if len(request) == 0 {
 		request = nil
@@ -650,6 +650,6 @@ func LogMultipleData(ctx context.Context, level slog.Level, msg string, dataMap 
 	if len(attributes) == 0 {
 		attributes = nil
 	}
-	
+
 	LogWithStructure(ctx, level, msg, attributes, request, response, nil)
 }

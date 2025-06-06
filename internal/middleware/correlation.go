@@ -63,7 +63,7 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 			}
 			// Close the original body
 			r.Body.Close()
-			
+
 			// Create a new ReadCloser with the captured body for downstream handlers
 			r.Body = io.NopCloser(bytes.NewReader(requestBody))
 		}

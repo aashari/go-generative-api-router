@@ -1,5 +1,5 @@
-// Package docs provides the Swagger documentation for the API.
-package docs
+// Package api provides the Swagger documentation for the API.
+package api
 
 // @title           Generative API Router
 // @version         2.0.1
