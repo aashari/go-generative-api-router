@@ -559,6 +559,20 @@ func (c *APIClient) processStreamingResponse(w http.ResponseWriter, reader *bufi
 			continue // Skip invalid chunks
 		}
 
+		// Log complete streaming chunk data
+		logger.LogMultipleData(context.Background(), logger.LevelDebug, "Complete streaming chunk processed", map[string]any{
+			"vendor_response": map[string]any{
+				"original_chunk":   string(line),
+				"processed_chunk":  string(processedChunk),
+				"chunk_size_bytes": len(processedChunk),
+			},
+			"vendor_details": map[string]any{
+				"vendor":         streamProcessor.Vendor,
+				"model":          streamProcessor.OriginalModel,
+				"conversation_id": streamProcessor.ConversationID,
+			},
+		})
+
 		// Handle SSE line endings (needs \n\n)
 		if !bytes.HasSuffix(processedChunk, []byte("\n\n")) {
 			if bytes.HasSuffix(processedChunk, []byte("\n")) {
@@ -601,6 +615,25 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 			"error", err)
 		return err
 	}
+
+	// Log complete vendor response body immediately after processing
+	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Complete vendor response body received", map[string]any{
+		"vendor_response": map[string]any{
+			"status_code":      resp.StatusCode,
+			"status":           resp.Status,
+			"headers":          map[string][]string(resp.Header),
+			"content_length":   resp.ContentLength,
+			"body":             string(responseBody),
+			"body_size_bytes":  len(responseBody),
+			"content_encoding": resp.Header.Get("Content-Encoding"),
+		},
+		"vendor_details": map[string]any{
+			"vendor":         selection.Vendor,
+			"model":          selection.Model,
+			"original_model": originalModel,
+			"is_streaming":   false,
+		},
+	})
 
 	// 2. Validate response
 	if c.standardizer.enableValidation {
@@ -654,6 +687,29 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 			"error", err)
 		return err
 	}
+
+	// Log complete final response sent to client
+	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Complete final response sent to client", map[string]any{
+		"client_response": map[string]any{
+			"body":             string(finalResponse),
+			"body_size_bytes":  len(finalResponse),
+			"headers":          map[string][]string(w.Header()),
+			"compressed":       shouldCompress,
+			"content_encoding": w.Header().Get("Content-Encoding"),
+		},
+		"vendor_details": map[string]any{
+			"vendor":         selection.Vendor,
+			"model":          selection.Model,
+			"original_model": originalModel,
+			"is_streaming":   false,
+		},
+		"processing_details": map[string]any{
+			"original_response_size": len(responseBody),
+			"modified_response_size": len(modifiedResponse),
+			"final_response_size":    len(finalResponse),
+			"compression_applied":    shouldCompress,
+		},
+	})
 
 	return nil
 }

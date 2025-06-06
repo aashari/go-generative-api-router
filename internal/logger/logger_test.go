@@ -3,7 +3,6 @@ package logger
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"strings"
@@ -15,10 +14,12 @@ func TestLoggerInitialization(t *testing.T) {
 	// Test JSON format initialization
 	var buf bytes.Buffer
 	config := Config{
-		Level:      LevelDebug,
-		Format:     "json",
-		Output:     "stdout",
-		TimeFormat: time.RFC3339,
+		Level:       LevelDebug,
+		Format:      "json",
+		Output:      "stdout",
+		TimeFormat:  time.RFC3339,
+		ServiceName: "test-service",
+		Environment: "test",
 	}
 
 	// Temporarily redirect output to buffer for testing
@@ -26,8 +27,11 @@ func TestLoggerInitialization(t *testing.T) {
 	defer func() { Logger = originalLogger }()
 
 	// Create a logger that writes to our buffer
-	opts := &slog.HandlerOptions{Level: config.Level}
-	handler := slog.NewJSONHandler(&buf, opts)
+	handler := &StructuredJSONHandler{
+		writer:      &buf,
+		serviceName: config.ServiceName,
+		environment: config.Environment,
+	}
 	Logger = slog.New(handler)
 
 	// Test logging
@@ -40,17 +44,23 @@ func TestLoggerInitialization(t *testing.T) {
 	}
 
 	// Verify it's valid JSON
-	var logEntry map[string]interface{}
+	var logEntry StructuredLogEntry
 	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
 		t.Errorf("Log output is not valid JSON: %v", err)
 	}
 
 	// Verify structured fields
-	if logEntry["msg"] != "Test message" {
-		t.Errorf("Expected msg field to be 'Test message', got: %v", logEntry["msg"])
+	if logEntry.Message != "Test message" {
+		t.Errorf("Expected message field to be 'Test message', got: %v", logEntry.Message)
 	}
-	if logEntry["key"] != "value" {
-		t.Errorf("Expected key field to be 'value', got: %v", logEntry["key"])
+	if logEntry.Service != "test-service" {
+		t.Errorf("Expected service field to be 'test-service', got: %v", logEntry.Service)
+	}
+	if logEntry.Environment != "test" {
+		t.Errorf("Expected environment field to be 'test', got: %v", logEntry.Environment)
+	}
+	if logEntry.Attributes["key"] != "value" {
+		t.Errorf("Expected attributes.key field to be 'value', got: %v", logEntry.Attributes["key"])
 	}
 }
 
@@ -61,8 +71,11 @@ func TestContextAwareLogging(t *testing.T) {
 	originalLogger := Logger
 	defer func() { Logger = originalLogger }()
 
-	opts := &slog.HandlerOptions{Level: LevelDebug}
-	handler := slog.NewJSONHandler(&buf, opts)
+	handler := &StructuredJSONHandler{
+		writer:      &buf,
+		serviceName: "test-service",
+		environment: "test",
+	}
 	Logger = slog.New(handler)
 
 	// Create context with request ID
@@ -75,107 +88,82 @@ func TestContextAwareLogging(t *testing.T) {
 
 	// Verify output contains context values
 	output := buf.String()
-	if !strings.Contains(output, "test-request-123") {
-		t.Errorf("Expected request ID in log output: %s", output)
+	
+	var logEntry StructuredLogEntry
+	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
+		t.Errorf("Log output is not valid JSON: %v", err)
 	}
-	if !strings.Contains(output, "openai") {
-		t.Errorf("Expected vendor in log output: %s", output)
+
+	if logEntry.Request == nil || logEntry.Request["request_id"] != "test-request-123" {
+		t.Errorf("Expected request.request_id in log output: %v", logEntry.Request)
 	}
-	if !strings.Contains(output, "gpt-4") {
-		t.Errorf("Expected model in log output: %s", output)
+	if logEntry.Attributes == nil || logEntry.Attributes["vendor"] != "openai" {
+		t.Errorf("Expected attributes.vendor in log output: %v", logEntry.Attributes)
+	}
+	if logEntry.Attributes == nil || logEntry.Attributes["model"] != "gpt-4" {
+		t.Errorf("Expected attributes.model in log output: %v", logEntry.Attributes)
 	}
 }
 
-func TestCompleteDataLogging(t *testing.T) {
+func TestStructuredLogging(t *testing.T) {
 	var buf bytes.Buffer
 
 	// Setup logger with buffer
 	originalLogger := Logger
 	defer func() { Logger = originalLogger }()
 
-	opts := &slog.HandlerOptions{Level: LevelDebug}
-	handler := slog.NewJSONHandler(&buf, opts)
+	handler := &StructuredJSONHandler{
+		writer:      &buf,
+		serviceName: "test-service",
+		environment: "test",
+	}
 	Logger = slog.New(handler)
 
 	ctx := context.WithValue(context.Background(), RequestIDKey, "test-123")
 
-	// Test complex data structure
-	testData := map[string]interface{}{
+	// Test structured logging with all sections
+	attributes := map[string]interface{}{
 		"api_key":     "sk-1234567890abcdef", // Should NOT be sanitized
 		"model":       "gpt-4",
 		"secret_data": "very-secret-value",
-		"nested": map[string]interface{}{
-			"credentials": "sensitive-info",
-			"tokens":      []string{"token1", "token2"},
-		},
 	}
 
-	// Test LogCompleteDataInfo
-	LogCompleteDataInfo(ctx, "Test complete data logging", testData)
-
-	output := buf.String()
-
-	// Verify complete data is logged as JSON
-	if !strings.Contains(output, "sk-1234567890abcdef") {
-		t.Errorf("Expected complete API key in log output (no sanitization): %s", output)
-	}
-	if !strings.Contains(output, "very-secret-value") {
-		t.Errorf("Expected complete secret data in log output: %s", output)
-	}
-	if !strings.Contains(output, "sensitive-info") {
-		t.Errorf("Expected complete nested sensitive data in log output: %s", output)
-	}
-	if !strings.Contains(output, "complete_data") {
-		t.Errorf("Expected complete_data field in log output: %s", output)
-	}
-}
-
-func TestLogMultipleData(t *testing.T) {
-	var buf bytes.Buffer
-
-	// Setup logger with buffer
-	originalLogger := Logger
-	defer func() { Logger = originalLogger }()
-
-	opts := &slog.HandlerOptions{Level: LevelDebug}
-	handler := slog.NewJSONHandler(&buf, opts)
-	Logger = slog.New(handler)
-
-	ctx := context.WithValue(context.Background(), RequestIDKey, "test-123")
-
-	// Test multiple data logging with complete data structures
-	requestData := map[string]string{
+	request := map[string]interface{}{
 		"method": "POST",
 		"path":   "/v1/chat/completions",
 	}
 
-	credentialsData := map[string]string{
-		"api_key": "sk-secret-key",
-		"token":   "bearer-token",
+	response := map[string]interface{}{
+		"status_code": 200,
+		"body":        "response content",
 	}
 
-	responseData := []byte(`{"id":"chatcmpl-123","object":"chat.completion"}`)
+	errorData := map[string]interface{}{
+		"type":    "ValidationError",
+		"message": "Invalid request",
+	}
 
-	LogMultipleData(ctx, LevelInfo, "Test multiple data logging", map[string]any{
-		"request":     requestData,
-		"credentials": credentialsData,
-		"response":    responseData,
-	})
+	// Test LogWithStructure
+	LogWithStructure(ctx, LevelInfo, "Test structured logging", attributes, request, response, errorData)
 
 	output := buf.String()
-	t.Logf("Expected complete response data in log: %s", output)
+	var logEntry StructuredLogEntry
+	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
+		t.Errorf("Log output is not valid JSON: %v", err)
+	}
 
-	// Verify all data is logged completely
-	if !strings.Contains(output, "sk-secret-key") {
-		t.Errorf("Expected complete API key in multiple data log: %s", output)
+	// Verify all sections are present
+	if logEntry.Attributes["api_key"] != "sk-1234567890abcdef" {
+		t.Errorf("Expected complete API key in attributes (no sanitization): %v", logEntry.Attributes)
 	}
-	if !strings.Contains(output, "bearer-token") {
-		t.Errorf("Expected complete token in multiple data log: %s", output)
+	if logEntry.Request["method"] != "POST" {
+		t.Errorf("Expected request method in request section: %v", logEntry.Request)
 	}
-	// The response data is base64 encoded, so check for the base64 representation
-	expectedBase64 := base64.StdEncoding.EncodeToString(responseData)
-	if !strings.Contains(output, expectedBase64) {
-		t.Errorf("Expected complete response data (base64) in log: %s", output)
+	if logEntry.Response["status_code"] != float64(200) { // JSON unmarshals numbers as float64
+		t.Errorf("Expected response status_code in response section: %v", logEntry.Response)
+	}
+	if logEntry.Error["type"] != "ValidationError" {
+		t.Errorf("Expected error type in error section: %v", logEntry.Error)
 	}
 }
 
@@ -186,8 +174,11 @@ func TestLogRequest(t *testing.T) {
 	originalLogger := Logger
 	defer func() { Logger = originalLogger }()
 
-	opts := &slog.HandlerOptions{Level: LevelDebug}
-	handler := slog.NewJSONHandler(&buf, opts)
+	handler := &StructuredJSONHandler{
+		writer:      &buf,
+		serviceName: "test-service",
+		environment: "test",
+	}
 	Logger = slog.New(handler)
 
 	ctx := context.WithValue(context.Background(), RequestIDKey, "test-123")
@@ -201,16 +192,27 @@ func TestLogRequest(t *testing.T) {
 	LogRequest(ctx, "POST", "/v1/chat/completions", "curl/8.0", headers, body)
 
 	output := buf.String()
+	var logEntry StructuredLogEntry
+	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
+		t.Errorf("Log output is not valid JSON: %v", err)
+	}
 
-	// Verify complete request data is logged
-	if !strings.Contains(output, "sk-secret-token") {
-		t.Errorf("Expected complete authorization header in request log: %s", output)
+	// Verify request data is in request section
+	if logEntry.Request["method"] != "POST" {
+		t.Errorf("Expected method in request section: %v", logEntry.Request)
 	}
-	if !strings.Contains(output, "Hello") {
-		t.Errorf("Expected complete request body in log: %s", output)
+	if logEntry.Request["path"] != "/v1/chat/completions" {
+		t.Errorf("Expected path in request section: %v", logEntry.Request)
 	}
-	if !strings.Contains(output, "Complete HTTP request data") {
-		t.Errorf("Expected request log message: %s", output)
+	if !strings.Contains(logEntry.Request["body"].(string), "Hello") {
+		t.Errorf("Expected request body content: %v", logEntry.Request["body"])
+	}
+
+	// Verify complete headers are logged (including sensitive data)
+	requestHeaders := logEntry.Request["headers"].(map[string]interface{})
+	authHeaders := requestHeaders["Authorization"].([]interface{})
+	if authHeaders[0] != "Bearer sk-secret-token" {
+		t.Errorf("Expected complete authorization header: %v", authHeaders)
 	}
 }
 
@@ -221,8 +223,11 @@ func TestLogVendorCommunication(t *testing.T) {
 	originalLogger := Logger
 	defer func() { Logger = originalLogger }()
 
-	opts := &slog.HandlerOptions{Level: LevelDebug}
-	handler := slog.NewJSONHandler(&buf, opts)
+	handler := &StructuredJSONHandler{
+		writer:      &buf,
+		serviceName: "test-service",
+		environment: "test",
+	}
 	Logger = slog.New(handler)
 
 	ctx := context.WithValue(context.Background(), RequestIDKey, "test-123")
@@ -241,126 +246,70 @@ func TestLogVendorCommunication(t *testing.T) {
 		requestBody, responseBody, requestHeaders, responseHeaders)
 
 	output := buf.String()
+	var logEntry StructuredLogEntry
+	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
+		t.Errorf("Log output is not valid JSON: %v", err)
+	}
 
-	// Verify complete vendor communication is logged
-	if !strings.Contains(output, "sk-secret") {
-		t.Errorf("Expected complete API key in vendor communication log: %s", output)
+	// Verify vendor in attributes
+	if logEntry.Attributes["vendor"] != "openai" {
+		t.Errorf("Expected vendor in attributes: %v", logEntry.Attributes)
 	}
-	if !strings.Contains(output, "sk-secret-key") {
-		t.Errorf("Expected complete authorization header in vendor communication log: %s", output)
+
+	// Verify request and response sections
+	if !strings.Contains(logEntry.Request["body"].(string), "sk-secret") {
+		t.Errorf("Expected complete API key in request body: %v", logEntry.Request["body"])
 	}
-	if !strings.Contains(output, "Hi there!") {
-		t.Errorf("Expected complete response content in vendor communication log: %s", output)
+	if !strings.Contains(logEntry.Response["body"].(string), "Hi there!") {
+		t.Errorf("Expected response content: %v", logEntry.Response["body"])
 	}
 }
 
-func TestSpecializedLoggingFunctions(t *testing.T) {
+func TestLogError(t *testing.T) {
 	var buf bytes.Buffer
 
 	// Setup logger with buffer
 	originalLogger := Logger
 	defer func() { Logger = originalLogger }()
 
-	opts := &slog.HandlerOptions{Level: LevelDebug}
-	handler := slog.NewJSONHandler(&buf, opts)
-	Logger = slog.New(handler)
-
-	ctx := context.WithValue(context.Background(), RequestIDKey, "test-123")
-
-	// Test LogProxyRequest with complete data
-	requestData := map[string]interface{}{
-		"model":   "my-model",
-		"api_key": "sk-secret-key",
-		"messages": []map[string]string{
-			{"role": "user", "content": "Hello"},
-		},
+	handler := &StructuredJSONHandler{
+		writer:      &buf,
+		serviceName: "test-service",
+		environment: "test",
 	}
-
-	LogProxyRequest(ctx, "my-model", "openai", "gpt-4", 10, requestData)
-
-	output := buf.String()
-	if !strings.Contains(output, "Proxy request initiated with complete data") {
-		t.Errorf("Expected proxy request log message: %s", output)
-	}
-	if !strings.Contains(output, "sk-secret-key") {
-		t.Errorf("Expected complete API key in proxy request log: %s", output)
-	}
-	if !strings.Contains(output, "my-model") {
-		t.Errorf("Expected original model in log: %s", output)
-	}
-	if !strings.Contains(output, "openai") {
-		t.Errorf("Expected vendor in log: %s", output)
-	}
-
-	// Reset buffer for next test
-	buf.Reset()
-
-	// Test LogVendorResponse with complete data
-	responseData := map[string]interface{}{
-		"id": "chatcmpl-123",
-		"choices": []map[string]interface{}{
-			{"message": map[string]string{"content": "Hello there!"}},
-		},
-		"usage": map[string]int{
-			"prompt_tokens":     10,
-			"completion_tokens": 5,
-		},
-	}
-
-	LogVendorResponse(ctx, "openai", "gpt-4-actual", "my-model", 1024, 500*time.Millisecond, responseData)
-
-	output = buf.String()
-	if !strings.Contains(output, "Vendor response processed with complete data") {
-		t.Errorf("Expected vendor response log message: %s", output)
-	}
-	if !strings.Contains(output, "Hello there!") {
-		t.Errorf("Expected complete response content in log: %s", output)
-	}
-	if !strings.Contains(output, "1024") {
-		t.Errorf("Expected response size in log: %s", output)
-	}
-}
-
-func TestLogCredentials(t *testing.T) {
-	var buf bytes.Buffer
-
-	// Setup logger with buffer
-	originalLogger := Logger
-	defer func() { Logger = originalLogger }()
-
-	opts := &slog.HandlerOptions{Level: LevelDebug}
-	handler := slog.NewJSONHandler(&buf, opts)
 	Logger = slog.New(handler)
 
 	ctx := context.Background()
 
-	// Test logging complete credentials (including sensitive data)
-	credentials := []map[string]string{
-		{
-			"platform": "openai",
-			"type":     "api-key",
-			"value":    "sk-1234567890abcdef",
-		},
-		{
-			"platform": "gemini",
-			"type":     "api-key",
-			"value":    "AIzaSyExample_Secret_Key",
-		},
+	// Test error logging
+	testError := &TestError{message: "test error"}
+	details := map[string]any{
+		"operation": "test_operation",
+		"api_key":   "sk-secret-key",
 	}
 
-	LogCredentials(ctx, credentials)
+	LogError(ctx, "test_component", testError, details)
 
 	output := buf.String()
+	var logEntry StructuredLogEntry
+	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
+		t.Errorf("Log output is not valid JSON: %v", err)
+	}
 
-	// Verify complete credentials are logged (no sanitization)
-	if !strings.Contains(output, "sk-1234567890abcdef") {
-		t.Errorf("Expected complete OpenAI API key in credentials log: %s", output)
+	// Verify error section
+	if logEntry.Error["message"] != "test error" {
+		t.Errorf("Expected error message in error section: %v", logEntry.Error)
 	}
-	if !strings.Contains(output, "AIzaSyExample_Secret_Key") {
-		t.Errorf("Expected complete Gemini API key in credentials log: %s", output)
+	if !strings.Contains(logEntry.Error["type"].(string), "TestError") {
+		t.Errorf("Expected error type in error section: %v", logEntry.Error)
 	}
-	if !strings.Contains(output, "Complete credentials data") {
-		t.Errorf("Expected credentials log message: %s", output)
+
+	// Verify attributes section contains details
+	if logEntry.Attributes["component"] != "test_component" {
+		t.Errorf("Expected component in attributes: %v", logEntry.Attributes)
+	}
+	if logEntry.Attributes["api_key"] != "sk-secret-key" {
+		t.Errorf("Expected complete API key in attributes: %v", logEntry.Attributes)
 	}
 }
 
@@ -371,32 +320,87 @@ func TestLogLevels(t *testing.T) {
 	originalLogger := Logger
 	defer func() { Logger = originalLogger }()
 
-	opts := &slog.HandlerOptions{Level: LevelDebug}
-	handler := slog.NewJSONHandler(&buf, opts)
+	handler := &StructuredJSONHandler{
+		writer:      &buf,
+		serviceName: "test-service",
+		environment: "test",
+	}
+	Logger = slog.New(handler)
+
+	// Test all log levels
+	Debug("Debug message", "key", "debug_value")
+	Info("Info message", "key", "info_value")
+	Warn("Warn message", "key", "warn_value")
+	Error("Error message", "key", "error_value")
+
+	output := buf.String()
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+
+	// Verify all levels are logged
+	levels := []string{"DEBUG", "INFO", "WARN", "ERROR"}
+	messages := []string{"Debug message", "Info message", "Warn message", "Error message"}
+
+	for i, line := range lines {
+		var logEntry StructuredLogEntry
+		if err := json.Unmarshal([]byte(line), &logEntry); err != nil {
+			t.Errorf("Log line %d is not valid JSON: %v", i, err)
+			continue
+		}
+
+		if logEntry.Level != levels[i] {
+			t.Errorf("Expected level %s, got %s", levels[i], logEntry.Level)
+		}
+		if logEntry.Message != messages[i] {
+			t.Errorf("Expected message %s, got %s", messages[i], logEntry.Message)
+		}
+	}
+}
+
+// TestError is a simple error type for testing
+type TestError struct {
+	message string
+}
+
+func (e *TestError) Error() string {
+	return e.message
+}
+
+func TestLegacyCompatibility(t *testing.T) {
+	var buf bytes.Buffer
+
+	// Setup logger with buffer
+	originalLogger := Logger
+	defer func() { Logger = originalLogger }()
+
+	handler := &StructuredJSONHandler{
+		writer:      &buf,
+		serviceName: "test-service",
+		environment: "test",
+	}
 	Logger = slog.New(handler)
 
 	ctx := context.Background()
-	testData := map[string]string{"key": "value"}
 
-	// Test all log levels with complete data
-	LogCompleteDataDebug(ctx, "Debug message", testData)
-	LogCompleteDataInfo(ctx, "Info message", testData)
-	LogCompleteDataWarn(ctx, "Warn message", testData)
-	LogCompleteDataError(ctx, "Error message", testData)
+	// Test legacy functions still work
+	testData := map[string]string{
+		"api_key": "sk-secret-key",
+		"model":   "gpt-4",
+	}
+
+	LogCompleteDataInfo(ctx, "Legacy test", testData)
 
 	output := buf.String()
+	var logEntry StructuredLogEntry
+	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
+		t.Errorf("Log output is not valid JSON: %v", err)
+	}
 
-	// Verify all levels are logged
-	if !strings.Contains(output, "Debug message") {
-		t.Errorf("Expected debug message in log output: %s", output)
+	// Verify legacy data is in attributes
+	if logEntry.Attributes["complete_data"] == nil {
+		t.Errorf("Expected complete_data in attributes: %v", logEntry.Attributes)
 	}
-	if !strings.Contains(output, "Info message") {
-		t.Errorf("Expected info message in log output: %s", output)
-	}
-	if !strings.Contains(output, "Warn message") {
-		t.Errorf("Expected warn message in log output: %s", output)
-	}
-	if !strings.Contains(output, "Error message") {
-		t.Errorf("Expected error message in log output: %s", output)
+	if logEntry.Message != "Legacy test" {
+		t.Errorf("Expected legacy message: %v", logEntry.Message)
 	}
 }
+

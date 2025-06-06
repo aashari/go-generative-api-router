@@ -45,25 +45,29 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 			ctx = context.WithValue(ctx, logger.VendorKey, vendor)
 		}
 
-		// Log request start with complete data
+		// Log request start with new structured format
 		start := time.Now()
-		logger.LogMultipleData(ctx, logger.LevelInfo, "Complete request started", map[string]any{
-			"request_details": map[string]any{
-				"method":         r.Method,
-				"path":           r.URL.Path,
-				"query_params":   r.URL.Query(),
-				"remote_addr":    r.RemoteAddr,
-				"user_agent":     r.Header.Get("User-Agent"),
-				"content_length": r.ContentLength,
-				"host":           r.Host,
-				"request_uri":    r.RequestURI,
-			},
-			"headers_complete": map[string][]string(r.Header),
-			"context_data": map[string]any{
-				"request_id": requestID,
-				"vendor":     vendor,
-			},
-		})
+		requestData := map[string]interface{}{
+			"request_id":     requestID,
+			"method":         r.Method,
+			"path":           r.URL.Path,
+			"query_params":   r.URL.Query(),
+			"remote_addr":    r.RemoteAddr,
+			"user_agent":     r.Header.Get("User-Agent"),
+			"content_length": r.ContentLength,
+			"host":           r.Host,
+			"request_uri":    r.RequestURI,
+			"headers":        map[string][]string(r.Header),
+		}
+
+		attributes := map[string]interface{}{
+			"component": "middleware",
+		}
+		if vendor != "" {
+			attributes["vendor"] = vendor
+		}
+
+		logger.LogWithStructure(ctx, logger.LevelInfo, "Request started", attributes, requestData, nil, nil)
 
 		// Create response writer wrapper to capture status and response data
 		wrapper := &responseWriterWrapper{
@@ -75,22 +79,24 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 		// Process request
 		next.ServeHTTP(wrapper, r.WithContext(ctx))
 
-		// Log request completion with complete response data
+		// Log request completion with new structured format
 		duration := time.Since(start)
-		logger.LogMultipleData(ctx, logger.LevelInfo, "Complete request completed", map[string]any{
-			"response_details": map[string]any{
-				"status_code":   wrapper.statusCode,
-				"duration_ms":   duration.Milliseconds(),
-				"response_size": wrapper.bytesWritten,
-				"response_body": wrapper.responseData.String(),
-			},
-			"response_headers": map[string][]string(wrapper.Header()),
-			"timing": map[string]any{
-				"start_time": start,
-				"end_time":   time.Now(),
-				"duration":   duration,
-			},
-		})
+		responseData := map[string]interface{}{
+			"request_id":     requestID,
+			"status_code":    wrapper.statusCode,
+			"content_length": wrapper.bytesWritten,
+			"headers":        map[string][]string(wrapper.Header()),
+			"body":           wrapper.responseData.String(),
+		}
+
+		attributes = map[string]interface{}{
+			"component":   "middleware",
+			"duration_ms": duration.Milliseconds(),
+			"start_time":  start.Format(time.RFC3339),
+			"end_time":    time.Now().Format(time.RFC3339),
+		}
+
+		logger.LogWithStructure(ctx, logger.LevelInfo, "Request completed", attributes, requestData, responseData, nil)
 	})
 }
 

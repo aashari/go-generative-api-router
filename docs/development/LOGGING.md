@@ -10,8 +10,60 @@ The service implements an enterprise-grade structured logging system based on Go
 - **Request Correlation**: Unique request IDs for tracking requests across components
 - **Context Propagation**: Request context flows through the entire request lifecycle
 - **Environment Configuration**: Runtime configurable logging options
-- **Sensitive Data Protection**: Automatic masking of credentials and API keys
+- **Complete Data Logging**: Comprehensive logging without redaction or truncation
 - **Specialized Log Functions**: Purpose-built logging for proxy operations
+
+## Log Structure
+
+The new structured logging format provides clear separation of concerns:
+
+```json
+{
+  "timestamp": "2025-06-06T12:22:00.000Z",
+  "level": "INFO",
+  "message": "Human-readable description of the event",
+  "service": "generative-api-router",
+  "environment": "production",
+  "attributes": {
+    "user_id": "123",
+    "endpoint": "/api/login",
+    "vendor": "openai",
+    "model": "gpt-4"
+  },
+  "request": {
+    "request_id": "abc123",
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {...},
+    "body": "..."
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {...},
+    "body": "...",
+    "content_length": 1024
+  },
+  "error": {
+    "type": "ValidationError",
+    "message": "Invalid request format",
+    "stacktrace": "..."
+  }
+}
+```
+
+### Field Descriptions
+
+| Field | Description | Required | Example |
+|-------|-------------|----------|---------|
+| `timestamp` | ISO 8601 format timestamp | ✅ | `2025-06-06T12:22:00.000Z` |
+| `level` | Log severity level | ✅ | `INFO`, `ERROR`, `WARN`, `DEBUG` |
+| `message` | Human-readable event description | ✅ | `Request processed successfully` |
+| `service` | Name of the service | ✅ | `generative-api-router` |
+| `environment` | Deployment environment | ✅ | `prod`, `staging`, `development` |
+| `attributes` | Additional context data | ❌ | `{"vendor": "openai", "model": "gpt-4"}` |
+| `request` | HTTP request details | ❌ | `{"method": "POST", "path": "/v1/chat"}` |
+| `response` | HTTP response details | ❌ | `{"status_code": 200, "body": "..."}` |
+| `error` | Error information | ❌ | `{"type": "Error", "message": "..."}` |
 
 ## Configuration
 
@@ -24,6 +76,8 @@ Configure logging behavior with the following environment variables:
 | `LOG_LEVEL` | Minimum log level to output | `DEBUG`, `INFO`, `WARN`, `ERROR` | `INFO` |
 | `LOG_FORMAT` | Output format | `json`, `text` | `json` |
 | `LOG_OUTPUT` | Output destination | `stdout`, `stderr` | `stdout` |
+| `SERVICE_NAME` | Service name in logs | Any string | `generative-api-router` |
+| `ENVIRONMENT` | Environment name in logs | Any string | `development` |
 
 ### Examples
 
@@ -32,7 +86,7 @@ Configure logging behavior with the following environment variables:
 LOG_LEVEL=DEBUG LOG_FORMAT=text LOG_OUTPUT=stdout ./build/server
 
 # Production configuration 
-LOG_LEVEL=INFO LOG_FORMAT=json LOG_OUTPUT=stdout ./build/server
+LOG_LEVEL=INFO LOG_FORMAT=json LOG_OUTPUT=stdout SERVICE_NAME=genapi ENVIRONMENT=production ./build/server
 ```
 
 ### Docker Environment Configuration
@@ -44,6 +98,8 @@ environment:
   - LOG_LEVEL=INFO
   - LOG_FORMAT=json
   - LOG_OUTPUT=stdout
+  - SERVICE_NAME=generative-api-router
+  - ENVIRONMENT=production
 ```
 
 ## Log Levels
@@ -62,60 +118,80 @@ Every request receives a unique 16-character request ID that:
 1. Is generated via middleware for each incoming request
 2. Is added as an `X-Request-ID` header to responses
 3. Is propagated through context to all components
-4. Appears in all log entries related to the request
+4. Appears in the `request.request_id` field of all log entries related to the request
 
 Example JSON log with request correlation:
 
 ```json
 {
-  "time": "2025-05-24T10:36:00Z",
+  "timestamp": "2025-06-06T10:36:00Z",
   "level": "INFO",
-  "msg": "Proxy request initiated",
-  "request_id": "5c75cb5a3f0c3f41",
-  "vendor": "gemini",
-  "model": "gemini-2.0-flash-exp",
-  "component": "proxy",
-  "original_model": "final-test-model",
-  "selected_vendor": "gemini",
-  "selected_model": "gemini-2.0-flash-exp",
-  "total_combinations": 228
+  "message": "Proxy request initiated",
+  "service": "generative-api-router",
+  "environment": "staging",
+  "attributes": {
+    "component": "proxy",
+    "vendor": "gemini",
+    "model": "gemini-2.0-flash-exp",
+    "original_model": "final-test-model",
+    "selected_vendor": "gemini",
+    "selected_model": "gemini-2.0-flash-exp",
+    "total_combinations": 228
+  },
+  "request": {
+    "request_id": "5c75cb5a3f0c3f41"
+  }
 }
 ```
 
-## Sensitive Data Protection
+## Complete Data Logging
 
-The logging system automatically detects and masks sensitive data such as API keys:
+The logging system logs complete data structures without any redaction, truncation, or selective filtering. This includes:
 
-```go
-// Original data
-data := map[string]any{
-    "api_key": "sk-1234567890abcdef",
-    "model": "gpt-4",
-}
+- **Complete API Keys**: Full credentials are logged for debugging
+- **Complete Request/Response Bodies**: Entire payloads are captured
+- **Complete Headers**: All HTTP headers including sensitive ones
+- **Complete Error Details**: Full error messages and stack traces
 
-// After sanitization
-// {
-//   "api_key": "sk-1****cdef",
-//   "model": "gpt-4"
-// }
-```
-
-The system detects sensitive keys like:
-- `api_key`, `apikey`
-- `token`, `secret`
-- `password`, `pass`
-- `authorization`, `auth`
+**IMPORTANT**: External logging systems should handle redaction, size management, and sensitive data filtering.
 
 ## Specialized Logging Functions
 
-In addition to standard logging functions, the system provides specialized functions for common operations:
+The system provides specialized functions for common operations:
+
+### Request/Response Logging
 
 ```go
-// Log proxy request with vendor selection details
-logger.LogProxyRequest(ctx, originalModel, selectedVendor, selectedModel, totalCombinations)
+// Log HTTP request
+logger.LogRequest(ctx, "POST", "/v1/chat/completions", "curl/8.0", headers, body)
+
+// Log HTTP response  
+logger.LogResponse(ctx, 200, responseHeaders, responseBody)
+
+// Log vendor communication
+logger.LogVendorCommunication(ctx, "openai", "https://api.openai.com/v1/chat/completions",
+    requestBody, responseBody, requestHeaders, responseHeaders)
+```
+
+### Proxy Operations
+
+```go
+// Log proxy request with vendor selection
+logger.LogProxyRequest(ctx, originalModel, selectedVendor, selectedModel, totalCombinations, requestData)
 
 // Log vendor response processing
-logger.LogVendorResponse(ctx, vendor, actualModel, presentedModel, responseSize, duration)
+logger.LogVendorResponse(ctx, vendor, actualModel, presentedModel, responseSize, duration, completeResponse)
+```
+
+### Error Logging
+
+```go
+// Log errors with complete context
+logger.LogError(ctx, "proxy", err, map[string]any{
+    "operation": "vendor_request",
+    "api_key": "sk-complete-key",
+    "request_data": completeRequestData,
+})
 ```
 
 ## Usage in Code
@@ -157,19 +233,26 @@ if err != nil {
 }
 ```
 
-### Map Sanitization
+### Structured Logging
 
 ```go
-// Sanitize a map before logging
-sensitiveData := map[string]any{
-    "user": "john",
-    "api_key": "sk-1234567890abcdef",
-    "request": requestBody,
+// Use the new structured format directly
+attributes := map[string]interface{}{
+    "component": "proxy",
+    "vendor": "openai",
 }
 
-// Safe to log
-safeData := logger.SanitizeMap(sensitiveData)
-logger.Info("Processing request", "data", safeData)
+request := map[string]interface{}{
+    "method": "POST",
+    "path": "/v1/chat/completions",
+}
+
+response := map[string]interface{}{
+    "status_code": 200,
+    "body": responseBody,
+}
+
+logger.LogWithStructure(ctx, logger.LevelInfo, "Request processed", attributes, request, response, nil)
 ```
 
 ## Middleware Integration
@@ -178,7 +261,39 @@ The correlation middleware automatically adds request IDs to the context and res
 
 ```go
 // In routes.go
-r.Use(middleware.CorrelationID)
+r.Use(middleware.RequestCorrelationMiddleware)
+```
+
+The middleware logs complete request and response data:
+
+```json
+{
+  "timestamp": "2025-06-06T07:44:52Z",
+  "level": "INFO",
+  "message": "Request completed",
+  "service": "generative-api-router",
+  "environment": "staging",
+  "attributes": {
+    "component": "middleware",
+    "duration_ms": 1537,
+    "start_time": "2025-06-06T07:44:52Z",
+    "end_time": "2025-06-06T07:44:52Z"
+  },
+  "request": {
+    "request_id": "e5d3efbf66389ab1",
+    "method": "GET",
+    "path": "/health",
+    "headers": {...},
+    "content_length": 0
+  },
+  "response": {
+    "request_id": "e5d3efbf66389ab1",
+    "status_code": 200,
+    "headers": {...},
+    "body": "OK",
+    "content_length": 2
+  }
+}
 ```
 
 ## Testing Logs
@@ -189,8 +304,11 @@ When writing tests, you can capture and verify logs:
 func TestWithLogs(t *testing.T) {
     // Setup test logger with buffer
     var buf bytes.Buffer
-    opts := &slog.HandlerOptions{Level: logger.LevelDebug}
-    handler := slog.NewJSONHandler(&buf, opts)
+    handler := &logger.StructuredJSONHandler{
+        Writer:      &buf,
+        ServiceName: "test-service",
+        Environment: "test",
+    }
     
     // Save original and restore after test
     originalLogger := logger.Logger
@@ -202,8 +320,65 @@ func TestWithLogs(t *testing.T) {
     
     // Verify log output
     output := buf.String()
-    if !strings.Contains(output, "expected message") {
+    var logEntry logger.StructuredLogEntry
+    if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
+        t.Error("Invalid JSON log output")
+    }
+    
+    if logEntry.Message != "expected message" {
         t.Error("Expected log message not found")
     }
 }
-``` 
+```
+
+## Log Analysis Examples
+
+### Query Request Flows
+
+```bash
+# Find all logs for a specific request
+grep "request_id.*abc123" logs/server.log | jq .
+
+# Trace vendor selection
+grep "Proxy request initiated" logs/server.log | jq '.attributes.selected_vendor'
+
+# Monitor error rates
+grep '"level":"ERROR"' logs/server.log | jq '.error.type' | sort | uniq -c
+```
+
+### Performance Analysis
+
+```bash
+# Find slow requests
+grep '"level":"INFO"' logs/server.log | jq 'select(.attributes.duration_ms > 1000)'
+
+# Analyze vendor response times
+grep "Vendor response processed" logs/server.log | jq '.attributes.processing_time_ms'
+```
+
+### Security Monitoring
+
+```bash
+# Monitor authentication failures
+grep '"error"' logs/server.log | jq 'select(.error.type | contains("Auth"))'
+
+# Track API key usage
+grep '"attributes"' logs/server.log | jq 'select(.attributes.api_key)'
+```
+
+## Migration from Old Format
+
+The new structured format is backward compatible through legacy functions:
+
+```go
+// Old format (still works)
+logger.LogCompleteData(ctx, logger.LevelInfo, "Old format", data)
+
+// New format (recommended)
+logger.LogWithStructure(ctx, logger.LevelInfo, "New format", attributes, request, response, nil)
+```
+
+Legacy functions automatically map to the new structure:
+- `LogCompleteData` → `attributes.complete_data`
+- `LogMultipleData` → `attributes.*_complete`
+- Context values → `request.request_id`, `attributes.vendor`, `attributes.model` 
