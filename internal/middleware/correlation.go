@@ -79,10 +79,10 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 		duration := time.Since(start)
 		logger.LogMultipleData(ctx, logger.LevelInfo, "Complete request completed", map[string]any{
 			"response_details": map[string]any{
-				"status_code":    wrapper.statusCode,
-				"duration_ms":    duration.Milliseconds(),
-				"response_size":  wrapper.bytesWritten,
-				"response_body":  wrapper.responseData.String(),
+				"status_code":   wrapper.statusCode,
+				"duration_ms":   duration.Milliseconds(),
+				"response_size": wrapper.bytesWritten,
+				"response_body": wrapper.responseData.String(),
 			},
 			"response_headers": map[string][]string(wrapper.Header()),
 			"timing": map[string]any{
@@ -110,12 +110,12 @@ func (w *responseWriterWrapper) WriteHeader(statusCode int) {
 func (w *responseWriterWrapper) Write(data []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(data)
 	w.bytesWritten += int64(n)
-	
+
 	// Capture response data for complete logging
 	if w.responseData != nil {
 		w.responseData.Write(data[:n]) // Only write successfully written bytes
 	}
-	
+
 	return n, err
 }
 

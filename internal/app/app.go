@@ -57,10 +57,10 @@ func NewApp() (*App, error) {
 		"credentials": creds,
 		"models":      models,
 		"config_summary": map[string]any{
-			"credentials_count":    len(creds),
-			"vendor_model_pairs":   len(models),
-			"available_vendors":    getUniqueVendors(models),
-			"available_platforms":  getUniquePlatforms(creds),
+			"credentials_count":   len(creds),
+			"vendor_model_pairs":  len(models),
+			"available_vendors":   getUniqueVendors(models),
+			"available_platforms": getUniquePlatforms(creds),
 		},
 	})
 
@@ -84,7 +84,7 @@ func getUniqueVendors(models []config.VendorModel) []string {
 	for _, model := range models {
 		vendorMap[model.Vendor] = true
 	}
-	
+
 	vendors := make([]string, 0, len(vendorMap))
 	for vendor := range vendorMap {
 		vendors = append(vendors, vendor)
@@ -97,7 +97,7 @@ func getUniquePlatforms(credentials []config.Credential) []string {
 	for _, cred := range credentials {
 		platformMap[cred.Platform] = true
 	}
-	
+
 	platforms := make([]string, 0, len(platformMap))
 	for platform := range platformMap {
 		platforms = append(platforms, platform)

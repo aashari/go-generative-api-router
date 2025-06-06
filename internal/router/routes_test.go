@@ -167,8 +167,6 @@ func TestSetupRoutes_ChatCompletions(t *testing.T) {
 	}
 }
 
-
-
 func TestSetupRoutes_UnregisteredPath(t *testing.T) {
 	// Create test dependencies
 	creds := []config.Credential{

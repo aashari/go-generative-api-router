@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/app"
+	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/logger"
 )
 
@@ -68,6 +69,12 @@ func CORSMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
+	// Load environment variables from .env file (similar to Node.js dotenv)
+	if err := config.LoadEnvFromMultiplePaths(); err != nil {
+		// This is not fatal - the app can run with system environment variables
+		_, _ = os.Stderr.WriteString("WARNING: Could not load .env file: " + err.Error() + "\n")
+	}
+
 	// Initialize structured logging
 	if err := logger.InitFromEnv(); err != nil {
 		// Can't use logger here as it failed to initialize
@@ -101,7 +108,7 @@ func main() {
 	writeTimeout := getEnvDuration("WRITE_TIMEOUT", 600*time.Second) // 10 minutes default
 	idleTimeout := getEnvDuration("IDLE_TIMEOUT", 900*time.Second)   // 15 minutes default
 
-	logger.Info("Server starting", 
+	logger.Info("Server starting",
 		"address", serverAddr,
 		"read_timeout", readTimeout,
 		"write_timeout", writeTimeout,

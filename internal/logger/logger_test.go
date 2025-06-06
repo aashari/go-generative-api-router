@@ -114,7 +114,7 @@ func TestCompleteDataLogging(t *testing.T) {
 	LogCompleteDataInfo(ctx, "Test complete data logging", testData)
 
 	output := buf.String()
-	
+
 	// Verify complete data is logged as JSON
 	if !strings.Contains(output, "sk-1234567890abcdef") {
 		t.Errorf("Expected complete API key in log output (no sanitization): %s", output)
@@ -148,12 +148,12 @@ func TestLogMultipleData(t *testing.T) {
 		"method": "POST",
 		"path":   "/v1/chat/completions",
 	}
-	
+
 	credentialsData := map[string]string{
 		"api_key": "sk-secret-key",
 		"token":   "bearer-token",
 	}
-	
+
 	responseData := []byte(`{"id":"chatcmpl-123","object":"chat.completion"}`)
 
 	LogMultipleData(ctx, LevelInfo, "Test multiple data logging", map[string]any{
@@ -164,7 +164,7 @@ func TestLogMultipleData(t *testing.T) {
 
 	output := buf.String()
 	t.Logf("Expected complete response data in log: %s", output)
-	
+
 	// Verify all data is logged completely
 	if !strings.Contains(output, "sk-secret-key") {
 		t.Errorf("Expected complete API key in multiple data log: %s", output)
@@ -201,7 +201,7 @@ func TestLogRequest(t *testing.T) {
 	LogRequest(ctx, "POST", "/v1/chat/completions", "curl/8.0", headers, body)
 
 	output := buf.String()
-	
+
 	// Verify complete request data is logged
 	if !strings.Contains(output, "sk-secret-token") {
 		t.Errorf("Expected complete authorization header in request log: %s", output)
@@ -229,7 +229,7 @@ func TestLogVendorCommunication(t *testing.T) {
 
 	requestBody := []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}],"api_key":"sk-secret"}`)
 	responseBody := []byte(`{"id":"chatcmpl-123","choices":[{"message":{"content":"Hi there!"}}]}`)
-	
+
 	requestHeaders := map[string][]string{
 		"Authorization": {"Bearer sk-secret-key"},
 	}
@@ -237,11 +237,11 @@ func TestLogVendorCommunication(t *testing.T) {
 		"Content-Type": {"application/json"},
 	}
 
-	LogVendorCommunication(ctx, "openai", "https://api.openai.com/v1/chat/completions", 
+	LogVendorCommunication(ctx, "openai", "https://api.openai.com/v1/chat/completions",
 		requestBody, responseBody, requestHeaders, responseHeaders)
 
 	output := buf.String()
-	
+
 	// Verify complete vendor communication is logged
 	if !strings.Contains(output, "sk-secret") {
 		t.Errorf("Expected complete API key in vendor communication log: %s", output)
@@ -275,7 +275,7 @@ func TestSpecializedLoggingFunctions(t *testing.T) {
 			{"role": "user", "content": "Hello"},
 		},
 	}
-	
+
 	LogProxyRequest(ctx, "my-model", "openai", "gpt-4", 10, requestData)
 
 	output := buf.String()
@@ -297,7 +297,7 @@ func TestSpecializedLoggingFunctions(t *testing.T) {
 
 	// Test LogVendorResponse with complete data
 	responseData := map[string]interface{}{
-		"id":      "chatcmpl-123",
+		"id": "chatcmpl-123",
 		"choices": []map[string]interface{}{
 			{"message": map[string]string{"content": "Hello there!"}},
 		},
@@ -306,7 +306,7 @@ func TestSpecializedLoggingFunctions(t *testing.T) {
 			"completion_tokens": 5,
 		},
 	}
-	
+
 	LogVendorResponse(ctx, "openai", "gpt-4-actual", "my-model", 1024, 500*time.Millisecond, responseData)
 
 	output = buf.String()
@@ -343,7 +343,7 @@ func TestLogCredentials(t *testing.T) {
 		},
 		{
 			"platform": "gemini",
-			"type":     "api-key", 
+			"type":     "api-key",
 			"value":    "AIzaSyExample_Secret_Key",
 		},
 	}
@@ -351,7 +351,7 @@ func TestLogCredentials(t *testing.T) {
 	LogCredentials(ctx, credentials)
 
 	output := buf.String()
-	
+
 	// Verify complete credentials are logged (no sanitization)
 	if !strings.Contains(output, "sk-1234567890abcdef") {
 		t.Errorf("Expected complete OpenAI API key in credentials log: %s", output)
@@ -385,7 +385,7 @@ func TestLogLevels(t *testing.T) {
 	LogCompleteDataError(ctx, "Error message", testData)
 
 	output := buf.String()
-	
+
 	// Verify all levels are logged
 	if !strings.Contains(output, "Debug message") {
 		t.Errorf("Expected debug message in log output: %s", output)

@@ -22,9 +22,9 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 	// Log complete tool calls processing with all data
 	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Processing tool calls with complete data", map[string]any{
 		"complete_tool_calls": toolCalls,
-		"vendor": vendor,
-		"tool_calls_count": len(toolCalls),
-		"tool_calls_type": fmt.Sprintf("%T", toolCalls),
+		"vendor":              vendor,
+		"tool_calls_count":    len(toolCalls),
+		"tool_calls_type":     fmt.Sprintf("%T", toolCalls),
 	})
 
 	var processedToolCalls []interface{}
@@ -35,11 +35,11 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 		if !ok {
 			// Log complete data for non-map tool call
 			logger.LogMultipleData(context.Background(), logger.LevelInfo, "Tool call not a map with complete data", map[string]any{
-				"index": j,
+				"index":              j,
 				"complete_tool_call": toolCall,
-				"tool_call_type": fmt.Sprintf("%T", toolCall),
-				"vendor": vendor,
-				"all_tool_calls": toolCalls,
+				"tool_call_type":     fmt.Sprintf("%T", toolCall),
+				"vendor":             vendor,
+				"all_tool_calls":     toolCalls,
 			})
 			processedToolCalls = append(processedToolCalls, toolCall)
 			continue
@@ -49,12 +49,12 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 		toolCallID, idExists := toolCallMap["id"]
 		// Log complete tool call ID information
 		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Tool call ID info with complete data", map[string]any{
-			"index": j,
-			"id": toolCallID,
-			"id_exists": idExists,
+			"index":                  j,
+			"id":                     toolCallID,
+			"id_exists":              idExists,
 			"complete_tool_call_map": toolCallMap,
-			"vendor": vendor,
-			"all_tool_calls": toolCalls,
+			"vendor":                 vendor,
+			"all_tool_calls":         toolCalls,
 		})
 
 		// Check for malformed arguments and split if needed
@@ -64,13 +64,13 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 				if len(splitToolCalls) > 1 {
 					// Log complete split operation data
 					logger.LogMultipleData(context.Background(), logger.LevelInfo, "Split malformed tool call with complete data", map[string]any{
-						"index": j,
-						"splits_count": len(splitToolCalls),
-						"original_tool_call": toolCallMap,
-						"original_arguments": arguments,
+						"index":                  j,
+						"splits_count":           len(splitToolCalls),
+						"original_tool_call":     toolCallMap,
+						"original_arguments":     arguments,
 						"complete_split_results": splitToolCalls,
-						"vendor": vendor,
-						"all_tool_calls": toolCalls,
+						"vendor":                 vendor,
+						"all_tool_calls":         toolCalls,
 					})
 					processedToolCalls = append(processedToolCalls, splitToolCalls...)
 					continue
@@ -84,12 +84,12 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 			newID := ToolCallID()
 			// Log complete Gemini ID forcing operation
 			logger.LogMultipleData(context.Background(), logger.LevelInfo, "Forcing new tool call ID for Gemini with complete data", map[string]any{
-				"new_id": newID,
-				"old_id": toolCallID,
+				"new_id":                    newID,
+				"old_id":                    toolCallID,
 				"complete_tool_call_before": toolCallMap,
-				"vendor": vendor,
-				"all_tool_calls": toolCalls,
-				"index": j,
+				"vendor":                    vendor,
+				"all_tool_calls":            toolCalls,
+				"index":                     j,
 			})
 			toolCallMap["id"] = newID
 		} else if !idExists || toolCallID == nil || toolCallID == "" {
@@ -97,13 +97,13 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 			newID := ToolCallID()
 			// Log complete ID generation operation
 			logger.LogMultipleData(context.Background(), logger.LevelInfo, "Generated new tool call ID with complete data", map[string]any{
-				"vendor": vendor,
-				"new_id": newID,
-				"old_id": toolCallID,
-				"id_existed": idExists,
+				"vendor":                    vendor,
+				"new_id":                    newID,
+				"old_id":                    toolCallID,
+				"id_existed":                idExists,
 				"complete_tool_call_before": toolCallMap,
-				"all_tool_calls": toolCalls,
-				"index": j,
+				"all_tool_calls":            toolCalls,
+				"index":                     j,
 			})
 			toolCallMap["id"] = newID
 		}
@@ -113,11 +113,11 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 
 	// Log complete processing results
 	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Tool calls processing completed with complete data", map[string]any{
-		"original_tool_calls": toolCalls,
+		"original_tool_calls":  toolCalls,
 		"processed_tool_calls": processedToolCalls,
-		"vendor": vendor,
-		"original_count": len(toolCalls),
-		"processed_count": len(processedToolCalls),
+		"vendor":               vendor,
+		"original_count":       len(toolCalls),
+		"processed_count":      len(processedToolCalls),
 	})
 
 	return processedToolCalls
@@ -133,10 +133,10 @@ func validateAndSplitArguments(originalToolCall map[string]interface{}, argument
 
 	// Log complete malformed arguments detection
 	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Detected malformed arguments with complete data", map[string]any{
-		"complete_arguments": arguments,
-		"arguments_length": len(arguments),
+		"complete_arguments":          arguments,
+		"arguments_length":            len(arguments),
 		"complete_original_tool_call": originalToolCall,
-		"vendor": vendor,
+		"vendor":                      vendor,
 	})
 
 	// Split the arguments into separate JSON objects
@@ -144,21 +144,21 @@ func validateAndSplitArguments(originalToolCall map[string]interface{}, argument
 	if len(jsonObjects) <= 1 {
 		// Couldn't split properly, return original
 		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Failed to split arguments with complete data", map[string]any{
-			"complete_arguments": arguments,
-			"split_results": jsonObjects,
+			"complete_arguments":          arguments,
+			"split_results":               jsonObjects,
 			"complete_original_tool_call": originalToolCall,
-			"vendor": vendor,
+			"vendor":                      vendor,
 		})
 		return []interface{}{originalToolCall}
 	}
 
 	// Log complete successful split operation
 	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Successfully split arguments with complete data", map[string]any{
-		"complete_arguments": arguments,
-		"split_count": len(jsonObjects),
-		"complete_json_objects": jsonObjects,
+		"complete_arguments":          arguments,
+		"split_count":                 len(jsonObjects),
+		"complete_json_objects":       jsonObjects,
 		"complete_original_tool_call": originalToolCall,
-		"vendor": vendor,
+		"vendor":                      vendor,
 	})
 
 	var splitToolCalls []interface{}
@@ -188,13 +188,13 @@ func validateAndSplitArguments(originalToolCall map[string]interface{}, argument
 
 		// Log complete split tool call creation
 		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Created split tool call with complete data", map[string]any{
-			"index": i+1,
-			"new_id": newID,
-			"json_object": jsonObj,
-			"complete_new_tool_call": newToolCall,
+			"index":                       i + 1,
+			"new_id":                      newID,
+			"json_object":                 jsonObj,
+			"complete_new_tool_call":      newToolCall,
 			"complete_original_tool_call": originalToolCall,
-			"complete_original_function": function,
-			"vendor": vendor,
+			"complete_original_function":  function,
+			"vendor":                      vendor,
 		})
 		splitToolCalls = append(splitToolCalls, newToolCall)
 	}
@@ -202,11 +202,11 @@ func validateAndSplitArguments(originalToolCall map[string]interface{}, argument
 	// Log complete split operation results
 	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Split tool calls operation completed with complete data", map[string]any{
 		"complete_original_tool_call": originalToolCall,
-		"complete_split_tool_calls": splitToolCalls,
-		"original_arguments": arguments,
-		"split_json_objects": jsonObjects,
-		"vendor": vendor,
-		"split_count": len(splitToolCalls),
+		"complete_split_tool_calls":   splitToolCalls,
+		"original_arguments":          arguments,
+		"split_json_objects":          jsonObjects,
+		"vendor":                      vendor,
+		"split_count":                 len(splitToolCalls),
 	})
 
 	return splitToolCalls
@@ -223,9 +223,9 @@ func containsMultipleJSONObjects(arguments string) bool {
 	if strings.Contains(arguments, "}{") {
 		// Log complete pattern detection
 		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Found multiple JSON objects pattern with complete data", map[string]any{
-			"pattern": "}{",
+			"pattern":            "}{",
 			"complete_arguments": arguments,
-			"arguments_length": len(arguments),
+			"arguments_length":   len(arguments),
 		})
 		return true
 	}
@@ -234,9 +234,9 @@ func containsMultipleJSONObjects(arguments string) bool {
 	if strings.Contains(arguments, "][") {
 		// Log complete pattern detection
 		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Found multiple JSON arrays pattern with complete data", map[string]any{
-			"pattern": "][",
+			"pattern":            "][",
 			"complete_arguments": arguments,
-			"arguments_length": len(arguments),
+			"arguments_length":   len(arguments),
 		})
 		return true
 	}
@@ -258,9 +258,9 @@ func containsMultipleJSONObjects(arguments string) bool {
 	if decoder.More() {
 		// Log complete additional content detection
 		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Found additional JSON content after first object with complete data", map[string]any{
-			"complete_arguments": arguments,
+			"complete_arguments":  arguments,
 			"first_parsed_object": firstObj,
-			"arguments_length": len(arguments),
+			"arguments_length":    len(arguments),
 		})
 		return true
 	}
@@ -308,12 +308,12 @@ func splitJSONObjects(arguments string) []string {
 			} else {
 				// Log complete invalid JSON data
 				logger.LogMultipleData(context.Background(), logger.LevelInfo, "Invalid JSON after splitting with complete data", map[string]any{
-					"invalid_part": part,
-					"part_index": i,
-					"complete_parts": parts,
+					"invalid_part":       part,
+					"part_index":         i,
+					"complete_parts":     parts,
 					"original_arguments": arguments,
-					"split_pattern": "}{",
-					"current_results": results,
+					"split_pattern":      "}{",
+					"current_results":    results,
 				})
 			}
 		}
@@ -351,12 +351,12 @@ func splitJSONObjects(arguments string) []string {
 			} else {
 				// Log complete invalid JSON array data
 				logger.LogMultipleData(context.Background(), logger.LevelInfo, "Invalid JSON array after splitting with complete data", map[string]any{
-					"invalid_part": part,
-					"part_index": i,
-					"complete_parts": parts,
+					"invalid_part":       part,
+					"part_index":         i,
+					"complete_parts":     parts,
 					"original_arguments": arguments,
-					"split_pattern": "][",
-					"current_results": results,
+					"split_pattern":      "][",
+					"current_results":    results,
 				})
 			}
 		}
@@ -373,10 +373,10 @@ func splitJSONObjects(arguments string) []string {
 			if err := decoder.Decode(&obj); err != nil {
 				// Log complete JSON parsing error
 				logger.LogMultipleData(context.Background(), logger.LevelInfo, "Error parsing JSON object with complete data", map[string]any{
-					"error": err.Error(),
-					"complete_arguments": arguments,
+					"error":                 err.Error(),
+					"complete_arguments":    arguments,
 					"parsed_objects_so_far": objects,
-					"decoder_position": "unknown", // decoder doesn't expose position easily
+					"decoder_position":      "unknown", // decoder doesn't expose position easily
 				})
 				break
 			}
@@ -396,10 +396,10 @@ func splitJSONObjects(arguments string) []string {
 	// Log complete split operation results
 	logger.LogMultipleData(context.Background(), logger.LevelInfo, "Split JSON objects operation completed with complete data", map[string]any{
 		"original_arguments": arguments,
-		"split_results": results,
-		"results_count": len(results),
-		"arguments_length": len(arguments),
-		"methods_attempted": []string{"}{_pattern", "][_pattern", "sequential_parsing"},
+		"split_results":      results,
+		"results_count":      len(results),
+		"arguments_length":   len(arguments),
+		"methods_attempted":  []string{"}{_pattern", "][_pattern", "sequential_parsing"},
 	})
 	return results
 }

@@ -41,14 +41,14 @@ func (sp *StreamProcessor) ProcessChunk(chunk []byte) []byte {
 
 	// Log complete chunk processing start
 	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing streaming chunk with complete data", map[string]any{
-		"chunk": string(chunk),
-		"chunk_bytes": chunk,
-		"chunk_size": len(chunk),
-		"vendor": sp.Vendor,
-		"conversation_id": sp.ConversationID,
-		"timestamp": sp.Timestamp,
+		"chunk":              string(chunk),
+		"chunk_bytes":        chunk,
+		"chunk_size":         len(chunk),
+		"vendor":             sp.Vendor,
+		"conversation_id":    sp.ConversationID,
+		"timestamp":          sp.Timestamp,
 		"system_fingerprint": sp.SystemFingerprint,
-		"original_model": sp.OriginalModel,
+		"original_model":     sp.OriginalModel,
 	})
 
 	// Handle SSE format - look for "data: " prefix
@@ -71,23 +71,23 @@ func (sp *StreamProcessor) ProcessChunk(chunk []byte) []byte {
 	if err := json.Unmarshal([]byte(jsonData), &chunkData); err != nil {
 		// Log complete unmarshaling error
 		logger.LogError(context.Background(), "stream_processor", err, map[string]any{
-			"vendor": sp.Vendor,
-			"chunk": string(chunk),
-			"json_data": jsonData,
+			"vendor":          sp.Vendor,
+			"chunk":           string(chunk),
+			"json_data":       jsonData,
 			"conversation_id": sp.ConversationID,
-			"original_model": sp.OriginalModel,
+			"original_model":  sp.OriginalModel,
 		})
 		return chunk // Return original chunk if parsing fails
 	}
 
 	// Log complete parsed chunk data
 	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Stream chunk parsed successfully with complete data", map[string]any{
-		"vendor": sp.Vendor,
+		"vendor":              sp.Vendor,
 		"complete_chunk_data": chunkData,
-		"original_chunk": string(chunk),
-		"json_data": jsonData,
-		"conversation_id": sp.ConversationID,
-		"original_model": sp.OriginalModel,
+		"original_chunk":      string(chunk),
+		"json_data":           jsonData,
+		"conversation_id":     sp.ConversationID,
+		"original_model":      sp.OriginalModel,
 	})
 
 	// Process the chunk data
@@ -98,23 +98,23 @@ func (sp *StreamProcessor) ProcessChunk(chunk []byte) []byte {
 	if err != nil {
 		// Log complete marshaling error
 		logger.LogError(context.Background(), "stream_processor", err, map[string]any{
-			"vendor": sp.Vendor,
+			"vendor":              sp.Vendor,
 			"complete_chunk_data": chunkData,
-			"original_chunk": string(chunk),
-			"conversation_id": sp.ConversationID,
-			"original_model": sp.OriginalModel,
+			"original_chunk":      string(chunk),
+			"conversation_id":     sp.ConversationID,
+			"original_model":      sp.OriginalModel,
 		})
 		return chunk // Return original chunk if marshaling fails
 	}
 
 	// Log complete chunk processing completion
 	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Stream chunk processing completed with complete data", map[string]any{
-		"vendor": sp.Vendor,
-		"original_chunk": string(chunk),
-		"modified_chunk": string(modifiedJSON),
+		"vendor":              sp.Vendor,
+		"original_chunk":      string(chunk),
+		"modified_chunk":      string(modifiedJSON),
 		"complete_chunk_data": chunkData,
-		"conversation_id": sp.ConversationID,
-		"original_model": sp.OriginalModel,
+		"conversation_id":     sp.ConversationID,
+		"original_model":      sp.OriginalModel,
 	})
 
 	// Return the modified chunk in SSE format
@@ -131,7 +131,7 @@ func (sp *StreamProcessor) processChunkData(chunkData map[string]interface{}) {
 	chunkData["created"] = sp.Timestamp
 	chunkData["system_fingerprint"] = sp.SystemFingerprint
 	chunkData["model"] = sp.OriginalModel
-	
+
 	// Add service_tier if missing (OpenAI compatibility)
 	if _, ok := chunkData["service_tier"]; !ok {
 		chunkData["service_tier"] = "default"
@@ -141,18 +141,18 @@ func (sp *StreamProcessor) processChunkData(chunkData map[string]interface{}) {
 	if choices, ok := chunkData["choices"].([]interface{}); ok && len(choices) > 0 {
 		// Log complete choices processing in stream chunk
 		logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing choices in stream chunk with complete data", map[string]any{
-			"choices_count": len(choices),
-			"complete_choices": choices,
-			"vendor": sp.Vendor,
+			"choices_count":       len(choices),
+			"complete_choices":    choices,
+			"vendor":              sp.Vendor,
 			"complete_chunk_data": chunkData,
-			"conversation_id": sp.ConversationID,
-			"original_model": sp.OriginalModel,
+			"conversation_id":     sp.ConversationID,
+			"original_model":      sp.OriginalModel,
 		})
 		sp.processStreamChoices(choices)
-		
+
 		// Check if this is the first chunk and add usage if needed
 		sp.addUsageForFirstChunk(chunkData)
-		
+
 		// Mark that we've processed the first chunk
 		if sp.isFirstChunk {
 			sp.isFirstChunk = false
@@ -160,10 +160,10 @@ func (sp *StreamProcessor) processChunkData(chunkData map[string]interface{}) {
 	} else {
 		// Log complete no choices data
 		logger.LogMultipleData(context.Background(), logger.LevelDebug, "No choices found in stream chunk with complete data", map[string]any{
-			"vendor": sp.Vendor,
+			"vendor":              sp.Vendor,
 			"complete_chunk_data": chunkData,
-			"conversation_id": sp.ConversationID,
-			"original_model": sp.OriginalModel,
+			"conversation_id":     sp.ConversationID,
+			"original_model":      sp.OriginalModel,
 		})
 	}
 }
@@ -175,13 +175,13 @@ func (sp *StreamProcessor) processStreamChoices(choices []interface{}) {
 		if !ok {
 			// Log complete non-map choice data in stream
 			logger.LogMultipleData(context.Background(), logger.LevelWarn, "Stream chunk choice is not a map with complete data", map[string]any{
-				"choice_index": i,
+				"choice_index":    i,
 				"complete_choice": choice,
-				"choice_type": fmt.Sprintf("%T", choice),
-				"vendor": sp.Vendor,
-				"all_choices": choices,
+				"choice_type":     fmt.Sprintf("%T", choice),
+				"vendor":          sp.Vendor,
+				"all_choices":     choices,
 				"conversation_id": sp.ConversationID,
-				"original_model": sp.OriginalModel,
+				"original_model":  sp.OriginalModel,
 			})
 			continue
 		}
@@ -199,11 +199,11 @@ func (sp *StreamProcessor) processStreamChoices(choices []interface{}) {
 		} else {
 			// Log complete no delta or message data
 			logger.LogMultipleData(context.Background(), logger.LevelWarn, "No delta or message found in stream chunk choice with complete data", map[string]any{
-				"choice_index": i,
+				"choice_index":        i,
 				"complete_choice_map": choiceMap,
-				"vendor": sp.Vendor,
-				"conversation_id": sp.ConversationID,
-				"original_model": sp.OriginalModel,
+				"vendor":              sp.Vendor,
+				"conversation_id":     sp.ConversationID,
+				"original_model":      sp.OriginalModel,
 			})
 		}
 
@@ -215,11 +215,11 @@ func (sp *StreamProcessor) processStreamChoices(choices []interface{}) {
 func (sp *StreamProcessor) processStreamDelta(delta map[string]interface{}, choiceIndex int) {
 	// Log complete delta processing start
 	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing delta in stream chunk with complete data", map[string]any{
-		"vendor": sp.Vendor,
-		"complete_delta": delta,
-		"choice_index": choiceIndex,
+		"vendor":          sp.Vendor,
+		"complete_delta":  delta,
+		"choice_index":    choiceIndex,
 		"conversation_id": sp.ConversationID,
-		"original_model": sp.OriginalModel,
+		"original_model":  sp.OriginalModel,
 	})
 
 	// Add annotations if missing
@@ -236,24 +236,24 @@ func (sp *StreamProcessor) processStreamDelta(delta map[string]interface{}, choi
 	if toolCalls, ok := delta["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
 		// Log complete tool calls processing in stream chunk delta
 		logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing tool calls in stream chunk delta with complete data", map[string]any{
-			"tool_calls_count": len(toolCalls),
+			"tool_calls_count":    len(toolCalls),
 			"complete_tool_calls": toolCalls,
-			"vendor": sp.Vendor,
-			"complete_delta": delta,
-			"choice_index": choiceIndex,
-			"conversation_id": sp.ConversationID,
-			"original_model": sp.OriginalModel,
+			"vendor":              sp.Vendor,
+			"complete_delta":      delta,
+			"choice_index":        choiceIndex,
+			"conversation_id":     sp.ConversationID,
+			"original_model":      sp.OriginalModel,
 		})
 		processedToolCalls := ProcessToolCalls(toolCalls, sp.Vendor)
 		delta["tool_calls"] = processedToolCalls
 	} else {
 		// Log complete no tool calls data in delta
 		logger.LogMultipleData(context.Background(), logger.LevelDebug, "No tool calls found in stream chunk delta with complete data", map[string]any{
-			"vendor": sp.Vendor,
-			"complete_delta": delta,
-			"choice_index": choiceIndex,
+			"vendor":          sp.Vendor,
+			"complete_delta":  delta,
+			"choice_index":    choiceIndex,
 			"conversation_id": sp.ConversationID,
-			"original_model": sp.OriginalModel,
+			"original_model":  sp.OriginalModel,
 		})
 	}
 }
@@ -262,11 +262,11 @@ func (sp *StreamProcessor) processStreamDelta(delta map[string]interface{}, choi
 func (sp *StreamProcessor) processStreamMessage(message map[string]interface{}, choiceIndex int) {
 	// Log complete message processing start in stream
 	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing message in stream chunk with complete data", map[string]any{
-		"vendor": sp.Vendor,
+		"vendor":           sp.Vendor,
 		"complete_message": message,
-		"choice_index": choiceIndex,
-		"conversation_id": sp.ConversationID,
-		"original_model": sp.OriginalModel,
+		"choice_index":     choiceIndex,
+		"conversation_id":  sp.ConversationID,
+		"original_model":   sp.OriginalModel,
 	})
 
 	// Add annotations if missing
@@ -283,24 +283,24 @@ func (sp *StreamProcessor) processStreamMessage(message map[string]interface{}, 
 	if toolCalls, ok := message["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
 		// Log complete tool calls processing in stream chunk message
 		logger.LogMultipleData(context.Background(), logger.LevelDebug, "Processing tool calls in stream chunk message with complete data", map[string]any{
-			"tool_calls_count": len(toolCalls),
+			"tool_calls_count":    len(toolCalls),
 			"complete_tool_calls": toolCalls,
-			"vendor": sp.Vendor,
-			"complete_message": message,
-			"choice_index": choiceIndex,
-			"conversation_id": sp.ConversationID,
-			"original_model": sp.OriginalModel,
+			"vendor":              sp.Vendor,
+			"complete_message":    message,
+			"choice_index":        choiceIndex,
+			"conversation_id":     sp.ConversationID,
+			"original_model":      sp.OriginalModel,
 		})
 		processedToolCalls := ProcessToolCalls(toolCalls, sp.Vendor)
 		message["tool_calls"] = processedToolCalls
 	} else {
 		// Log complete no tool calls data in message
 		logger.LogMultipleData(context.Background(), logger.LevelDebug, "No tool calls found in stream chunk message with complete data", map[string]any{
-			"vendor": sp.Vendor,
+			"vendor":           sp.Vendor,
 			"complete_message": message,
-			"choice_index": choiceIndex,
-			"conversation_id": sp.ConversationID,
-			"original_model": sp.OriginalModel,
+			"choice_index":     choiceIndex,
+			"conversation_id":  sp.ConversationID,
+			"original_model":   sp.OriginalModel,
 		})
 	}
 }

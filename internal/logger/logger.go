@@ -166,14 +166,14 @@ func ErrorCtx(ctx context.Context, msg string, args ...any) {
 // LogCompleteData logs any data structure in its entirety as JSON
 func LogCompleteData(ctx context.Context, level slog.Level, msg string, data any) {
 	logger := WithContext(ctx)
-	
+
 	// Convert data to JSON for complete logging
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		logger.Log(ctx, level, msg, "data_marshal_error", err.Error(), "raw_data", fmt.Sprintf("%+v", data))
 		return
 	}
-	
+
 	logger.Log(ctx, level, msg, "complete_data", string(jsonData), "data_type", fmt.Sprintf("%T", data))
 }
 
@@ -200,7 +200,7 @@ func LogCompleteDataError(ctx context.Context, msg string, data any) {
 // LogMultipleData logs multiple data structures completely
 func LogMultipleData(ctx context.Context, level slog.Level, msg string, dataMap map[string]any) {
 	logger := WithContext(ctx)
-	
+
 	args := []any{}
 	for key, value := range dataMap {
 		// Convert each value to JSON for complete logging
@@ -213,7 +213,7 @@ func LogMultipleData(ctx context.Context, level slog.Level, msg string, dataMap 
 		}
 		args = append(args, key+"_type", fmt.Sprintf("%T", value))
 	}
-	
+
 	logger.Log(ctx, level, msg, args...)
 }
 
@@ -243,14 +243,14 @@ func LogResponse(ctx context.Context, statusCode int, headers map[string][]strin
 // LogVendorCommunication logs complete vendor request/response cycle
 func LogVendorCommunication(ctx context.Context, vendor, url string, requestBody, responseBody []byte, requestHeaders, responseHeaders map[string][]string) {
 	LogMultipleData(ctx, LevelInfo, "Complete vendor communication", map[string]any{
-		"vendor":           vendor,
-		"url":              url,
-		"request_body":     string(requestBody),
-		"request_body_bytes": requestBody,
-		"response_body":    string(responseBody),
+		"vendor":              vendor,
+		"url":                 url,
+		"request_body":        string(requestBody),
+		"request_body_bytes":  requestBody,
+		"response_body":       string(responseBody),
 		"response_body_bytes": responseBody,
-		"request_headers":  requestHeaders,
-		"response_headers": responseHeaders,
+		"request_headers":     requestHeaders,
+		"response_headers":    responseHeaders,
 	})
 }
 
@@ -271,13 +271,13 @@ func LogProxyRequest(ctx context.Context, originalModel, selectedVendor, selecte
 // LogVendorResponse logs vendor response processing with complete data
 func LogVendorResponse(ctx context.Context, vendor, actualModel, presentedModel string, responseSize int, processingTime time.Duration, completeResponse any) {
 	LogMultipleData(ctx, LevelInfo, "Vendor response processed with complete data", map[string]any{
-		"component":         "response_processor",
-		"vendor":            vendor,
-		"actual_model":      actualModel,
-		"presented_model":   presentedModel,
+		"component":           "response_processor",
+		"vendor":              vendor,
+		"actual_model":        actualModel,
+		"presented_model":     presentedModel,
 		"response_size_bytes": responseSize,
-		"processing_time_ms": processingTime.Milliseconds(),
-		"complete_response": completeResponse,
+		"processing_time_ms":  processingTime.Milliseconds(),
+		"complete_response":   completeResponse,
 	})
 }
 
@@ -291,10 +291,10 @@ func LogValidationResult(ctx context.Context, vendor string, success bool, valid
 		})
 	} else {
 		LogMultipleData(ctx, LevelWarn, "Response validation failed with complete data", map[string]any{
-			"component":      "validation",
-			"vendor":         vendor,
-			"error":          validationError.Error(),
-			"failed_data":    validatedData,
+			"component":   "validation",
+			"vendor":      vendor,
+			"error":       validationError.Error(),
+			"failed_data": validatedData,
 		})
 	}
 }
@@ -302,10 +302,10 @@ func LogValidationResult(ctx context.Context, vendor string, success bool, valid
 // LogStreamingInfo logs streaming-related information with complete data
 func LogStreamingInfo(ctx context.Context, vendor, model string, chunkCount int, completeStreamData any) {
 	LogMultipleData(ctx, LevelDebug, "Streaming response processed with complete data", map[string]any{
-		"component":           "streaming",
-		"vendor":              vendor,
-		"model":               model,
-		"chunk_count":         chunkCount,
+		"component":            "streaming",
+		"vendor":               vendor,
+		"model":                model,
+		"chunk_count":          chunkCount,
 		"complete_stream_data": completeStreamData,
 	})
 }
