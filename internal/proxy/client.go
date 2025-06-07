@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/selector"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // Error types for common API client errors
@@ -25,15 +25,7 @@ var (
 	ErrInvalidResponse = errors.New("invalid vendor response")
 )
 
-// getEnvDuration gets a duration from environment variable with a default fallback
-func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
-	if value := os.Getenv(key); value != "" {
-		if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
-			return time.Duration(seconds) * time.Second
-		}
-	}
-	return defaultValue
-}
+
 
 // ResponseStandardizer handles vendor response standardization
 type ResponseStandardizer struct {
@@ -68,7 +60,7 @@ type APIClient struct {
 func NewAPIClient() *APIClient {
 	// Configure client timeout from environment variable
 	// Default to 300 seconds (5 minutes) to allow for longer AI model responses
-	clientTimeout := getEnvDuration("CLIENT_TIMEOUT", 300*time.Second)
+	clientTimeout := utils.GetEnvDuration("CLIENT_TIMEOUT", 300*time.Second)
 
 	httpClient := &http.Client{
 		Timeout: clientTimeout,

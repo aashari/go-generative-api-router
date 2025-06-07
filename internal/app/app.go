@@ -25,8 +25,8 @@ type App struct {
 
 // NewApp creates a new App instance with all dependencies
 func NewApp() (*App, error) {
-	// Load credentials
-	creds, err := config.LoadCredentials("configs/credentials.json")
+	// Load credentials using secure method (environment variables preferred)
+	creds, err := config.LoadCredentialsSecurely()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load credentials: %w", err)
 	}
