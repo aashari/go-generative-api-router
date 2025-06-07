@@ -58,13 +58,13 @@ func NewHealthChecker() *HealthChecker {
 func (hc *HealthChecker) RegisterCheck(check *HealthCheck) {
 	hc.mutex.Lock()
 	defer hc.mutex.Unlock()
-	
+
 	if check.Timeout == 0 {
 		check.Timeout = 5 * time.Second
 	}
-	
+
 	hc.checks[check.Name] = check
-	
+
 	logger.Info("Health check registered",
 		"name", check.Name,
 		"description", check.Description,
@@ -77,11 +77,11 @@ func (hc *HealthChecker) ExecuteCheck(ctx context.Context, name string) (*Health
 	hc.mutex.RLock()
 	check, exists := hc.checks[name]
 	hc.mutex.RUnlock()
-	
+
 	if !exists {
 		return nil, fmt.Errorf("health check %s not found", name)
 	}
-	
+
 	return hc.executeCheck(ctx, check)
 }
 
@@ -93,16 +93,16 @@ func (hc *HealthChecker) ExecuteAllChecks(ctx context.Context) map[string]Health
 		checks[name] = check
 	}
 	hc.mutex.RUnlock()
-	
+
 	results := make(map[string]HealthCheckResult)
 	var wg sync.WaitGroup
 	var resultMutex sync.Mutex
-	
+
 	for name, check := range checks {
 		wg.Add(1)
 		go func(name string, check *HealthCheck) {
 			defer wg.Done()
-			
+
 			result, err := hc.executeCheck(ctx, check)
 			if err != nil {
 				result = &HealthCheckResult{
@@ -112,13 +112,13 @@ func (hc *HealthChecker) ExecuteAllChecks(ctx context.Context) map[string]Health
 					Error:     err,
 				}
 			}
-			
+
 			resultMutex.Lock()
 			results[name] = *result
 			resultMutex.Unlock()
 		}(name, check)
 	}
-	
+
 	wg.Wait()
 	return results
 }
@@ -127,38 +127,38 @@ func (hc *HealthChecker) ExecuteAllChecks(ctx context.Context) map[string]Health
 func (hc *HealthChecker) executeCheck(ctx context.Context, check *HealthCheck) (*HealthCheckResult, error) {
 	checkCtx, cancel := context.WithTimeout(ctx, check.Timeout)
 	defer cancel()
-	
+
 	start := time.Now()
-	
+
 	// Execute the check
 	result := check.Check(checkCtx)
 	result.Timestamp = start
 	result.Duration = time.Since(start)
-	
+
 	// Log the result
 	logger.DebugCtx(ctx, "Health check executed",
 		"name", check.Name,
 		"status", result.Status,
 		"duration_ms", result.Duration.Milliseconds(),
 		"message", result.Message)
-	
+
 	return &result, nil
 }
 
 // GetOverallHealth determines the overall system health
 func (hc *HealthChecker) GetOverallHealth(ctx context.Context) (HealthStatus, map[string]HealthCheckResult) {
 	results := hc.ExecuteAllChecks(ctx)
-	
+
 	overallStatus := StatusHealthy
 	criticalFailures := 0
 	totalFailures := 0
-	
+
 	hc.mutex.RLock()
 	defer hc.mutex.RUnlock()
-	
+
 	for name, result := range results {
 		check := hc.checks[name]
-		
+
 		if result.Status == StatusUnhealthy {
 			totalFailures++
 			if check.Critical {
@@ -170,27 +170,27 @@ func (hc *HealthChecker) GetOverallHealth(ctx context.Context) (HealthStatus, ma
 			}
 		}
 	}
-	
+
 	// Determine overall status
 	if criticalFailures > 0 {
 		overallStatus = StatusUnhealthy
 	} else if totalFailures > 0 && overallStatus != StatusDegraded {
 		overallStatus = StatusDegraded
 	}
-	
+
 	logger.InfoCtx(ctx, "Overall health assessment completed",
 		"overall_status", overallStatus,
 		"total_checks", len(results),
 		"total_failures", totalFailures,
 		"critical_failures", criticalFailures)
-	
+
 	return overallStatus, results
 }
 
 // CreateStandardHealthChecks creates standard health checks for the application
 func CreateStandardHealthChecks(credentials []config.Credential) *HealthChecker {
 	hc := NewHealthChecker()
-	
+
 	// Basic application health check
 	hc.RegisterCheck(&HealthCheck{
 		Name:        "application",
@@ -207,7 +207,7 @@ func CreateStandardHealthChecks(credentials []config.Credential) *HealthChecker 
 			}
 		},
 	})
-	
+
 	// Configuration health check
 	hc.RegisterCheck(&HealthCheck{
 		Name:        "configuration",
@@ -221,7 +221,7 @@ func CreateStandardHealthChecks(credentials []config.Credential) *HealthChecker 
 					Message: "No credentials configured",
 				}
 			}
-			
+
 			return HealthCheckResult{
 				Status:  StatusHealthy,
 				Message: "Configuration is valid",
@@ -231,13 +231,13 @@ func CreateStandardHealthChecks(credentials []config.Credential) *HealthChecker 
 			}
 		},
 	})
-	
+
 	// Vendor connectivity health checks
 	vendors := getUniqueVendors(credentials)
 	for _, vendor := range vendors {
 		hc.RegisterCheck(createVendorHealthCheck(vendor))
 	}
-	
+
 	// Circuit breaker health check
 	hc.RegisterCheck(&HealthCheck{
 		Name:        "circuit_breakers",
@@ -246,7 +246,7 @@ func CreateStandardHealthChecks(credentials []config.Credential) *HealthChecker 
 		Timeout:     2 * time.Second,
 		Check: func(ctx context.Context) HealthCheckResult {
 			stats := reliability.GetAllCircuitBreakerStats()
-			
+
 			openCircuits := 0
 			for _, stat := range stats {
 				if statMap, ok := stat.(map[string]interface{}); ok {
@@ -255,15 +255,15 @@ func CreateStandardHealthChecks(credentials []config.Credential) *HealthChecker 
 					}
 				}
 			}
-			
+
 			status := StatusHealthy
 			message := "All circuit breakers are healthy"
-			
+
 			if openCircuits > 0 {
 				status = StatusDegraded
 				message = fmt.Sprintf("%d circuit breaker(s) are open", openCircuits)
 			}
-			
+
 			return HealthCheckResult{
 				Status:  status,
 				Message: message,
@@ -274,7 +274,7 @@ func CreateStandardHealthChecks(credentials []config.Credential) *HealthChecker 
 			}
 		},
 	})
-	
+
 	return hc
 }
 
@@ -288,7 +288,7 @@ func createVendorHealthCheck(vendor string) *HealthCheck {
 		Check: func(ctx context.Context) HealthCheckResult {
 			// Get circuit breaker for this vendor
 			cb := reliability.GetCircuitBreaker(fmt.Sprintf("vendor_%s", vendor))
-			
+
 			if cb.GetState() == reliability.StateOpen {
 				return HealthCheckResult{
 					Status:  StatusUnhealthy,
@@ -298,7 +298,7 @@ func createVendorHealthCheck(vendor string) *HealthCheck {
 					},
 				}
 			}
-			
+
 			// For now, just check if we have credentials for this vendor
 			// In a real implementation, you might want to make a lightweight API call
 			return HealthCheckResult{
@@ -318,7 +318,7 @@ func getUniqueVendors(credentials []config.Credential) []string {
 	for _, cred := range credentials {
 		vendorMap[cred.Platform] = true
 	}
-	
+
 	vendors := make([]string, 0, len(vendorMap))
 	for vendor := range vendorMap {
 		vendors = append(vendors, vendor)
@@ -330,10 +330,10 @@ func getUniqueVendors(credentials []config.Credential) []string {
 func HealthHandler(hc *HealthChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		
+
 		// Check if a specific health check is requested
 		checkName := r.URL.Query().Get("check")
-		
+
 		if checkName != "" {
 			// Execute specific health check
 			result, err := hc.ExecuteCheck(ctx, checkName)
@@ -341,17 +341,17 @@ func HealthHandler(hc *HealthChecker) http.HandlerFunc {
 				http.Error(w, fmt.Sprintf("Health check not found: %s", checkName), http.StatusNotFound)
 				return
 			}
-			
+
 			statusCode := http.StatusOK
 			if result.Status == StatusUnhealthy {
 				statusCode = http.StatusServiceUnavailable
 			} else if result.Status == StatusDegraded {
 				statusCode = http.StatusPartialContent
 			}
-			
+
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(statusCode)
-			
+
 			response := map[string]interface{}{
 				"status":    result.Status,
 				"message":   result.Message,
@@ -359,30 +359,30 @@ func HealthHandler(hc *HealthChecker) http.HandlerFunc {
 				"timestamp": result.Timestamp.Format(time.RFC3339),
 				"duration":  result.Duration.Milliseconds(),
 			}
-			
+
 			if err := writeJSONResponse(w, response); err != nil {
 				logger.ErrorCtx(ctx, "Failed to write health check response", "error", err)
 			}
 		} else {
 			// Execute all health checks
 			overallStatus, results := hc.GetOverallHealth(ctx)
-			
+
 			statusCode := http.StatusOK
 			if overallStatus == StatusUnhealthy {
 				statusCode = http.StatusServiceUnavailable
 			} else if overallStatus == StatusDegraded {
 				statusCode = http.StatusPartialContent
 			}
-			
+
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(statusCode)
-			
+
 			response := map[string]interface{}{
 				"status":    overallStatus,
 				"timestamp": time.Now().Format(time.RFC3339),
 				"checks":    results,
 			}
-			
+
 			if err := writeJSONResponse(w, response); err != nil {
 				logger.ErrorCtx(ctx, "Failed to write health response", "error", err)
 			}
@@ -409,4 +409,4 @@ func InitializeGlobalHealthChecker(credentials []config.Credential) {
 // GetGlobalHealthChecker returns the global health checker
 func GetGlobalHealthChecker() *HealthChecker {
 	return globalHealthChecker
-} 
+}

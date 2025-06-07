@@ -59,15 +59,15 @@ func DefaultCircuitBreakerConfig(name string) CircuitBreakerConfig {
 
 // CircuitBreaker implements the circuit breaker pattern
 type CircuitBreaker struct {
-	config           CircuitBreakerConfig
-	state            CircuitState
-	failureCount     int
-	successCount     int
-	requestCount     int
-	lastFailureTime  time.Time
-	nextRetryTime    time.Time
-	concurrentCalls  int
-	mutex            sync.RWMutex
+	config          CircuitBreakerConfig
+	state           CircuitState
+	failureCount    int
+	successCount    int
+	requestCount    int
+	lastFailureTime time.Time
+	nextRetryTime   time.Time
+	concurrentCalls int
+	mutex           sync.RWMutex
 }
 
 // NewCircuitBreaker creates a new circuit breaker with the given configuration
@@ -127,7 +127,7 @@ func (cb *CircuitBreaker) beforeCall(ctx context.Context) error {
 				"failure_count", cb.failureCount)
 			return nil
 		}
-		
+
 		logger.WarnCtx(ctx, "Circuit breaker rejecting call - circuit is open",
 			"circuit_name", cb.config.Name,
 			"failure_count", cb.failureCount,
@@ -214,7 +214,7 @@ func (cb *CircuitBreaker) shouldOpen() bool {
 func (cb *CircuitBreaker) openCircuit(ctx context.Context) {
 	cb.state = StateOpen
 	cb.nextRetryTime = time.Now().Add(cb.config.ResetTimeout)
-	
+
 	logger.ErrorCtx(ctx, "Circuit breaker opened",
 		"circuit_name", cb.config.Name,
 		"failure_count", cb.failureCount,
@@ -230,7 +230,7 @@ func (cb *CircuitBreaker) closeCircuit(ctx context.Context) {
 	cb.failureCount = 0
 	cb.requestCount = 0
 	cb.successCount = 0
-	
+
 	logger.InfoCtx(ctx, "Circuit breaker closed",
 		"circuit_name", cb.config.Name,
 		"previous_state", previousState.String())
@@ -355,4 +355,4 @@ func GetCircuitBreakerWithConfig(name string, config CircuitBreakerConfig) *Circ
 // GetAllCircuitBreakerStats returns statistics for all circuit breakers
 func GetAllCircuitBreakerStats() map[string]interface{} {
 	return globalCBManager.GetStats()
-} 
+}

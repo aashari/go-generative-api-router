@@ -11,20 +11,20 @@ import (
 
 // RetryConfig defines configuration for retry behavior
 type RetryConfig struct {
-	MaxAttempts    int
-	InitialDelay   time.Duration
-	MaxDelay       time.Duration
-	BackoffFactor  float64
+	MaxAttempts     int
+	InitialDelay    time.Duration
+	MaxDelay        time.Duration
+	BackoffFactor   float64
 	RetryableErrors []error
 }
 
 // DefaultRetryConfig returns a sensible default retry configuration
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
-		MaxAttempts:   3,
-		InitialDelay:  100 * time.Millisecond,
-		MaxDelay:      5 * time.Second,
-		BackoffFactor: 2.0,
+		MaxAttempts:     3,
+		InitialDelay:    100 * time.Millisecond,
+		MaxDelay:        5 * time.Second,
+		BackoffFactor:   2.0,
 		RetryableErrors: []error{
 			// Add common retryable errors here
 		},
@@ -70,7 +70,7 @@ func (r *RetryExecutor) ExecuteWithRetry(ctx context.Context, operation func() e
 
 			// Calculate backoff delay
 			delay := r.calculateBackoff(attempt)
-			
+
 			logger.WarnCtx(ctx, "Operation failed, retrying",
 				"attempt", attempt,
 				"max_attempts", r.config.MaxAttempts,
@@ -105,12 +105,12 @@ func (r *RetryExecutor) ExecuteWithRetry(ctx context.Context, operation func() e
 func (r *RetryExecutor) calculateBackoff(attempt int) time.Duration {
 	// Exponential backoff: delay = initialDelay * (backoffFactor ^ (attempt - 1))
 	delay := float64(r.config.InitialDelay) * math.Pow(r.config.BackoffFactor, float64(attempt-1))
-	
+
 	// Cap at maximum delay
 	if time.Duration(delay) > r.config.MaxDelay {
 		delay = float64(r.config.MaxDelay)
 	}
-	
+
 	return time.Duration(delay)
 }
 
@@ -129,7 +129,7 @@ func (r *RetryExecutor) isRetryableError(err error) bool {
 
 	// Check for common retryable error patterns
 	errStr := err.Error()
-	
+
 	// Network-related errors that are typically retryable
 	retryablePatterns := []string{
 		"connection refused",
@@ -156,12 +156,12 @@ func (r *RetryExecutor) isRetryableError(err error) bool {
 
 // contains checks if a string contains a substring (case-insensitive)
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		   (s == substr || 
-		    (len(s) > len(substr) && 
-		     (s[:len(substr)] == substr || 
-		      s[len(s)-len(substr):] == substr || 
-		      containsSubstring(s, substr))))
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			(len(s) > len(substr) &&
+				(s[:len(substr)] == substr ||
+					s[len(s)-len(substr):] == substr ||
+					containsSubstring(s, substr))))
 }
 
 // containsSubstring performs a simple substring search
@@ -208,4 +208,4 @@ func RetryVendorAPI(ctx context.Context, operation RetryableOperation) error {
 		BackoffFactor: 2.0,
 	}
 	return RetryWithConfig(ctx, config, operation)
-} 
+}

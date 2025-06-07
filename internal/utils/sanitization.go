@@ -79,16 +79,16 @@ func (m *SensitiveDataMasker) maskValue(v reflect.Value) reflect.Value {
 	switch v.Kind() {
 	case reflect.String:
 		return reflect.ValueOf(m.maskString(v.String()))
-	
+
 	case reflect.Map:
 		return m.maskMap(v)
-	
+
 	case reflect.Slice, reflect.Array:
 		return m.maskSlice(v)
-	
+
 	case reflect.Struct:
 		return m.maskStruct(v)
-	
+
 	case reflect.Ptr:
 		if v.IsNil() {
 			return v
@@ -97,13 +97,13 @@ func (m *SensitiveDataMasker) maskValue(v reflect.Value) reflect.Value {
 		newPtr := reflect.New(elem.Type())
 		newPtr.Elem().Set(elem)
 		return newPtr
-	
+
 	case reflect.Interface:
 		if v.IsNil() {
 			return v
 		}
 		return reflect.ValueOf(m.MaskSensitiveData(v.Interface()))
-	
+
 	default:
 		return v
 	}
@@ -130,7 +130,7 @@ func (m *SensitiveDataMasker) maskMap(v reflect.Value) reflect.Value {
 	for _, key := range v.MapKeys() {
 		keyStr := fmt.Sprintf("%v", key.Interface())
 		value := v.MapIndex(key)
-		
+
 		// Check if key indicates sensitive data
 		if m.isSensitiveField(keyStr) {
 			newMap.SetMapIndex(key, reflect.ValueOf("***MASKED***"))
@@ -155,15 +155,15 @@ func (m *SensitiveDataMasker) maskSlice(v reflect.Value) reflect.Value {
 // maskStruct masks sensitive data in structs
 func (m *SensitiveDataMasker) maskStruct(v reflect.Value) reflect.Value {
 	newStruct := reflect.New(v.Type()).Elem()
-	
+
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
 		fieldType := v.Type().Field(i)
-		
+
 		if !field.CanInterface() {
 			continue
 		}
-		
+
 		// Check if field name indicates sensitive data
 		if m.isSensitiveField(fieldType.Name) || m.isSensitiveField(fieldType.Tag.Get("json")) {
 			if newStruct.Field(i).CanSet() {
@@ -182,7 +182,7 @@ func (m *SensitiveDataMasker) maskStruct(v reflect.Value) reflect.Value {
 // isSensitiveField checks if a field name indicates sensitive data
 func (m *SensitiveDataMasker) isSensitiveField(fieldName string) bool {
 	fieldLower := strings.ToLower(fieldName)
-	
+
 	for _, pattern := range m.patterns {
 		for _, sensitiveField := range pattern.FieldNames {
 			if strings.Contains(fieldLower, strings.ToLower(sensitiveField)) {
@@ -200,13 +200,13 @@ func (m *SensitiveDataMasker) MaskJSON(jsonStr string) string {
 		// If not valid JSON, apply string masking
 		return m.maskString(jsonStr)
 	}
-	
+
 	maskedData := m.MaskSensitiveData(data)
 	maskedJSON, err := json.Marshal(maskedData)
 	if err != nil {
 		return m.maskString(jsonStr)
 	}
-	
+
 	return string(maskedJSON)
 }
 
@@ -215,11 +215,11 @@ func (m *SensitiveDataMasker) MaskHeaders(headers map[string][]string) map[strin
 	if headers == nil {
 		return nil
 	}
-	
+
 	maskedHeaders := make(map[string][]string)
 	for key, values := range headers {
 		keyLower := strings.ToLower(key)
-		
+
 		if m.isSensitiveField(keyLower) {
 			maskedHeaders[key] = []string{"***MASKED***"}
 		} else {
@@ -246,7 +246,7 @@ func (m *SensitiveDataMasker) MaskCredentials(creds interface{}) interface{} {
 				for j := 0; j < item.NumField(); j++ {
 					field := item.Field(j)
 					fieldType := item.Type().Field(j)
-					
+
 					if strings.ToLower(fieldType.Name) == "value" {
 						// Mask the credential value
 						if newItem.Field(j).CanSet() {
@@ -265,7 +265,7 @@ func (m *SensitiveDataMasker) MaskCredentials(creds interface{}) interface{} {
 		}
 		return newSlice.Interface()
 	}
-	
+
 	return m.MaskSensitiveData(creds)
 }
 
@@ -273,4 +273,4 @@ func (m *SensitiveDataMasker) MaskCredentials(creds interface{}) interface{} {
 func (m *SensitiveDataMasker) GetMaskedString(value interface{}) string {
 	masked := m.MaskSensitiveData(value)
 	return fmt.Sprintf("%v", masked)
-} 
+}

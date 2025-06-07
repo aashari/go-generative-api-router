@@ -11,11 +11,11 @@ import (
 
 // ConditionalLogger provides environment-aware logging with performance optimization
 type ConditionalLogger struct {
-	production     bool
-	logLevel       slog.Level
-	sensitiveData  bool
-	masker         *utils.SensitiveDataMasker
-	baseLogger     *slog.Logger
+	production    bool
+	logLevel      slog.Level
+	sensitiveData bool
+	masker        *utils.SensitiveDataMasker
+	baseLogger    *slog.Logger
 }
 
 // LoggingConfig defines configuration for conditional logging
@@ -83,12 +83,12 @@ func (l *ConditionalLogger) LogRequestOptimal(ctx context.Context, method, path,
 		// Development: Log detailed information
 		maskedHeaders := headers
 		maskedBody := string(body)
-		
+
 		if l.masker != nil {
 			maskedHeaders = l.masker.MaskHeaders(headers)
 			maskedBody = l.masker.MaskJSON(string(body))
 		}
-		
+
 		l.baseLogger.DebugContext(ctx, "Request details",
 			"method", method,
 			"path", path,
@@ -113,7 +113,7 @@ func (l *ConditionalLogger) LogVendorCommunicationOptimal(ctx context.Context, v
 		if l.masker != nil && len(body) > 0 {
 			maskedBody = l.masker.MaskJSON(string(body))
 		}
-		
+
 		l.baseLogger.DebugContext(ctx, "Vendor communication details",
 			"vendor", vendor,
 			"url", url,
@@ -147,7 +147,7 @@ func (l *ConditionalLogger) LogErrorOptimal(ctx context.Context, component strin
 	if l.masker != nil && l.production {
 		maskedMetadata = l.masker.MaskSensitiveData(metadata).(map[string]any)
 	}
-	
+
 	l.baseLogger.ErrorContext(ctx, "Error occurred",
 		"component", component,
 		"error", err.Error(),
@@ -240,7 +240,7 @@ func (l *ConditionalLogger) LogHealthCheck(ctx context.Context, status string, d
 		if l.masker != nil {
 			maskedDetails = l.masker.MaskSensitiveData(details).(map[string]interface{})
 		}
-		
+
 		l.baseLogger.DebugContext(ctx, "Health check details",
 			"status", status,
 			"details", maskedDetails)
@@ -261,4 +261,4 @@ func (l *ConditionalLogger) LogPerformanceMetrics(ctx context.Context, operation
 			"duration_ms", duration,
 			"memory_bytes", memoryUsage)
 	}
-} 
+}

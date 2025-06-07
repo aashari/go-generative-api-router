@@ -25,8 +25,6 @@ var (
 	ErrInvalidResponse = errors.New("invalid vendor response")
 )
 
-
-
 // ResponseStandardizer handles vendor response standardization
 type ResponseStandardizer struct {
 	enableGzip       bool

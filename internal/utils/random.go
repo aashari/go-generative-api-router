@@ -120,13 +120,13 @@ func GenerateSecureInt(max int64) (int64, error) {
 	if max <= 0 {
 		return 0, fmt.Errorf("max must be positive")
 	}
-	
+
 	bigMax := big.NewInt(max)
 	n, err := rand.Int(rand.Reader, bigMax)
 	if err != nil {
 		return 0, fmt.Errorf("failed to generate secure int: %w", err)
 	}
-	
+
 	return n.Int64(), nil
 }
 
@@ -144,4 +144,4 @@ func GenerateTimestampID() string {
 	timestamp := time.Now().UnixNano()
 	randomPart := globalIDGenerator.generateHex(4)
 	return fmt.Sprintf("%d_%s", timestamp, randomPart)
-} 
+}

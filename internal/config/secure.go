@@ -168,11 +168,11 @@ func (s *SecureConfigManager) encrypt(data []byte) ([]byte, error) {
 	}
 
 	ciphertext := s.gcm.Seal(nonce, nonce, data, nil)
-	
+
 	// Encode to base64 for safe storage
 	encoded := make([]byte, base64.StdEncoding.EncodedLen(len(ciphertext)))
 	base64.StdEncoding.Encode(encoded, ciphertext)
-	
+
 	return encoded, nil
 }
 
@@ -250,4 +250,4 @@ func LoadCredentialsSecurely() ([]Credential, error) {
 	}
 
 	return nil, fmt.Errorf("no credentials could be loaded from any source")
-} 
+}

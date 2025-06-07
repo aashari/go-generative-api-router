@@ -95,13 +95,13 @@ func GetLogLevel() string {
 		"warn":  true,
 		"error": true,
 	}
-	
+
 	if validLevels[level] {
 		return level
 	}
-	
+
 	if IsProduction() {
 		return "info"
 	}
 	return "debug"
-} 
+}
