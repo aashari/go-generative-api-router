@@ -133,7 +133,7 @@ func TestImageProcessor_isValidImageType(t *testing.T) {
 		{"image/png; charset=utf-8", true}, // With parameters
 		{"text/html", false},
 		{"application/json", false},
-		{"image/svg+xml", false},
+		{"image/svg+xml", true},
 		{"", false},
 	}
 
@@ -141,6 +141,127 @@ func TestImageProcessor_isValidImageType(t *testing.T) {
 		t.Run(tt.contentType, func(t *testing.T) {
 			result := processor.isValidImageType(tt.contentType)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestImageProcessor_isValidImageType_Enhanced(t *testing.T) {
+	processor := NewImageProcessor()
+
+	tests := []struct {
+		contentType string
+		expected    bool
+		description string
+	}{
+		// Explicit image types
+		{"image/png", true, "PNG image"},
+		{"image/jpeg", true, "JPEG image"},
+		{"image/jpg", true, "JPG image"},
+		{"image/gif", true, "GIF image"},
+		{"image/webp", true, "WebP image"},
+		{"image/bmp", true, "BMP image"},
+		{"image/tiff", true, "TIFF image"},
+		{"image/svg+xml", true, "SVG image"},
+		{"image/png; charset=utf-8", true, "PNG with parameters"},
+
+		// Generic types that might contain images
+		{"application/octet-stream", true, "Generic binary (Telegram, Discord)"},
+		{"binary/octet-stream", true, "Binary octet stream"},
+		{"application/binary", true, "Application binary"},
+
+		// Invalid types
+		{"text/html", false, "HTML content"},
+		{"application/json", false, "JSON content"},
+		{"video/mp4", false, "Video content"},
+		{"", false, "Empty content type"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			result := processor.isValidImageType(tt.contentType)
+			assert.Equal(t, tt.expected, result, "Content type: %s", tt.contentType)
+		})
+	}
+}
+
+func TestImageProcessor_detectImageFormat(t *testing.T) {
+	processor := NewImageProcessor()
+
+	tests := []struct {
+		name         string
+		data         []byte
+		expectedType string
+		expectedOK   bool
+	}{
+		{
+			name:         "PNG magic number",
+			data:         []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D},
+			expectedType: "image/png",
+			expectedOK:   true,
+		},
+		{
+			name:         "JPEG magic number",
+			data:         []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01},
+			expectedType: "image/jpeg",
+			expectedOK:   true,
+		},
+		{
+			name:         "GIF magic number",
+			data:         []byte{0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00},
+			expectedType: "image/gif",
+			expectedOK:   true,
+		},
+		{
+			name:         "WebP magic number",
+			data:         []byte{0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50},
+			expectedType: "image/webp",
+			expectedOK:   true,
+		},
+		{
+			name:         "BMP magic number",
+			data:         []byte{0x42, 0x4D, 0x36, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00},
+			expectedType: "image/bmp",
+			expectedOK:   true,
+		},
+		{
+			name:         "TIFF little endian",
+			data:         []byte{0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			expectedType: "image/tiff",
+			expectedOK:   true,
+		},
+		{
+			name:         "TIFF big endian",
+			data:         []byte{0x4D, 0x4D, 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00},
+			expectedType: "image/tiff",
+			expectedOK:   true,
+		},
+		{
+			name:         "Not an image",
+			data:         []byte{0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}, // ZIP
+			expectedType: "",
+			expectedOK:   false,
+		},
+		{
+			name:         "Too short data",
+			data:         []byte{0x89, 0x50},
+			expectedType: "",
+			expectedOK:   false,
+		},
+		{
+			name:         "Empty data",
+			data:         []byte{},
+			expectedType: "",
+			expectedOK:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			detectedType, ok := processor.detectImageFormat(tt.data)
+			assert.Equal(t, tt.expectedOK, ok, "Detection should match expected result")
+			if tt.expectedOK {
+				assert.Equal(t, tt.expectedType, detectedType, "Detected type should match expected")
+			}
 		})
 	}
 }
@@ -572,4 +693,84 @@ func TestImageProcessor_ConcurrentErrorHandling(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to process 2 images")
+}
+
+func TestImageProcessor_downloadWithGenericContentType(t *testing.T) {
+	// Create test image data (1x1 PNG)
+	pngData, _ := base64.StdEncoding.DecodeString(testImageBase64)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/telegram-style.jpg":
+			// Simulate Telegram-style response with generic content type but actual image data
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Write(pngData) // PNG data with generic content type
+		case "/discord-style.png":
+			// Simulate Discord-style response
+			w.Header().Set("Content-Type", "binary/octet-stream")
+			w.Write(pngData)
+		case "/generic-not-image":
+			// Generic content type but not actually an image
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Write([]byte("This is not image data"))
+		case "/proper-image.png":
+			// Proper content type
+			w.Header().Set("Content-Type", "image/png")
+			w.Write(pngData)
+		}
+	}))
+	defer server.Close()
+
+	processor := NewImageProcessor()
+	ctx := context.Background()
+
+	tests := []struct {
+		name        string
+		url         string
+		wantErr     bool
+		errContains string
+		expectType  string
+	}{
+		{
+			name:       "Telegram-style generic content type with PNG data",
+			url:        server.URL + "/telegram-style.jpg",
+			wantErr:    false,
+			expectType: "image/png", // Should detect PNG from magic numbers
+		},
+		{
+			name:       "Discord-style binary content type with PNG data",
+			url:        server.URL + "/discord-style.png",
+			wantErr:    false,
+			expectType: "image/png",
+		},
+		{
+			name:        "Generic content type but not image data",
+			url:         server.URL + "/generic-not-image",
+			wantErr:     true,
+			errContains: "not a valid image format",
+		},
+		{
+			name:       "Proper image content type",
+			url:        server.URL + "/proper-image.png",
+			wantErr:    false,
+			expectType: "image/png",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := processor.downloadAndConvertImage(ctx, tt.url)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.True(t, strings.HasPrefix(result, "data:"+tt.expectType+";base64,"))
+				assert.Contains(t, result, ";base64,")
+			}
+		})
+	}
 }

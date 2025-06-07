@@ -65,3 +65,4 @@ deploy.log
 
 # Deployment scripts with sensitive information
 scripts/deploy.sh
+test_*.json

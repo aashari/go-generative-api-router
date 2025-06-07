@@ -387,41 +387,4 @@ func (e *TestError) Error() string {
 	return e.message
 }
 
-func TestLegacyCompatibility(t *testing.T) {
-	var buf bytes.Buffer
-
-	// Setup logger with buffer
-	originalLogger := Logger
-	defer func() { Logger = originalLogger }()
-
-	handler := &StructuredJSONHandler{
-		writer:      &buf,
-		serviceName: "test-service",
-		environment: "test",
-	}
-	Logger = slog.New(handler)
-
-	ctx := context.Background()
-
-	// Test legacy functions still work
-	testData := map[string]string{
-		"api_key": "sk-secret-key",
-		"model":   "gpt-4",
-	}
-
-	LogCompleteDataInfo(ctx, "Legacy test", testData)
-
-	output := buf.String()
-	var logEntry StructuredLogEntry
-	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
-		t.Errorf("Log output is not valid JSON: %v", err)
-	}
-
-	// Verify legacy data is in attributes
-	if logEntry.Attributes["complete_data"] == nil {
-		t.Errorf("Expected complete_data in attributes: %v", logEntry.Attributes)
-	}
-	if logEntry.Message != "Legacy test" {
-		t.Errorf("Expected legacy message: %v", logEntry.Message)
-	}
-}
+// TestLegacyCompatibility removed - legacy functions have been removed

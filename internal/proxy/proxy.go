@@ -67,11 +67,15 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 
 	// Log if images were processed
 	if len(processedBody) != len(body) {
-		logger.LogMultipleData(ctx, logger.LevelInfo, "Request body modified after image processing", map[string]any{
-			"original_size":   len(body),
-			"processed_size":  len(processedBody),
-			"size_difference": len(processedBody) - len(body),
-		})
+		logger.LogWithStructure(ctx, logger.LevelInfo, "Request body modified after image processing",
+			map[string]interface{}{
+				"original_size":   len(body),
+				"processed_size":  len(processedBody),
+				"size_difference": len(processedBody) - len(body),
+			},
+			nil, // request
+			nil, // response
+			nil) // error
 	}
 
 	// Validate and modify request

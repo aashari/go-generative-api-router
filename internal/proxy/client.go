@@ -89,26 +89,25 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	}
 
 	// Log complete vendor request data before sending
-	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Complete vendor request about to be sent", map[string]any{
-		"vendor_request": map[string]any{
-			"method":  req.Method,
-			"url":     req.URL.String(),
-			"headers": map[string][]string(req.Header),
-			"body":    string(modifiedBody),
-		},
-		"vendor_details": map[string]any{
+	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete vendor request about to be sent",
+		map[string]interface{}{
 			"vendor":         selection.Vendor,
 			"model":          selection.Model,
 			"original_model": originalModel,
 			"is_streaming":   isStreaming,
 		},
-		"client_request": map[string]any{
-			"method":      r.Method,
-			"path":        r.URL.Path,
-			"headers":     map[string][]string(r.Header),
-			"remote_addr": r.RemoteAddr,
+		map[string]interface{}{
+			"vendor_method":  req.Method,
+			"vendor_url":     req.URL.String(),
+			"vendor_headers": map[string][]string(req.Header),
+			"vendor_body":    string(modifiedBody),
+			"client_method":  r.Method,
+			"client_path":    r.URL.Path,
+			"client_headers": map[string][]string(r.Header),
+			"remote_addr":    r.RemoteAddr,
 		},
-	})
+		nil, // response
+		nil) // error
 
 	// 2. Send request to vendor
 	resp, err := c.httpClient.Do(req)
@@ -124,20 +123,21 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	defer resp.Body.Close()
 
 	// Log complete vendor response headers immediately
-	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Complete vendor response headers received", map[string]any{
-		"vendor_response": map[string]any{
-			"status_code":    resp.StatusCode,
-			"status":         resp.Status,
-			"headers":        map[string][]string(resp.Header),
-			"content_length": resp.ContentLength,
-		},
-		"vendor_details": map[string]any{
+	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete vendor response headers received",
+		map[string]interface{}{
 			"vendor":         selection.Vendor,
 			"model":          selection.Model,
 			"original_model": originalModel,
 			"is_streaming":   isStreaming,
 		},
-	})
+		nil, // request
+		map[string]interface{}{
+			"status_code":    resp.StatusCode,
+			"status":         resp.Status,
+			"headers":        map[string][]string(resp.Header),
+			"content_length": resp.ContentLength,
+		},
+		nil) // error
 
 	// 3. Handle response based on streaming mode
 	if isStreaming {
@@ -207,12 +207,17 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 		// Remove Content-Length for streaming as it's chunked
 		w.Header().Del("Content-Length")
 		// Log complete streaming headers setup
-		logger.LogMultipleData(context.Background(), logger.LevelInfo, "Set streaming headers with complete data", map[string]any{
-			"vendor":                    vendor,
-			"is_streaming":              isStreaming,
-			"complete_response_headers": map[string][]string(w.Header()),
-			"original_vendor_headers":   map[string][]string(resp.Header),
-		})
+		logger.LogWithStructure(context.Background(), logger.LevelInfo, "Set streaming headers with complete data",
+			map[string]interface{}{
+				"vendor":       vendor,
+				"is_streaming": isStreaming,
+			},
+			nil, // request
+			map[string]interface{}{
+				"complete_response_headers": map[string][]string(w.Header()),
+				"original_vendor_headers":   map[string][]string(resp.Header),
+			},
+			nil) // error
 	}
 
 	// Write status code after setting all headers
@@ -228,34 +233,39 @@ func AddCustomServiceHeader(w http.ResponseWriter, key, value string) {
 // handleStreaming processes streaming responses
 func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string) error {
 	// Log complete streaming request processing start
-	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Processing streaming request with complete data", map[string]any{
-		"vendor":         selection.Vendor,
-		"model":          selection.Model,
-		"original_model": originalModel,
-		"complete_request": map[string]any{
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"headers": map[string][]string(r.Header),
+	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Processing streaming request with complete data",
+		map[string]interface{}{
+			"vendor":         selection.Vendor,
+			"model":          selection.Model,
+			"original_model": originalModel,
 		},
-		"complete_vendor_response": map[string]any{
-			"status_code": resp.StatusCode,
-			"headers":     map[string][]string(resp.Header),
+		map[string]interface{}{
+			"method":         r.Method,
+			"path":           r.URL.Path,
+			"headers":        map[string][]string(r.Header),
+			"status_code":    resp.StatusCode,
+			"vendor_headers": map[string][]string(resp.Header),
 		},
-	})
+		nil, // response
+		nil) // error
 
 	// Generate consistent conversation-level values for streaming responses
 	conversationID := ChatCompletionID()
 	timestamp := time.Now().Unix()
 	systemFingerprint := SystemFingerprint()
 	// Log complete streaming values generation
-	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Generated streaming values with complete data", map[string]any{
-		"conversation_id":    conversationID,
-		"timestamp":          timestamp,
-		"system_fingerprint": systemFingerprint,
-		"vendor":             selection.Vendor,
-		"model":              selection.Model,
-		"original_model":     originalModel,
-	})
+	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Generated streaming values with complete data",
+		map[string]interface{}{
+			"conversation_id":    conversationID,
+			"timestamp":          timestamp,
+			"system_fingerprint": systemFingerprint,
+			"vendor":             selection.Vendor,
+			"model":              selection.Model,
+			"original_model":     originalModel,
+		},
+		nil, // request
+		nil, // response
+		nil) // error
 
 	// Create stream processor
 	streamProcessor := NewStreamProcessor(conversationID, timestamp, systemFingerprint, selection.Vendor, originalModel)
@@ -264,23 +274,33 @@ func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp
 	contentEncoding := resp.Header.Get("Content-Encoding")
 	if contentEncoding != "" {
 		// Log complete content encoding information
-		logger.LogMultipleData(r.Context(), logger.LevelInfo, "Response content encoding with complete data", map[string]any{
-			"content_encoding":          contentEncoding,
-			"vendor":                    selection.Vendor,
-			"is_streaming":              true,
-			"complete_response_headers": map[string][]string(resp.Header),
-		})
+		logger.LogWithStructure(r.Context(), logger.LevelInfo, "Response content encoding with complete data",
+			map[string]interface{}{
+				"content_encoding": contentEncoding,
+				"vendor":           selection.Vendor,
+				"is_streaming":     true,
+			},
+			nil, // request
+			map[string]interface{}{
+				"complete_response_headers": map[string][]string(resp.Header),
+			},
+			nil) // error
 	}
 
 	// Create the appropriate reader based on content encoding
 	var reader *bufio.Reader
 	if contentEncoding == "gzip" {
 		// Log complete gzip reader setup
-		logger.LogMultipleData(r.Context(), logger.LevelInfo, "Setting up gzip reader for streaming with complete data", map[string]any{
-			"vendor":                    selection.Vendor,
-			"content_encoding":          contentEncoding,
-			"complete_response_headers": map[string][]string(resp.Header),
-		})
+		logger.LogWithStructure(r.Context(), logger.LevelInfo, "Setting up gzip reader for streaming with complete data",
+			map[string]interface{}{
+				"vendor":           selection.Vendor,
+				"content_encoding": contentEncoding,
+			},
+			nil, // request
+			map[string]interface{}{
+				"complete_response_headers": map[string][]string(resp.Header),
+			},
+			nil) // error
 		gzipReader, err := gzip.NewReader(resp.Body)
 		if err != nil {
 			logger.LogError(r.Context(), "streaming_gzip_setup", err, map[string]any{
@@ -300,11 +320,15 @@ func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		// Log complete flusher unavailability
-		logger.LogMultipleData(r.Context(), logger.LevelWarn, "ResponseWriter does not support flushing with complete data", map[string]any{
-			"response_writer_type": fmt.Sprintf("%T", w),
-			"vendor":               selection.Vendor,
-			"streaming":            true,
-		})
+		logger.LogWithStructure(r.Context(), logger.LevelWarn, "ResponseWriter does not support flushing with complete data",
+			map[string]interface{}{
+				"response_writer_type": fmt.Sprintf("%T", w),
+				"vendor":               selection.Vendor,
+				"streaming":            true,
+			},
+			nil, // request
+			nil, // response
+			nil) // error
 	}
 
 	return c.processStreamingResponse(w, reader, streamProcessor, flusher)
@@ -363,13 +387,18 @@ func (s *ResponseStandardizer) validateVendorResponse(body []byte, vendor string
 	}
 
 	// Log complete successful validation
-	logger.LogMultipleData(context.Background(), logger.LevelDebug, "Response validation successful with complete data", map[string]any{
-		"vendor":                 vendor,
-		"complete_response_data": responseData,
-		"response_body":          string(body),
-		"response_size":          len(body),
-		"validated_fields":       requiredFields,
-	})
+	logger.LogWithStructure(context.Background(), logger.LevelDebug, "Response validation successful with complete data",
+		map[string]interface{}{
+			"vendor":                 vendor,
+			"complete_response_data": responseData,
+			"response_size":          len(body),
+			"validated_fields":       requiredFields,
+		},
+		nil, // request
+		map[string]interface{}{
+			"response_body": string(body),
+		},
+		nil) // error
 	return nil
 }
 
@@ -550,18 +579,19 @@ func (c *APIClient) processStreamingResponse(w http.ResponseWriter, reader *bufi
 		}
 
 		// Log complete streaming chunk data
-		logger.LogMultipleData(context.Background(), logger.LevelDebug, "Complete streaming chunk processed", map[string]any{
-			"vendor_response": map[string]any{
-				"original_chunk":   string(line),
-				"processed_chunk":  string(processedChunk),
-				"chunk_size_bytes": len(processedChunk),
-			},
-			"vendor_details": map[string]any{
+		logger.LogWithStructure(context.Background(), logger.LevelDebug, "Complete streaming chunk processed",
+			map[string]interface{}{
 				"vendor":          streamProcessor.Vendor,
 				"model":           streamProcessor.OriginalModel,
 				"conversation_id": streamProcessor.ConversationID,
 			},
-		})
+			nil, // request
+			map[string]interface{}{
+				"original_chunk":   string(line),
+				"processed_chunk":  string(processedChunk),
+				"chunk_size_bytes": len(processedChunk),
+			},
+			nil) // error
 
 		// Handle SSE line endings (needs \n\n)
 		if !bytes.HasSuffix(processedChunk, []byte("\n\n")) {
@@ -607,8 +637,15 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	}
 
 	// Log complete vendor response body immediately after processing
-	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Complete vendor response body received", map[string]any{
-		"vendor_response": map[string]any{
+	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete vendor response body received",
+		map[string]interface{}{
+			"vendor":         selection.Vendor,
+			"model":          selection.Model,
+			"original_model": originalModel,
+			"is_streaming":   false,
+		},
+		nil, // request
+		map[string]interface{}{
 			"status_code":      resp.StatusCode,
 			"status":           resp.Status,
 			"headers":          map[string][]string(resp.Header),
@@ -617,13 +654,7 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 			"body_size_bytes":  len(responseBody),
 			"content_encoding": resp.Header.Get("Content-Encoding"),
 		},
-		"vendor_details": map[string]any{
-			"vendor":         selection.Vendor,
-			"model":          selection.Model,
-			"original_model": originalModel,
-			"is_streaming":   false,
-		},
-	})
+		nil) // error
 
 	// 2. Validate response
 	if c.standardizer.enableValidation {
@@ -679,27 +710,26 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	}
 
 	// Log complete final response sent to client
-	logger.LogMultipleData(r.Context(), logger.LevelInfo, "Complete final response sent to client", map[string]any{
-		"client_response": map[string]any{
+	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete final response sent to client",
+		map[string]interface{}{
+			"vendor":                 selection.Vendor,
+			"model":                  selection.Model,
+			"original_model":         originalModel,
+			"is_streaming":           false,
+			"original_response_size": len(responseBody),
+			"modified_response_size": len(modifiedResponse),
+			"final_response_size":    len(finalResponse),
+			"compression_applied":    shouldCompress,
+		},
+		nil, // request
+		map[string]interface{}{
 			"body":             string(finalResponse),
 			"body_size_bytes":  len(finalResponse),
 			"headers":          map[string][]string(w.Header()),
 			"compressed":       shouldCompress,
 			"content_encoding": w.Header().Get("Content-Encoding"),
 		},
-		"vendor_details": map[string]any{
-			"vendor":         selection.Vendor,
-			"model":          selection.Model,
-			"original_model": originalModel,
-			"is_streaming":   false,
-		},
-		"processing_details": map[string]any{
-			"original_response_size": len(responseBody),
-			"modified_response_size": len(modifiedResponse),
-			"final_response_size":    len(finalResponse),
-			"compression_applied":    shouldCompress,
-		},
-	})
+		nil) // error
 
 	return nil
 }

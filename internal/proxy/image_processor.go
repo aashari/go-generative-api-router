@@ -165,11 +165,15 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 	}
 
 	// Log image processing start
-	logger.LogMultipleData(ctx, logger.LevelInfo, "Processing image URLs concurrently", map[string]any{
-		"image_count":       len(imagesToProcess),
-		"total_parts":       len(parts),
-		"images_to_process": imagesToProcess,
-	})
+	logger.LogWithStructure(ctx, logger.LevelInfo, "Processing image URLs concurrently",
+		map[string]interface{}{
+			"image_count":       len(imagesToProcess),
+			"total_parts":       len(parts),
+			"images_to_process": imagesToProcess,
+		},
+		nil, // request
+		nil, // response
+		nil) // error
 
 	// Process images concurrently
 	results := make(chan ProcessResult, len(imagesToProcess))
@@ -219,11 +223,15 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 	}
 
 	// Log processing completion
-	logger.LogMultipleData(ctx, logger.LevelInfo, "Image URL processing completed", map[string]any{
-		"processed_count": len(imagesToProcess),
-		"error_count":     len(errors),
-		"errors":          errors,
-	})
+	logger.LogWithStructure(ctx, logger.LevelInfo, "Image URL processing completed",
+		map[string]interface{}{
+			"processed_count": len(imagesToProcess),
+			"error_count":     len(errors),
+			"errors":          errors,
+		},
+		nil, // request
+		nil, // response
+		nil) // error
 
 	// If any errors occurred, return the first one
 	if len(errors) > 0 {
@@ -245,10 +253,14 @@ func (p *ImageProcessor) downloadAndConvertImage(ctx context.Context, imageURL s
 
 // downloadAndConvertImageWithHeaders downloads an image from a URL with custom headers and converts it to base64
 func (p *ImageProcessor) downloadAndConvertImageWithHeaders(ctx context.Context, imageURL string, headers map[string]string) (string, error) {
-	logger.LogMultipleData(ctx, logger.LevelDebug, "Downloading image from URL with headers", map[string]any{
-		"url":     imageURL,
-		"headers": headers,
-	})
+	logger.LogWithStructure(ctx, logger.LevelDebug, "Downloading image from URL with headers",
+		map[string]interface{}{
+			"url":     imageURL,
+			"headers": headers,
+		},
+		nil, // request
+		nil, // response
+		nil) // error
 
 	// Create request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
@@ -263,11 +275,15 @@ func (p *ImageProcessor) downloadAndConvertImageWithHeaders(ctx context.Context,
 	if headers != nil {
 		for key, value := range headers {
 			req.Header.Set(key, value)
-			logger.LogMultipleData(ctx, logger.LevelDebug, "Added custom header for image download", map[string]any{
-				"header_key":   key,
-				"header_value": value,
-				"url":          imageURL,
-			})
+			logger.LogWithStructure(ctx, logger.LevelDebug, "Added custom header for image download",
+				map[string]interface{}{
+					"header_key":   key,
+					"header_value": value,
+					"url":          imageURL,
+				},
+				nil, // request
+				nil, // response
+				nil) // error
 		}
 	}
 
@@ -301,17 +317,35 @@ func (p *ImageProcessor) downloadAndConvertImageWithHeaders(ctx context.Context,
 		return "", fmt.Errorf("image size exceeds limit of %d bytes", p.maxSize)
 	}
 
+	// For generic content types, detect the actual image format from magic numbers
+	finalContentType := contentType
+	if strings.HasPrefix(contentType, "application/octet-stream") ||
+		strings.HasPrefix(contentType, "binary/octet-stream") ||
+		strings.HasPrefix(contentType, "application/binary") {
+		if detectedType, isImage := p.detectImageFormat(imageData); isImage {
+			finalContentType = detectedType
+			logger.LogWithStructure(ctx, logger.LevelDebug, "Detected image format from magic numbers", map[string]interface{}{
+				"original_content_type": contentType,
+				"detected_content_type": detectedType,
+				"url":                   imageURL,
+			}, nil, nil, nil)
+		} else {
+			return "", fmt.Errorf("content type %s detected but data is not a valid image format", contentType)
+		}
+	}
+
 	// Convert to base64 with data URL scheme
 	base64Data := base64.StdEncoding.EncodeToString(imageData)
-	dataURL := fmt.Sprintf("data:%s;base64,%s", contentType, base64Data)
+	dataURL := fmt.Sprintf("data:%s;base64,%s", finalContentType, base64Data)
 
-	logger.LogMultipleData(ctx, logger.LevelDebug, "Image downloaded and converted", map[string]any{
-		"original_url":  imageURL,
-		"content_type":  contentType,
-		"size_bytes":    len(imageData),
-		"base64_length": len(base64Data),
-		"data_url":      dataURL, // This will be automatically truncated by the logger
-	})
+	logger.LogWithStructure(ctx, logger.LevelDebug, "Image downloaded and converted", map[string]interface{}{
+		"original_url":          imageURL,
+		"original_content_type": contentType,
+		"final_content_type":    finalContentType,
+		"size_bytes":            len(imageData),
+		"base64_length":         len(base64Data),
+		"data_url":              dataURL, // This will be properly truncated by LogWithStructure
+	}, nil, nil, nil)
 
 	return dataURL, nil
 }
@@ -324,14 +358,77 @@ func (p *ImageProcessor) isValidImageType(contentType string) bool {
 		"image/jpg",
 		"image/gif",
 		"image/webp",
+		"image/bmp",
+		"image/tiff",
+		"image/svg+xml",
 	}
 
+	// Check for explicit image content types
 	for _, validType := range validTypes {
 		if strings.HasPrefix(contentType, validType) {
 			return true
 		}
 	}
+
+	// Accept generic content types that might contain images
+	// Many servers (like Telegram, Discord, etc.) return generic types for images
+	genericTypes := []string{
+		"application/octet-stream",
+		"binary/octet-stream",
+		"application/binary",
+	}
+
+	for _, genericType := range genericTypes {
+		if strings.HasPrefix(contentType, genericType) {
+			return true
+		}
+	}
+
 	return false
+}
+
+// detectImageFormat detects image format from the first few bytes (magic numbers)
+func (p *ImageProcessor) detectImageFormat(data []byte) (string, bool) {
+	if len(data) < 12 {
+		return "", false
+	}
+
+	// PNG: 89 50 4E 47 0D 0A 1A 0A
+	if len(data) >= 8 && data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 &&
+		data[4] == 0x0D && data[5] == 0x0A && data[6] == 0x1A && data[7] == 0x0A {
+		return "image/png", true
+	}
+
+	// JPEG: FF D8 FF
+	if len(data) >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+		return "image/jpeg", true
+	}
+
+	// GIF: 47 49 46 38 (GIF8)
+	if len(data) >= 4 && data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x38 {
+		return "image/gif", true
+	}
+
+	// WebP: 52 49 46 46 ... 57 45 42 50 (RIFF...WEBP)
+	if len(data) >= 12 && data[0] == 0x52 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x46 &&
+		data[8] == 0x57 && data[9] == 0x45 && data[10] == 0x42 && data[11] == 0x50 {
+		return "image/webp", true
+	}
+
+	// BMP: 42 4D
+	if len(data) >= 2 && data[0] == 0x42 && data[1] == 0x4D {
+		return "image/bmp", true
+	}
+
+	// TIFF: 49 49 2A 00 (little endian) or 4D 4D 00 2A (big endian)
+	if len(data) >= 4 {
+		if (data[0] == 0x49 && data[1] == 0x49 && data[2] == 0x2A && data[3] == 0x00) ||
+			(data[0] == 0x4D && data[1] == 0x4D && data[2] == 0x00 && data[3] == 0x2A) {
+			return "image/tiff", true
+		}
+	}
+
+	return "", false
 }
 
 // ProcessRequestBody processes the entire request body to handle image URLs
