@@ -11,6 +11,9 @@ import (
 	"github.com/aashari/go-generative-api-router/internal/logger"
 )
 
+// version is set at build time via ldflags
+var version = "unknown"
+
 // @title           Generative API Router
 // @version         1.0
 // @description     A router for generative AI models with OpenAI-compatible API.
@@ -69,6 +72,11 @@ func CORSMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
+	// Set VERSION environment variable from build-time version if not already set
+	if os.Getenv("VERSION") == "" {
+		os.Setenv("VERSION", version)
+	}
+
 	// Load environment variables from .env file (similar to Node.js dotenv)
 	if err := config.LoadEnvFromMultiplePaths(); err != nil {
 		// This is not fatal - the app can run with system environment variables
@@ -110,6 +118,7 @@ func main() {
 
 	logger.Info("Server starting",
 		"address", serverAddr,
+		"version", version,
 		"read_timeout", readTimeout,
 		"write_timeout", writeTimeout,
 		"idle_timeout", idleTimeout,

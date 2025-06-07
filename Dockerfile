@@ -1,4 +1,9 @@
 FROM golang:1.24-alpine AS builder
+
+# Accept VERSION build argument from CodeBuild
+ARG VERSION=unknown
+ENV VERSION=${VERSION}
+
 WORKDIR /app
 COPY . .
 
@@ -9,8 +14,8 @@ COPY . .
 # Generate Swagger documentation
 # RUN $(go env GOPATH)/bin/swag init -g cmd/server/main.go
 
-# Build the application
-RUN GOOS=linux go build -o generative-api-router ./cmd/server
+# Build the application with version information
+RUN GOOS=linux go build -ldflags "-X main.version=${VERSION}" -o generative-api-router ./cmd/server
 
 FROM alpine:latest
 WORKDIR /app
