@@ -18,6 +18,11 @@ func ValidateAndModifyRequest(body []byte, model string) ([]byte, string, error)
 		return nil, "", err
 	}
 
+	// Validate message content format (string or array for vision)
+	if err := validateMessageContent(requestData); err != nil {
+		return nil, "", err
+	}
+
 	// Validate tools if present
 	if err := validateTools(requestData); err != nil {
 		return nil, "", err
@@ -56,6 +61,84 @@ func validateMessages(requestData map[string]interface{}) error {
 	if _, ok := requestData["messages"]; !ok {
 		return fmt.Errorf("missing 'messages' field in request")
 	}
+	return nil
+}
+
+// validateMessageContent validates the content field in messages
+func validateMessageContent(requestData map[string]interface{}) error {
+	messages, ok := requestData["messages"].([]interface{})
+	if !ok {
+		return fmt.Errorf("invalid 'messages' format: must be an array")
+	}
+
+	for i, msg := range messages {
+		msgMap, ok := msg.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("invalid message at index %d: must be an object", i)
+		}
+
+		// Check if content exists
+		content, hasContent := msgMap["content"]
+		if !hasContent {
+			// Content might be optional for some message types (e.g., assistant messages with tool calls)
+			continue
+		}
+
+		// Content can be either a string or an array (for vision requests)
+		switch content := content.(type) {
+		case string:
+			// Valid string content
+			continue
+		case []interface{}:
+			// Valid array content - validate each part
+			if err := validateContentArray(content); err != nil {
+				return fmt.Errorf("invalid content array in message %d: %v", i, err)
+			}
+		default:
+			return fmt.Errorf("invalid content type in message %d: must be string or array", i)
+		}
+	}
+
+	return nil
+}
+
+// validateContentArray validates an array of content parts
+func validateContentArray(content []interface{}) error {
+	if len(content) == 0 {
+		return fmt.Errorf("content array cannot be empty")
+	}
+
+	for i, part := range content {
+		partMap, ok := part.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("invalid content part at index %d: must be an object", i)
+		}
+
+		// Validate type field
+		typeField, hasType := partMap["type"].(string)
+		if !hasType {
+			return fmt.Errorf("content part at index %d missing 'type' field", i)
+		}
+
+		// Validate based on type
+		switch typeField {
+		case "text":
+			if _, hasText := partMap["text"].(string); !hasText {
+				return fmt.Errorf("text content part at index %d missing 'text' field", i)
+			}
+		case "image_url":
+			imageURL, hasImageURL := partMap["image_url"].(map[string]interface{})
+			if !hasImageURL {
+				return fmt.Errorf("image_url content part at index %d missing 'image_url' field", i)
+			}
+			if _, hasURL := imageURL["url"].(string); !hasURL {
+				return fmt.Errorf("image_url content part at index %d missing 'url' field", i)
+			}
+		default:
+			return fmt.Errorf("unknown content type '%s' at index %d", typeField, i)
+		}
+	}
+
 	return nil
 }
 

@@ -1,0 +1,450 @@
+package proxy
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// Test image data (1x1 transparent PNG)
+const testImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+
+func TestImageProcessor_ProcessMessageContent(t *testing.T) {
+	processor := NewImageProcessor()
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		content  interface{}
+		expected interface{}
+		wantErr  bool
+	}{
+		{
+			name:     "string content unchanged",
+			content:  "Hello, world!",
+			expected: "Hello, world!",
+			wantErr:  false,
+		},
+		{
+			name: "array with text only",
+			content: []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": "What's in this image?",
+				},
+			},
+			expected: []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": "What's in this image?",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "array with base64 image unchanged",
+			content: []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": "Describe this",
+				},
+				map[string]interface{}{
+					"type": "image_url",
+					"image_url": map[string]interface{}{
+						"url": "data:image/png;base64," + testImageBase64,
+					},
+				},
+			},
+			expected: []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": "Describe this",
+				},
+				map[string]interface{}{
+					"type": "image_url",
+					"image_url": map[string]interface{}{
+						"url": "data:image/png;base64," + testImageBase64,
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := processor.ProcessMessageContent(ctx, tt.content)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestImageProcessor_isPublicURL(t *testing.T) {
+	processor := NewImageProcessor()
+
+	tests := []struct {
+		url      string
+		expected bool
+	}{
+		{"http://example.com/image.jpg", true},
+		{"https://example.com/image.png", true},
+		{"HTTP://EXAMPLE.COM", false}, // Case sensitive
+		{"data:image/png;base64,iVBORw0KG", false},
+		{"file:///path/to/image.jpg", false},
+		{"ftp://example.com/image.jpg", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.url, func(t *testing.T) {
+			result := processor.isPublicURL(tt.url)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestImageProcessor_isValidImageType(t *testing.T) {
+	processor := NewImageProcessor()
+
+	tests := []struct {
+		contentType string
+		expected    bool
+	}{
+		{"image/png", true},
+		{"image/jpeg", true},
+		{"image/jpg", true},
+		{"image/gif", true},
+		{"image/webp", true},
+		{"image/png; charset=utf-8", true}, // With parameters
+		{"text/html", false},
+		{"application/json", false},
+		{"image/svg+xml", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.contentType, func(t *testing.T) {
+			result := processor.isValidImageType(tt.contentType)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestImageProcessor_downloadAndConvertImage(t *testing.T) {
+	// Create test image server
+	imageData, _ := base64.StdEncoding.DecodeString(testImageBase64)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/valid.png":
+			w.Header().Set("Content-Type", "image/png")
+			w.Write(imageData)
+		case "/invalid-type":
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte("<html>Not an image</html>"))
+		case "/not-found":
+			w.WriteHeader(http.StatusNotFound)
+		case "/large-image":
+			w.Header().Set("Content-Type", "image/png")
+			// Write more than 20MB
+			for i := 0; i < 21*1024*1024; i++ {
+				w.Write([]byte{0})
+			}
+		case "/slow-image":
+			w.Header().Set("Content-Type", "image/png")
+			time.Sleep(40 * time.Second) // Longer than timeout
+			w.Write(imageData)
+		}
+	}))
+	defer server.Close()
+
+	processor := NewImageProcessor()
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "valid image download",
+			url:     server.URL + "/valid.png",
+			wantErr: false,
+		},
+		{
+			name:    "invalid content type",
+			url:     server.URL + "/invalid-type",
+			wantErr: true,
+			errMsg:  "invalid content type",
+		},
+		{
+			name:    "404 not found",
+			url:     server.URL + "/not-found",
+			wantErr: true,
+			errMsg:  "status 404",
+		},
+		{
+			name:    "image too large",
+			url:     server.URL + "/large-image",
+			wantErr: true,
+			errMsg:  "exceeds limit",
+		},
+		{
+			name:    "invalid URL",
+			url:     "not-a-url",
+			wantErr: true,
+			errMsg:  "failed to download",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := processor.downloadAndConvertImage(ctx, tt.url)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.True(t, strings.HasPrefix(result, "data:image/"))
+				assert.Contains(t, result, ";base64,")
+			}
+		})
+	}
+}
+
+func TestImageProcessor_ProcessContentParts_Concurrent(t *testing.T) {
+	// Create test server with multiple images
+	imageData, _ := base64.StdEncoding.DecodeString(testImageBase64)
+	requestCount := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(imageData)
+	}))
+	defer server.Close()
+
+	processor := NewImageProcessor()
+	ctx := context.Background()
+
+	// Create multiple image URLs
+	parts := []ContentPart{
+		{Type: "text", Text: "Compare these images:"},
+		{Type: "image_url", ImageURL: &ImageURL{URL: server.URL + "/image1.png"}},
+		{Type: "image_url", ImageURL: &ImageURL{URL: server.URL + "/image2.png"}},
+		{Type: "image_url", ImageURL: &ImageURL{URL: server.URL + "/image3.png"}},
+		{Type: "image_url", ImageURL: &ImageURL{URL: "data:image/png;base64," + testImageBase64}}, // Already base64
+	}
+
+	// Process concurrently
+	result, err := processor.processContentParts(ctx, parts)
+
+	require.NoError(t, err)
+	assert.Len(t, result, len(parts))
+
+	// Check text part unchanged
+	assert.Equal(t, "text", result[0].Type)
+	assert.Equal(t, "Compare these images:", result[0].Text)
+
+	// Check public URLs were converted
+	for i := 1; i <= 3; i++ {
+		assert.Equal(t, "image_url", result[i].Type)
+		assert.True(t, strings.HasPrefix(result[i].ImageURL.URL, "data:image/png;base64,"))
+	}
+
+	// Check base64 URL unchanged
+	assert.Equal(t, "data:image/png;base64,"+testImageBase64, result[4].ImageURL.URL)
+
+	// Verify concurrent processing happened (3 public URLs)
+	assert.Equal(t, 3, requestCount)
+}
+
+func TestImageProcessor_ProcessRequestBody(t *testing.T) {
+	// Create test server
+	imageData, _ := base64.StdEncoding.DecodeString(testImageBase64)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(imageData)
+	}))
+	defer server.Close()
+
+	processor := NewImageProcessor()
+	ctx := context.Background()
+
+	tests := []struct {
+		name         string
+		body         string
+		shouldModify bool
+		wantErr      bool
+	}{
+		{
+			name: "simple text message",
+			body: `{
+				"model": "gpt-4",
+				"messages": [{"role": "user", "content": "Hello"}]
+			}`,
+			shouldModify: false,
+			wantErr:      false,
+		},
+		{
+			name: "vision message with public URL",
+			body: fmt.Sprintf(`{
+				"model": "vision-model",
+				"messages": [{
+					"role": "user",
+					"content": [
+						{"type": "text", "text": "What's this?"},
+						{"type": "image_url", "image_url": {"url": "%s/test.png"}}
+					]
+				}]
+			}`, server.URL),
+			shouldModify: true,
+			wantErr:      false,
+		},
+		{
+			name: "vision message with base64",
+			body: `{
+				"model": "vision-model",
+				"messages": [{
+					"role": "user",
+					"content": [
+						{"type": "text", "text": "What's this?"},
+						{"type": "image_url", "image_url": {"url": "data:image/png;base64,` + testImageBase64 + `"}}
+					]
+				}]
+			}`,
+			shouldModify: false,
+			wantErr:      false,
+		},
+		{
+			name: "multiple messages with mixed content",
+			body: fmt.Sprintf(`{
+				"model": "vision-model",
+				"messages": [
+					{"role": "system", "content": "You are helpful"},
+					{"role": "user", "content": "First question"},
+					{"role": "assistant", "content": "First answer"},
+					{"role": "user", "content": [
+						{"type": "text", "text": "What's this?"},
+						{"type": "image_url", "image_url": {"url": "%s/test.png"}}
+					]}
+				]
+			}`, server.URL),
+			shouldModify: true,
+			wantErr:      false,
+		},
+		{
+			name:    "invalid JSON",
+			body:    `{invalid json}`,
+			wantErr: true,
+		},
+		{
+			name:         "no messages field",
+			body:         `{"model": "gpt-4"}`,
+			shouldModify: false,
+			wantErr:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := processor.ProcessRequestBody(ctx, []byte(tt.body))
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+
+				if tt.shouldModify {
+					// Check that result is different from input
+					assert.NotEqual(t, tt.body, string(result))
+
+					// Verify result is valid JSON
+					var parsed map[string]interface{}
+					err := json.Unmarshal(result, &parsed)
+					assert.NoError(t, err)
+
+					// Verify URLs were converted to base64
+					if messages, ok := parsed["messages"].([]interface{}); ok {
+						for _, msg := range messages {
+							if msgMap, ok := msg.(map[string]interface{}); ok {
+								if content, ok := msgMap["content"].([]interface{}); ok {
+									for _, part := range content {
+										if partMap, ok := part.(map[string]interface{}); ok {
+											if partMap["type"] == "image_url" {
+												if imgURL, ok := partMap["image_url"].(map[string]interface{}); ok {
+													url := imgURL["url"].(string)
+													if !strings.HasPrefix(url, "data:") {
+														t.Errorf("Expected base64 URL, got: %s", url)
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				} else {
+					// Result should be unchanged
+					assert.JSONEq(t, tt.body, string(result))
+				}
+			}
+		})
+	}
+}
+
+func TestImageProcessor_ConcurrentErrorHandling(t *testing.T) {
+	// Create test server that returns errors for some images
+	successCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/success1.png", "/success2.png":
+			imageData, _ := base64.StdEncoding.DecodeString(testImageBase64)
+			w.Header().Set("Content-Type", "image/png")
+			w.Write(imageData)
+			successCount++
+		case "/error1.png":
+			w.WriteHeader(http.StatusInternalServerError)
+		case "/error2.png":
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte("Not an image"))
+		}
+	}))
+	defer server.Close()
+
+	processor := NewImageProcessor()
+	ctx := context.Background()
+
+	parts := []ContentPart{
+		{Type: "image_url", ImageURL: &ImageURL{URL: server.URL + "/success1.png"}},
+		{Type: "image_url", ImageURL: &ImageURL{URL: server.URL + "/error1.png"}},
+		{Type: "image_url", ImageURL: &ImageURL{URL: server.URL + "/success2.png"}},
+		{Type: "image_url", ImageURL: &ImageURL{URL: server.URL + "/error2.png"}},
+	}
+
+	// Process should fail due to errors
+	_, err := processor.processContentParts(ctx, parts)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to process 2 images")
+}

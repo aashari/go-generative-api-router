@@ -56,8 +56,26 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 	logger.LogRequest(ctx, r.Method, r.URL.Path, r.Header.Get("User-Agent"),
 		map[string][]string(r.Header), body)
 
+	// Process image URLs if present (convert public URLs to base64)
+	imageProcessor := NewImageProcessor()
+	processedBody, err := imageProcessor.ProcessRequestBody(ctx, body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "Image processing failed", "error", err)
+		http.Error(w, "Failed to process images: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Log if images were processed
+	if len(processedBody) != len(body) {
+		logger.LogMultipleData(ctx, logger.LevelInfo, "Request body modified after image processing", map[string]any{
+			"original_size":   len(body),
+			"processed_size":  len(processedBody),
+			"size_difference": len(processedBody) - len(body),
+		})
+	}
+
 	// Validate and modify request
-	modifiedBody, originalModel, err := validator.ValidateAndModifyRequest(body, selection.Model)
+	modifiedBody, originalModel, err := validator.ValidateAndModifyRequest(processedBody, selection.Model)
 	if err != nil {
 		logger.ErrorCtx(ctx, "Request validation failed", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -66,9 +84,10 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 
 	// Log the complete proxy request with all data
 	logger.LogProxyRequest(ctx, originalModel, selection.Vendor, selection.Model, len(creds)*len(models), map[string]any{
-		"original_request_body": string(body),
-		"modified_request_body": string(modifiedBody),
-		"request_headers":       r.Header,
+		"original_request_body":  string(body),
+		"processed_request_body": string(processedBody),
+		"modified_request_body":  string(modifiedBody),
+		"request_headers":        r.Header,
 		"selection_details": map[string]any{
 			"vendor":                selection.Vendor,
 			"model":                 selection.Model,
@@ -78,6 +97,11 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 		"validation_result": map[string]any{
 			"original_model": originalModel,
 			"target_model":   selection.Model,
+		},
+		"image_processing": map[string]any{
+			"body_modified":  len(processedBody) != len(body),
+			"original_size":  len(body),
+			"processed_size": len(processedBody),
 		},
 	})
 
