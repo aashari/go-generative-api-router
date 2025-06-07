@@ -413,6 +413,131 @@ func TestImageProcessor_ProcessRequestBody(t *testing.T) {
 	}
 }
 
+func TestImageProcessor_ProcessRequestBodyWithHeaders(t *testing.T) {
+	// Create test server that requires authentication
+	authToken := "Bearer test-token-123"
+	imageData, _ := base64.StdEncoding.DecodeString(testImageBase64)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the authorization header is present
+		if r.Header.Get("Authorization") != authToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("Unauthorized"))
+			return
+		}
+
+		// Check custom header
+		if r.Header.Get("X-Custom-Header") != "custom-value" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Missing custom header"))
+			return
+		}
+
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(imageData)
+	}))
+	defer server.Close()
+
+	processor := NewImageProcessor()
+	ctx := context.Background()
+
+	// Test request with headers
+	requestBody := fmt.Sprintf(`{
+		"model": "vision-model",
+		"messages": [{
+			"role": "user",
+			"content": [
+				{"type": "text", "text": "What's this?"},
+				{
+					"type": "image_url", 
+					"image_url": {
+						"url": "%s/test.png",
+						"headers": {
+							"Authorization": "%s",
+							"X-Custom-Header": "custom-value"
+						}
+					}
+				}
+			]
+		}]
+	}`, server.URL, authToken)
+
+	processedBody, err := processor.ProcessRequestBody(ctx, []byte(requestBody))
+	assert.NoError(t, err)
+
+	// Parse the processed body
+	var processedData map[string]interface{}
+	err = json.Unmarshal(processedBody, &processedData)
+	assert.NoError(t, err)
+
+	// Verify the structure
+	messages := processedData["messages"].([]interface{})
+	message := messages[0].(map[string]interface{})
+	content := message["content"].([]interface{})
+
+	// Find the image_url part
+	var imageURLPart map[string]interface{}
+	for _, part := range content {
+		if partMap := part.(map[string]interface{}); partMap["type"] == "image_url" {
+			imageURLPart = partMap
+			break
+		}
+	}
+
+	assert.NotNil(t, imageURLPart)
+	imageURL := imageURLPart["image_url"].(map[string]interface{})
+
+	// Verify URL was converted to base64
+	url := imageURL["url"].(string)
+	assert.True(t, strings.HasPrefix(url, "data:image/png;base64,"))
+
+	// Verify headers are NOT present in the final output (removed for vendor compatibility)
+	_, headersExist := imageURL["headers"]
+	assert.False(t, headersExist, "Headers should be removed from the final output")
+}
+
+func TestImageProcessor_ProcessRequestBodyWithMissingHeaders(t *testing.T) {
+	// Create test server that requires authentication
+	authToken := "Bearer test-token-123"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the authorization header is present
+		if r.Header.Get("Authorization") != authToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("Unauthorized"))
+			return
+		}
+
+		w.Header().Set("Content-Type", "image/png")
+		w.Write([]byte("fake-image-data"))
+	}))
+	defer server.Close()
+
+	processor := NewImageProcessor()
+	ctx := context.Background()
+
+	// Test request without required headers (should fail)
+	requestBody := fmt.Sprintf(`{
+		"model": "vision-model",
+		"messages": [{
+			"role": "user",
+			"content": [
+				{"type": "text", "text": "What's this?"},
+				{
+					"type": "image_url", 
+					"image_url": {
+						"url": "%s/test.png"
+					}
+				}
+			]
+		}]
+	}`, server.URL)
+
+	_, err := processor.ProcessRequestBody(ctx, []byte(requestBody))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to download image: status 401")
+}
+
 func TestImageProcessor_ConcurrentErrorHandling(t *testing.T) {
 	// Create test server that returns errors for some images
 	successCount := 0

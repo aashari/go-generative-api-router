@@ -40,7 +40,8 @@ type ContentPart struct {
 
 // ImageURL represents an image URL structure
 type ImageURL struct {
-	URL string `json:"url"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // ProcessResult holds the result of processing a content part
@@ -90,9 +91,25 @@ func (p *ImageProcessor) processContentArray(ctx context.Context, arr []interfac
 
 			// Extract image_url
 			if imageURLVal, ok := itemMap["image_url"].(map[string]interface{}); ok {
+				imageURL := &ImageURL{}
+
+				// Extract URL
 				if urlStr, ok := imageURLVal["url"].(string); ok {
-					part.ImageURL = &ImageURL{URL: urlStr}
+					imageURL.URL = urlStr
 				}
+
+				// Extract headers if present
+				if headersVal, ok := imageURLVal["headers"].(map[string]interface{}); ok {
+					headers := make(map[string]string)
+					for key, value := range headersVal {
+						if strValue, ok := value.(string); ok {
+							headers[key] = strValue
+						}
+					}
+					imageURL.Headers = headers
+				}
+
+				part.ImageURL = imageURL
 			}
 
 			parts = append(parts, part)
@@ -117,9 +134,11 @@ func (p *ImageProcessor) processContentArray(ctx context.Context, arr []interfac
 		}
 
 		if part.Type == "image_url" && part.ImageURL != nil {
-			partMap["image_url"] = map[string]interface{}{
+			// Create image_url object without headers (headers are removed for vendor compatibility)
+			imageURLMap := map[string]interface{}{
 				"url": part.ImageURL.URL,
 			}
+			partMap["image_url"] = imageURLMap
 		}
 
 		result[i] = partMap
@@ -162,7 +181,7 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 			defer wg.Done()
 
 			part := parts[pIdx]
-			processedURL, err := p.downloadAndConvertImage(ctx, part.ImageURL.URL)
+			processedURL, err := p.downloadAndConvertImageWithHeaders(ctx, part.ImageURL.URL, part.ImageURL.Headers)
 
 			result := ProcessResult{
 				Index: pIdx,
@@ -170,6 +189,7 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 					Type: "image_url",
 					ImageURL: &ImageURL{
 						URL: processedURL,
+						// Note: Headers are intentionally omitted here to remove them from vendor request
 					},
 				},
 				Error: err,
@@ -218,10 +238,16 @@ func (p *ImageProcessor) isPublicURL(url string) bool {
 	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
 }
 
-// downloadAndConvertImage downloads an image from a URL and converts it to base64
+// downloadAndConvertImage downloads an image from a URL and converts it to base64 (backward compatibility)
 func (p *ImageProcessor) downloadAndConvertImage(ctx context.Context, imageURL string) (string, error) {
-	logger.LogMultipleData(ctx, logger.LevelDebug, "Downloading image from URL", map[string]any{
-		"url": imageURL,
+	return p.downloadAndConvertImageWithHeaders(ctx, imageURL, nil)
+}
+
+// downloadAndConvertImageWithHeaders downloads an image from a URL with custom headers and converts it to base64
+func (p *ImageProcessor) downloadAndConvertImageWithHeaders(ctx context.Context, imageURL string, headers map[string]string) (string, error) {
+	logger.LogMultipleData(ctx, logger.LevelDebug, "Downloading image from URL with headers", map[string]any{
+		"url":     imageURL,
+		"headers": headers,
 	})
 
 	// Create request with context
@@ -232,6 +258,18 @@ func (p *ImageProcessor) downloadAndConvertImage(ctx context.Context, imageURL s
 
 	// Set user agent to avoid blocks
 	req.Header.Set("User-Agent", "Generative-API-Router/1.0")
+
+	// Add custom headers if provided
+	if headers != nil {
+		for key, value := range headers {
+			req.Header.Set(key, value)
+			logger.LogMultipleData(ctx, logger.LevelDebug, "Added custom header for image download", map[string]any{
+				"header_key":   key,
+				"header_value": value,
+				"url":          imageURL,
+			})
+		}
+	}
 
 	// Download the image
 	resp, err := p.httpClient.Do(req)
