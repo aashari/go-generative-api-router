@@ -110,7 +110,17 @@ func TestStructuredLogging(t *testing.T) {
 
 	// Setup logger with buffer
 	originalLogger := Logger
-	defer func() { Logger = originalLogger }()
+	originalServiceName := ServiceName
+	originalEnvironment := Environment
+	defer func() {
+		Logger = originalLogger
+		ServiceName = originalServiceName
+		Environment = originalEnvironment
+	}()
+
+	// Set the global service name and environment
+	ServiceName = "test-service"
+	Environment = "test"
 
 	handler := &StructuredJSONHandler{
 		writer:      &buf,
@@ -150,6 +160,7 @@ func TestStructuredLogging(t *testing.T) {
 	var logEntry StructuredLogEntry
 	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
 		t.Errorf("Log output is not valid JSON: %v", err)
+		return
 	}
 
 	// Verify all sections are present
@@ -172,7 +183,17 @@ func TestLogRequest(t *testing.T) {
 
 	// Setup logger with buffer
 	originalLogger := Logger
-	defer func() { Logger = originalLogger }()
+	originalServiceName := ServiceName
+	originalEnvironment := Environment
+	defer func() {
+		Logger = originalLogger
+		ServiceName = originalServiceName
+		Environment = originalEnvironment
+	}()
+
+	// Set the global service name and environment
+	ServiceName = "test-service"
+	Environment = "test"
 
 	handler := &StructuredJSONHandler{
 		writer:      &buf,
@@ -194,7 +215,8 @@ func TestLogRequest(t *testing.T) {
 	output := buf.String()
 	var logEntry StructuredLogEntry
 	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
-		t.Errorf("Log output is not valid JSON: %v", err)
+		t.Errorf("Log output is not valid JSON: %v\nActual output: %s", err, output)
+		return
 	}
 
 	// Verify request data is in request section

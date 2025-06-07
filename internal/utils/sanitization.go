@@ -274,3 +274,109 @@ func (m *SensitiveDataMasker) GetMaskedString(value interface{}) string {
 	masked := m.MaskSensitiveData(value)
 	return fmt.Sprintf("%v", masked)
 }
+
+// TruncateBase64InData truncates base64 strings in data URLs for logging
+func TruncateBase64InData(data interface{}) interface{} {
+	return truncateBase64Value(reflect.ValueOf(data)).Interface()
+}
+
+// truncateBase64Value recursively truncates base64 strings in reflect.Value
+func truncateBase64Value(v reflect.Value) reflect.Value {
+	if !v.IsValid() {
+		return v
+	}
+
+	switch v.Kind() {
+	case reflect.String:
+		return reflect.ValueOf(truncateBase64String(v.String()))
+
+	case reflect.Map:
+		return truncateBase64Map(v)
+
+	case reflect.Slice, reflect.Array:
+		return truncateBase64Slice(v)
+
+	case reflect.Struct:
+		return truncateBase64Struct(v)
+
+	case reflect.Ptr:
+		if v.IsNil() {
+			return v
+		}
+		elem := truncateBase64Value(v.Elem())
+		newPtr := reflect.New(elem.Type())
+		newPtr.Elem().Set(elem)
+		return newPtr
+
+	case reflect.Interface:
+		if v.IsNil() {
+			return v
+		}
+		return reflect.ValueOf(TruncateBase64InData(v.Interface()))
+
+	default:
+		return v
+	}
+}
+
+// truncateBase64String truncates base64 data in data URLs
+func truncateBase64String(s string) string {
+	// Check if it's a data URL with base64
+	if strings.HasPrefix(s, "data:") && strings.Contains(s, ";base64,") {
+		parts := strings.SplitN(s, ";base64,", 2)
+		if len(parts) == 2 {
+			base64Data := parts[1]
+			if len(base64Data) > 100 {
+				// Truncate to first 50 and last 50 characters with indicator
+				truncated := base64Data[:50] + "...[" + fmt.Sprintf("%d chars truncated", len(base64Data)-100) + "]..." + base64Data[len(base64Data)-50:]
+				return parts[0] + ";base64," + truncated
+			}
+		}
+	}
+	return s
+}
+
+// truncateBase64Map truncates base64 data in maps
+func truncateBase64Map(v reflect.Value) reflect.Value {
+	if v.IsNil() {
+		return v
+	}
+
+	newMap := reflect.MakeMap(v.Type())
+	for _, key := range v.MapKeys() {
+		value := v.MapIndex(key)
+		truncatedValue := truncateBase64Value(value)
+		newMap.SetMapIndex(key, truncatedValue)
+	}
+	return newMap
+}
+
+// truncateBase64Slice truncates base64 data in slices and arrays
+func truncateBase64Slice(v reflect.Value) reflect.Value {
+	newSlice := reflect.MakeSlice(v.Type(), v.Len(), v.Cap())
+	for i := 0; i < v.Len(); i++ {
+		truncatedValue := truncateBase64Value(v.Index(i))
+		newSlice.Index(i).Set(truncatedValue)
+	}
+	return newSlice
+}
+
+// truncateBase64Struct truncates base64 data in structs
+func truncateBase64Struct(v reflect.Value) reflect.Value {
+	newStruct := reflect.New(v.Type()).Elem()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldType := v.Type().Field(i)
+
+		if !field.CanInterface() {
+			continue
+		}
+
+		truncatedValue := truncateBase64Value(field)
+		if newStruct.Field(i).CanSet() && truncatedValue.Type().AssignableTo(fieldType.Type) {
+			newStruct.Field(i).Set(truncatedValue)
+		}
+	}
+	return newStruct
+}

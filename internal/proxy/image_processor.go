@@ -310,6 +310,7 @@ func (p *ImageProcessor) downloadAndConvertImageWithHeaders(ctx context.Context,
 		"content_type":  contentType,
 		"size_bytes":    len(imageData),
 		"base64_length": len(base64Data),
+		"data_url":      dataURL, // This will be automatically truncated by the logger
 	})
 
 	return dataURL, nil

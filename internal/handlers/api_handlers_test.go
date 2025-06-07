@@ -7,11 +7,21 @@ import (
 	"testing"
 
 	"github.com/aashari/go-generative-api-router/internal/config"
+	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/proxy"
 	"github.com/aashari/go-generative-api-router/internal/selector"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMain runs before all tests in this package
+func TestMain(m *testing.M) {
+	// Initialize logger for all tests
+	if err := logger.Init(logger.DefaultConfig); err != nil {
+		panic("Failed to initialize logger: " + err.Error())
+	}
+	m.Run()
+}
 
 func TestNewAPIHandlers(t *testing.T) {
 	creds := []config.Credential{

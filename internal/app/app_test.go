@@ -7,11 +7,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewApp_Success(t *testing.T) {
+	// Initialize logger for tests
+	if err := logger.Init(logger.DefaultConfig); err != nil {
+		t.Fatalf("Failed to initialize logger: %v", err)
+	}
+
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
 
@@ -84,6 +90,11 @@ func TestNewApp_Success(t *testing.T) {
 }
 
 func TestNewApp_MissingCredentialsFile(t *testing.T) {
+	// Initialize logger for tests
+	if err := logger.Init(logger.DefaultConfig); err != nil {
+		t.Fatalf("Failed to initialize logger: %v", err)
+	}
+
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
 
@@ -126,6 +137,11 @@ func TestNewApp_MissingCredentialsFile(t *testing.T) {
 }
 
 func TestNewApp_InvalidCredentialsJSON(t *testing.T) {
+	// Initialize logger for tests
+	if err := logger.Init(logger.DefaultConfig); err != nil {
+		t.Fatalf("Failed to initialize logger: %v", err)
+	}
+
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
 
@@ -171,6 +187,11 @@ func TestNewApp_InvalidCredentialsJSON(t *testing.T) {
 }
 
 func TestNewApp_MissingModelsFile(t *testing.T) {
+	// Initialize logger for tests
+	if err := logger.Init(logger.DefaultConfig); err != nil {
+		t.Fatalf("Failed to initialize logger: %v", err)
+	}
+
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
 
@@ -216,6 +237,11 @@ func TestNewApp_MissingModelsFile(t *testing.T) {
 }
 
 func TestNewApp_ValidationError(t *testing.T) {
+	// Initialize logger for tests
+	if err := logger.Init(logger.DefaultConfig); err != nil {
+		t.Fatalf("Failed to initialize logger: %v", err)
+	}
+
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
 
@@ -265,6 +291,11 @@ func TestNewApp_ValidationError(t *testing.T) {
 }
 
 func TestApp_SetupRoutes(t *testing.T) {
+	// Initialize logger for tests
+	if err := logger.Init(logger.DefaultConfig); err != nil {
+		t.Fatalf("Failed to initialize logger: %v", err)
+	}
+
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
 
@@ -328,6 +359,11 @@ func TestApp_SetupRoutes(t *testing.T) {
 }
 
 func TestNewApp_EmptyCredentials(t *testing.T) {
+	// Initialize logger for tests
+	if err := logger.Init(logger.DefaultConfig); err != nil {
+		t.Fatalf("Failed to initialize logger: %v", err)
+	}
+
 	// Create configs directory
 	os.MkdirAll("configs", 0755)
 

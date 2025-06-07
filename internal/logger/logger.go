@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // Logger levels
@@ -233,6 +235,20 @@ func (h *StructuredJSONHandler) Handle(ctx context.Context, r slog.Record) error
 		entry.Error = nil
 	}
 
+	// Truncate base64 strings in all data structures
+	if entry.Attributes != nil {
+		entry.Attributes = utils.TruncateBase64InData(entry.Attributes).(map[string]interface{})
+	}
+	if entry.Request != nil {
+		entry.Request = utils.TruncateBase64InData(entry.Request).(map[string]interface{})
+	}
+	if entry.Response != nil {
+		entry.Response = utils.TruncateBase64InData(entry.Response).(map[string]interface{})
+	}
+	if entry.Error != nil {
+		entry.Error = utils.TruncateBase64InData(entry.Error).(map[string]interface{})
+	}
+
 	// Marshal and write
 	data, err := json.Marshal(entry)
 	if err != nil {
@@ -337,33 +353,66 @@ func appendContextValues(ctx context.Context, args []any) []any {
 
 // Structured logging functions for the new format
 
-// LogWithStructure logs with the new structured format
+// LogWithStructure logs data in a structured format with base64 truncation
 func LogWithStructure(ctx context.Context, level slog.Level, message string, attributes map[string]interface{}, request map[string]interface{}, response map[string]interface{}, errorData map[string]interface{}) {
-	logger := WithContext(ctx)
-
-	args := []any{}
-
-	// Add attributes
-	for k, v := range attributes {
-		args = append(args, k, v)
+	// Truncate base64 strings in all data structures
+	if attributes != nil {
+		attributes = utils.TruncateBase64InData(attributes).(map[string]interface{})
+	}
+	if request != nil {
+		request = utils.TruncateBase64InData(request).(map[string]interface{})
+	}
+	if response != nil {
+		response = utils.TruncateBase64InData(response).(map[string]interface{})
+	}
+	if errorData != nil {
+		errorData = utils.TruncateBase64InData(errorData).(map[string]interface{})
 	}
 
-	// Add request data with prefix
-	for k, v := range request {
-		args = append(args, "request_"+k, v)
+	// Create structured log entry
+	entry := StructuredLogEntry{
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		Level:       level.String(),
+		Message:     message,
+		Service:     ServiceName,
+		Environment: Environment,
+		Attributes:  attributes,
+		Request:     request,
+		Response:    response,
+		Error:       errorData,
 	}
 
-	// Add response data with prefix
-	for k, v := range response {
-		args = append(args, "response_"+k, v)
+	// Add context values to attributes
+	if entry.Attributes == nil {
+		entry.Attributes = make(map[string]interface{})
 	}
 
-	// Add error data with prefix
-	for k, v := range errorData {
-		args = append(args, "error_"+k, v)
+	// Add vendor and model from context if available
+	if vendor := ctx.Value(VendorKey); vendor != nil {
+		entry.Attributes["vendor"] = vendor
+	}
+	if model := ctx.Value(ModelKey); model != nil {
+		entry.Attributes["model"] = model
+	}
+	if requestID := ctx.Value(RequestIDKey); requestID != nil {
+		entry.Attributes["request_id"] = requestID
 	}
 
-	logger.Log(ctx, level, message, args...)
+	// Use the structured JSON handler
+	if handler, ok := Logger.Handler().(*StructuredJSONHandler); ok {
+		jsonData, _ := json.Marshal(entry)
+		handler.writer.Write(jsonData)
+		handler.writer.Write([]byte("\n"))
+	} else {
+		// Fallback to standard slog
+		args := make([]any, 0)
+		if entry.Attributes != nil {
+			for k, v := range entry.Attributes {
+				args = append(args, k, v)
+			}
+		}
+		Logger.Log(ctx, level, message, args...)
+	}
 }
 
 // LogRequest logs HTTP request data in the new structure
@@ -373,7 +422,7 @@ func LogRequest(ctx context.Context, method, path, userAgent string, headers map
 		"path":           path,
 		"user_agent":     userAgent,
 		"headers":        headers,
-		"body":           string(body),
+		"body":           utils.TruncateBase64InData(string(body)),
 		"content_length": len(body),
 	}
 
@@ -385,7 +434,7 @@ func LogResponse(ctx context.Context, statusCode int, headers map[string][]strin
 	response := map[string]interface{}{
 		"status_code":    statusCode,
 		"headers":        headers,
-		"body":           string(body),
+		"body":           utils.TruncateBase64InData(string(body)),
 		"content_length": len(body),
 	}
 
@@ -400,12 +449,12 @@ func LogVendorCommunication(ctx context.Context, vendor, url string, requestBody
 	}
 
 	request := map[string]interface{}{
-		"body":    string(requestBody),
+		"body":    utils.TruncateBase64InData(string(requestBody)),
 		"headers": requestHeaders,
 	}
 
 	response := map[string]interface{}{
-		"body":    string(responseBody),
+		"body":    utils.TruncateBase64InData(string(responseBody)),
 		"headers": responseHeaders,
 	}
 
