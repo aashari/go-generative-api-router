@@ -551,6 +551,29 @@ Example scripts are provided in the `examples/` directory:
    ```
    - Expected: JSON parsing error with proper error structure
 
+### **Vision API Testing**
+
+1. **Basic Vision API Test**:
+   ```bash
+   # Test with public image URL (automatic download and conversion)
+   curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"vision-test","messages":[{"role":"user","content":[{"type":"text","text":"What do you see?"},{"type":"image_url","image_url":{"url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/400px-Cat03.jpg"}}]}],"max_tokens":100}' | jq '.choices[0].message.content' | cat
+   ```
+
+2. **Vision API with Custom Headers**:
+   ```bash
+   # Test with authentication headers (will fail with invalid token, but shows functionality)
+   curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"vision-auth-test","messages":[{"role":"user","content":[{"type":"text","text":"Analyze this protected image"},{"type":"image_url","image_url":{"url":"https://api.example.com/protected/image.jpg","headers":{"Authorization":"Bearer test-token","User-Agent":"CustomBot/1.0"}}}]}],"max_tokens":50}' | cat
+   ```
+
+3. **Monitor Image Processing**:
+   ```bash
+   # Check image processing logs
+   grep "image" logs/server.log | tail -5 | cat
+   
+   # Monitor concurrent processing
+   grep "Processing image URLs concurrently" logs/server.log | tail -3 | cat
+   ```
+
 ### **Reliability Feature Testing**
 
 1. **Circuit Breaker Testing**:
@@ -662,8 +685,8 @@ curl http://localhost:8082/health && echo "✅ Health OK" && curl -X POST "http:
 # Quick health check all endpoints
 echo "Health:" && curl -s http://localhost:8082/health | jq '.status' && echo "Models:" && curl -s http://localhost:8082/v1/models | jq '.data | length' && echo "models available" | cat
 
-# Log monitoring with error filtering and vendor tracking
-tail -f logs/server.log | grep -E "(error|Error|failed|Failed|Even distribution|CircuitBreaker)" --color=always
+# Log monitoring with error filtering, vendor tracking, and image processing
+tail -f logs/server.log | grep -E "(error|Error|failed|Failed|Even distribution|CircuitBreaker|image)" --color=always
 
 # Process and memory status with configuration check
 echo "=== PROCESS STATUS ===" && ps aux | grep -E "(server|go)" | grep -v grep && echo "=== MEMORY USAGE ===" && free -h && echo "=== CONFIG STATUS ===" && cat configs/credentials.json | jq length && echo "credentials" && cat configs/models.json | jq length && echo "models" | cat
@@ -689,7 +712,7 @@ echo "=== Response Time Test ===" && time curl -s http://localhost:8082/health >
 
 ```bash
 # Comprehensive multi-vendor API test
-echo "=== HEALTH TEST ===" && curl http://localhost:8082/health | jq '.status' && echo "=== MODELS TEST ===" && curl -s http://localhost:8082/v1/models | jq '.data | length' && echo "models available" && echo "=== OPENAI VENDOR TEST ===" && curl -s -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test-openai","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' | jq '.model' && echo "=== GEMINI VENDOR TEST ===" && curl -s -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test-gemini","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' | jq '.model' | cat
+echo "=== HEALTH TEST ===" && curl http://localhost:8082/health | jq '.status' && echo "=== MODELS TEST ===" && curl -s http://localhost:8082/v1/models | jq '.data | length' && echo "models available" && echo "=== OPENAI VENDOR TEST ===" && curl -s -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test-openai","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' | jq '.model' && echo "=== GEMINI VENDOR TEST ===" && curl -s -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test-gemini","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' | jq '.model' && echo "=== VISION API TEST ===" && curl -s -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"vision-test","messages":[{"role":"user","content":[{"type":"text","text":"What do you see?"},{"type":"image_url","image_url":{"url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/400px-Cat03.jpg"}}]}],"max_tokens":20}' | jq '.choices[0].finish_reason' | cat
 
 # Streaming test with vendor selection
 curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"stream-test","messages":[{"role":"user","content":"Count 1 to 3"}],"stream":true,"max_tokens":20}' | head -10 | cat

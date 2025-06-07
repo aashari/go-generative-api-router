@@ -39,6 +39,7 @@ The service has undergone comprehensive enterprise-grade improvements:
 ### **User & API Documentation** (docs/)
 - **[User Guide](mdc:../docs/user-guide.md)** - *When integrating with the service* - API usage, configuration, client examples
 - **[API Reference](mdc:../docs/api-reference.md)** - *When implementing API calls* - Complete API documentation with examples
+- **[Vision API Guide](mdc:../docs/user/PUBLIC_IMAGE_URL_SUPPORT.md)** - *When using vision API* - Image processing, custom headers, authentication
 - **[Examples](mdc:../examples)** - *When writing client code* - Ready-to-use examples in Python, Node.js, Go
 
 ### **Development Documentation** (docs/)
@@ -151,6 +152,25 @@ curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" \
   -d '{"model": "my-model", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
+### **Vision API & Image Processing**
+
+**IMPORTANT**: The service supports OpenAI-compatible vision API with automatic image processing:
+
+- **Public URL Detection**: Automatically downloads and converts http/https URLs to base64
+- **Custom Headers Support**: Authentication, user-agent, referer headers for protected images
+- **Concurrent Processing**: Multiple images processed simultaneously for performance
+- **Header Removal**: Headers automatically removed before sending to vendors for compatibility
+
+```bash
+# Test vision API with custom headers
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "vision-test", "messages": [{"role": "user", "content": [{"type": "text", "text": "What do you see?"}, {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg", "headers": {"Authorization": "Bearer token"}}}]}]}' | cat
+
+# Monitor image processing in logs
+grep "image" logs/server.log | tail -5 | cat
+```
+
 ## Environment Management
 
 ### 🔧 Key Environment Variables
@@ -216,6 +236,7 @@ aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-task-definition --t
 - **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs through OpenAI-compatible endpoints.
 - **`internal/proxy/response_processor.go`**: Processes non-streaming responses from vendors.
 - **`internal/proxy/stream_processor.go`**: Handles streaming responses from vendors.
+- **`internal/proxy/image_processor.go`**: **NEW** - Handles vision API image processing with concurrent downloads and custom headers support.
 - **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models (EvenDistributionSelector for fair distribution).
 - **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request.
 - **`internal/config/config.go`**: Loads and manages configuration from JSON files.
@@ -777,6 +798,11 @@ aws --profile $AWS_PROFILE --region $AWS_REGION logs create-export-task --log-gr
     *   AWS account IDs, access keys, secrets
     *   Infrastructure IDs (VPCs, subnets, security groups)
     *   Any hardcoded credentials or tokens
+*   **Vision API Testing**: When testing vision API with custom headers:
+    *   Headers are used during download but removed before sending to vendors
+    *   Test with both public URLs and protected URLs requiring authentication
+    *   Monitor logs for image processing details: `grep "image" logs/server.log`
+    *   Verify concurrent processing works with multiple images
 
 ---
 
