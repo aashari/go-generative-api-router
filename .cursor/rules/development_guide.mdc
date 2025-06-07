@@ -9,6 +9,27 @@ This guide provides development workflow, best practices, and architectural guid
 
 > **Quick Start**: For setup and running instructions, see [Running and Testing Guide](mdc:running_and_testing.mdc)
 
+## 🏗️ **Project Architecture Overview**
+
+### **Core Concept: Multi-Vendor OpenAI-Compatible Router**
+
+This service is a **transparent proxy** that provides a unified OpenAI-compatible API interface while routing requests to multiple LLM vendors behind the scenes. Key architectural principles:
+
+1. **OpenAI API Compatibility**: All vendors (OpenAI, Gemini) are accessed through OpenAI-compatible endpoints
+2. **Transparent Model Handling**: Client sends model name → Router selects vendor/model → Router restores original model name in response
+3. **Multi-Vendor Design**: Currently supports 19 credentials (18 Gemini + 1 OpenAI) with 4 models (2 Gemini + 2 OpenAI)
+4. **Even Distribution**: Fair selection across all vendor-credential-model combinations (114 total combinations)
+
+### **Recent Major Improvements (2024)**
+
+The service has undergone comprehensive enterprise-grade improvements:
+
+- ✅ **Security Enhancements**: AES-GCM encryption for credentials, sensitive data masking in logs
+- ✅ **Reliability Features**: Exponential backoff retry logic, circuit breaker pattern implementation
+- ✅ **Monitoring & Health**: Comprehensive health checks with vendor connectivity monitoring
+- ✅ **Code Quality**: DRY principles, centralized utilities, eliminated code duplication
+- ✅ **Performance**: Production-optimized logging, conditional detail levels
+
 ## 📚 **Documentation Quick Reference**
 
 ### **Core Development Guides** (.cursor/rules/)
@@ -16,15 +37,17 @@ This guide provides development workflow, best practices, and architectural guid
 - **[Running & Testing Guide](mdc:running_and_testing.mdc)** - Setup, testing procedures, debugging techniques
 
 ### **User & API Documentation** (docs/)
-- **[User Guide](mdc:../docs/user/README.md)** - *When integrating with the service* - API usage, configuration, client examples
-- **[API Reference](mdc:../docs/api)** - *When implementing API calls* - OpenAPI specs, endpoint documentation
+- **[User Guide](mdc:../docs/user-guide.md)** - *When integrating with the service* - API usage, configuration, client examples
+- **[API Reference](mdc:../docs/api-reference.md)** - *When implementing API calls* - Complete API documentation with examples
 - **[Examples](mdc:../examples)** - *When writing client code* - Ready-to-use examples in Python, Node.js, Go
 
-### **Development Documentation** (docs/development/)
-- **[Development Guide](mdc:../docs/development/DEVELOPMENT.md)** - *When setting up locally* - Quick start, project structure, daily commands
-- **[Contributing Guide](mdc:../docs/development/CONTRIBUTING.md)** - *When contributing code* - PR process, coding standards, review guidelines
-- **[Testing Guide](mdc:../docs/development/TESTING.md)** - *When writing/running tests* - Test strategies, coverage, debugging
-- **[Deployment Guide](mdc:../docs/development/DEPLOYMENT.md)** - *When managing AWS infrastructure* - xyz-aduh-genapi service, monitoring, troubleshooting
+### **Development Documentation** (docs/)
+- **[Development Guide](mdc:../docs/development-guide.md)** - *When setting up locally* - Quick start, project structure, daily commands
+- **[Contributing Guide](mdc:../docs/contributing-guide.md)** - *When contributing code* - PR process, coding standards, review guidelines
+- **[Testing Guide](mdc:../docs/testing-guide.md)** - *When writing/running tests* - Test strategies, coverage, debugging
+- **[Deployment Guide](mdc:../docs/deployment-guide.md)** - *When managing AWS infrastructure* - Production deployment, monitoring, troubleshooting
+- **[Logging Guide](mdc:../docs/logging-guide.md)** - *When debugging issues* - Comprehensive logging system documentation
+- **[Production Monitoring Guide](mdc:../docs/production-monitoring-guide.md)** - *When monitoring production* - Log querying, monitoring procedures
 
 ### **Project Overview**
 - **[Main README](mdc:../README.md)** - *When getting project overview* - Features, quick start, architecture summary
@@ -35,6 +58,7 @@ This guide provides development workflow, best practices, and architectural guid
 ## Table of Contents
 
 - [Essential Development Rules](mdc:#essential-development-rules) - Core principles and mandatory approaches
+- [Multi-Vendor Architecture](mdc:#multi-vendor-architecture) - Understanding the OpenAI-compatible design
 - [Environment Management](mdc:#environment-management) - AWS profiles, variables, and configuration
 - [Project Structure](mdc:#project-structure) - Architecture and file organization
 - [Terminal Command Rules](mdc:#terminal-command-rules) - Essential command-line best practices
@@ -58,6 +82,7 @@ This guide provides development workflow, best practices, and architectural guid
 5. **Environment Variables**: Always use proper environment variables for AWS profiles, regions, and configurations
 6. **Monitor Logs**: Always check `logs/server.log` during development and debugging
 7. **Build Verification**: Run full CI checks locally before any commit
+8. **Multi-Vendor Awareness**: Remember this is a multi-vendor service, not just OpenAI
 
 ### 🔄 Standard Development Workflow
 
@@ -69,6 +94,61 @@ tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
 # 4. Run full verification
 make ci-check
 # 5. Only commit when user explicitly requests it
+```
+
+## Multi-Vendor Architecture
+
+### 🏗️ **Core Architecture Principles**
+
+**CRITICAL UNDERSTANDING**: This service is NOT just an OpenAI service with some vendor support. It's a **true multi-vendor OpenAI-compatible router** designed from the ground up for multiple vendors.
+
+### **How Multi-Vendor Works**
+
+1. **OpenAI-Compatible Endpoints**: All vendors expose OpenAI-compatible APIs:
+   ```go
+   BaseURLs: map[string]string{
+       "openai": "https://api.openai.com/v1",
+       "gemini": "https://generativelanguage.googleapis.com/v1beta/openai", // ← OpenAI-compatible!
+   }
+   ```
+
+2. **Transparent Model Handling**:
+   - Client sends: `{"model": "my-preferred-model", ...}`
+   - Router selects: `vendor=gemini, model=gemini-2.0-flash`
+   - Router sends to vendor: `{"model": "gemini-2.0-flash", ...}`
+   - Router returns to client: `{"model": "my-preferred-model", ...}` (original restored)
+
+3. **Current Configuration**:
+   ```bash
+   # Check actual configuration
+   cat configs/credentials.json | jq length  # 19 credentials (18 Gemini + 1 OpenAI)
+   cat configs/models.json | jq length       # 4 models (2 Gemini + 2 OpenAI)
+   ```
+
+4. **Even Distribution Selection**:
+   - **114 total combinations** (19 credentials × models they support)
+   - **Each combination gets exactly 1/114 = 0.877% probability**
+   - **Gemini overall**: 108/114 = 94.7% (due to more credentials)
+   - **OpenAI overall**: 6/114 = 5.3%
+
+### **Configuration Priority (IMPORTANT)**
+
+**Credentials Loading Priority** (learned from recent fixes):
+1. **Primary**: `configs/credentials.json` (contains working 19 credentials)
+2. **Fallback**: Environment variables
+3. **Never override** existing working configurations without explicit user request
+
+### **Vendor-Specific Behavior**
+
+```bash
+# Test specific vendor routing
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "my-model", "messages": [{"role": "user", "content": "Hello"}]}'
+
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "my-model", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
 ## Environment Management
@@ -130,12 +210,13 @@ aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-task-definition --t
 - **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server with automatic .env loading.
 - **`internal/app/app.go`**: Centralizes application configuration and dependencies.
 - **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication.
-- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs.
+- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs through OpenAI-compatible endpoints.
 - **`internal/proxy/response_processor.go`**: Processes non-streaming responses from vendors.
 - **`internal/proxy/stream_processor.go`**: Handles streaming responses from vendors.
-- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models.
+- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models (EvenDistributionSelector for fair distribution).
 - **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request.
 - **`internal/config/config.go`**: Loads and manages configuration from JSON files.
+- **`internal/config/secure.go`**: **NEW** - Handles secure credential loading with AES-GCM encryption and environment variable loading.
 - **`internal/config/env.go`**: Handles environment variable loading from .env files (Node.js dotenv equivalent).
 - **`internal/config/validation.go`**: Validates credentials and model configurations.
 - **`internal/handlers/api_handlers.go`**: HTTP handlers for health, chat completions, and models endpoints.
@@ -143,10 +224,17 @@ aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-task-definition --t
 - **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor.
 - **`internal/monitoring/metrics.go`**: Performance profiling endpoints (pprof).
 - **`internal/router/routes.go`**: Centralized route setup with middleware integration.
+- **`internal/health/health.go`**: **NEW** - Comprehensive health check system with vendor connectivity monitoring.
+- **`internal/reliability/retry.go`**: **NEW** - Exponential backoff retry logic for vendor communication.
+- **`internal/reliability/circuit_breaker.go`**: **NEW** - Circuit breaker pattern implementation for reliability.
+- **`internal/utils/sanitization.go`**: **NEW** - Comprehensive sensitive data masking for logs.
+- **`internal/utils/env.go`**: **NEW** - Centralized environment variable utilities.
+- **`internal/utils/random.go`**: **NEW** - Cryptographically secure ID generation.
+- **`internal/logger/conditional.go`**: **NEW** - Production-optimized logging with environment-aware detail levels.
 
 ### Configuration Files
-- **`configs/credentials.json`**: Stores API keys for different vendors (gitignored).
-- **`configs/models.json`**: Defines the available models and their vendors.
+- **`configs/credentials.json`**: Stores API keys for different vendors (gitignored). **Contains 19 working credentials**.
+- **`configs/models.json`**: Defines the available models and their vendors. **Contains 4 models**.
 - **`.env`**: Environment variables file (gitignored, use `.env.example` as template).
 
 ### Deployment Files
@@ -190,6 +278,9 @@ tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
 
 # AWS commands with proper formatting
 aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER --services $AWS_SERVICE | cat
+
+# Multi-vendor configuration checks
+cat configs/credentials.json | jq length && echo "credentials configured" && cat configs/models.json | jq length && echo "models configured" | cat
 ```
 
 ### ❌ Common Terminal Mistakes to Avoid
@@ -216,11 +307,12 @@ The Generative API Router implements comprehensive, unfiltered logging that capt
 
 1. **Log Complete Data**: Always log entire objects, arrays, and strings without truncation
 2. **No Cherry-Picking**: Log complete data structures, not selected attributes
-3. **No Redaction**: Log everything including sensitive data (API keys, credentials)
+3. **No Redaction**: Log everything including sensitive data (API keys, credentials) - **NEW**: Now with secure masking in production
 4. **No Truncation**: Never use substring(), slice(), or size limits
 5. **No Derived Data**: Don't log .length, .size, .count - log the actual data
 6. **Complete Context**: Include all relevant objects, configurations, and state
 7. **Raw Data Logging**: Log raw objects without transformations or filtering
+8. **Environment-Aware**: **NEW** - Production logs use conditional detail levels for performance
 
 ### 📝 Logging Examples
 
@@ -231,7 +323,7 @@ logger.LogRequest(ctx, "Processing chat completion request", map[string]any{
     "complete_request": request,           // Entire request object
     "headers": headers,                    // All headers including auth
     "vendor_config": vendorConfig,         // Complete vendor configuration
-    "api_keys": credentials,               // Complete credentials including keys
+    "api_keys": credentials,               // Complete credentials including keys (masked in production)
     "processing_context": processingCtx,   // Complete processing context
 })
 
@@ -240,7 +332,7 @@ logger.LogVendorCommunication(ctx, "Sending request to vendor", map[string]any{
     "vendor": vendor,
     "complete_request_payload": payload,   // Complete payload sent to vendor
     "complete_headers": requestHeaders,    // All headers sent
-    "api_key": apiKey,                    // Complete API key
+    "api_key": apiKey,                    // Complete API key (masked in production)
     "endpoint_url": endpointURL,          // Complete endpoint
     "timeout_config": timeoutConfig,       // Complete timeout configuration
 })
@@ -295,6 +387,9 @@ grep "request_id.*abc123" logs/server.log | cat
 
 # Check vendor communication logs
 grep "VendorCommunication" logs/server.log | tail -10 | cat
+
+# Monitor multi-vendor selection
+grep "Even distribution selected combination" logs/server.log | tail -10 | cat
 ```
 
 ### 📊 Log Analysis Patterns
@@ -309,6 +404,9 @@ grep "Selected vendor" logs/server.log | tail -5 | jq '.data' | cat
 
 # Review response processing
 grep "Response processing completed" logs/server.log | tail -1 | jq '.data.complete_response_data' | cat
+
+# Monitor vendor distribution
+grep "Even distribution selected combination" logs/server.log | tail -20 | cat
 ```
 
 ## Development Workflow
@@ -328,7 +426,10 @@ make build && ./build/server > logs/server.log 2>&1 & sleep 3 && curl http://loc
 # 4. Check logs for issues
 tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
 
-# 5. Commit when ready (see Git Workflow section)
+# 5. Test multi-vendor functionality
+curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq '.model' | cat
+
+# 6. Commit when ready (see Git Workflow section)
 ```
 
 ### Sequential Thinking Approach
@@ -342,18 +443,22 @@ When approaching complex development tasks, use this systematic methodology:
    
    # Understand current architecture
    find internal/ -name "*.go" -exec grep -l "relevant_interface" {} \; | cat
+   
+   # Check multi-vendor configuration
+   cat configs/credentials.json | jq length && cat configs/models.json | jq length | cat
    ```
 
 2. **Planning Phase**:
    - Break down the request into discrete steps
    - Identify all affected components
-   - Plan testing approach
+   - Plan testing approach for both vendors
    - Consider edge cases and error scenarios
+   - **Remember**: This is a multi-vendor service, test accordingly
 
 3. **Implementation Phase**:
    - Implement one component at a time
    - Test each component individually
-   - Verify logs show expected behavior
+   - Verify logs show expected behavior for all vendors
    - Check for integration issues
 
 4. **Verification Phase**:
@@ -364,8 +469,9 @@ When approaching complex development tasks, use this systematic methodology:
    # Verify logs
    tail -20 logs/server.log | cat
    
-   # Test functionality
-   curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+   # Test functionality with both vendors
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
    ```
 
 ## AWS Deployment & Monitoring
@@ -445,7 +551,9 @@ aws --profile $AWS_PROFILE --region $AWS_REGION logs create-export-task --log-gr
     *   `github.com/stretchr/testify` v1.10.0 - Testing assertions
     *   `github.com/go-playground/validator/v10` v10.26.0 - Struct validation
     *   `github.com/joho/godotenv` v1.5.1 - Environment variable loading from .env files
+    *   `github.com/google/uuid` v1.6.0 - **NEW** - Cryptographically secure UUID generation
 *   **Configuration Updates**: API keys (`configs/credentials.json`) and model lists (`configs/models.json`) can be updated without code changes. Restart the server for changes to take effect.
+*   **Multi-Vendor Monitoring**: Review logs for vendor distribution and selection patterns. Key log lines include `Even distribution selected combination` and vendor-specific routing decisions.
 *   **Logging**: Review logs in the `logs/` directory or console output. The server logs selected vendors/models for each request, the original requested model, and how the response model is being presented. Key log lines for debugging model handling include `VERBOSE_DEBUG: ProxyRequest - Original requested model:`, `VERBOSE_DEBUG: ProxyRequest - Selected Vendor:`, and `Processing response from actual model: ... will be presented as:`.
 *   **Profiling**: The service includes pprof endpoints for performance profiling at `/debug/pprof/`.
 *   **Code Quality**: 
@@ -463,6 +571,9 @@ aws --profile $AWS_PROFILE --region $AWS_REGION logs create-export-task --log-gr
 
 ## Common Pitfalls & Lessons Learned
 
+*   **Multi-Vendor Misunderstanding**: **CRITICAL** - This is NOT an OpenAI service with some vendor support. It's a true multi-vendor router with 19 credentials (18 Gemini + 1 OpenAI). Always test with both vendors.
+*   **Configuration Priority**: The service prioritizes `configs/credentials.json` over environment variables. Don't override working configurations without explicit user request.
+*   **Model Name Handling**: The service preserves original model names in responses while routing to actual vendor models. Verify this behavior in logs with `VERBOSE_DEBUG` entries.
 *   **Port Conflicts**: Always ensure port `:8082` (or the configured port) is free before starting the server. Use `sudo lsof -i :<port> | cat` and `sudo kill -9 <PID>`. For the local server, prefer `pgrep -f "^./server$" | xargs kill -9`.
 *   **Server Startup Time**: *Always* add a short delay (e.g., `sleep 3`) after starting the server in the background before sending test `curl` requests. This prevents premature "Connection refused" errors.
 *   **Curl Command Formatting**: Ensure JSON payloads in `curl -d` arguments are properly quoted and escaped, especially when using multi-line JSON. Single-line JSON with escaped quotes (e.g., `\'{\"key\": \"value\"}\'`) is often safer in scripts.
@@ -499,6 +610,11 @@ Important: you can't read the `configs/credentials.json` using `read_file` tool,
    - Never commit files with hardcoded credentials or infrastructure IDs
 
 3. **Use environment variables or secret management for production**
+
+4. **NEW - Secure Credential Handling**:
+   - Credentials are now encrypted with AES-GCM in `internal/config/secure.go`
+   - Sensitive data is masked in production logs via `internal/utils/sanitization.go`
+   - Environment variables are securely loaded with fallback mechanisms
 
 ## Git Workflow
 
@@ -629,6 +745,7 @@ This repository enforces the following rules:
    - Run `make ci-check` locally
    - Ensure all tests pass
    - Check for sensitive data leaks
+   - Test multi-vendor functionality
 
 2. **After Creating PR**:
    - Monitor CI pipeline immediately
@@ -642,6 +759,10 @@ This repository enforces the following rules:
    
    # Make changes and test locally
    make ci-check
+   
+   # Test multi-vendor functionality
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
    
    # Commit and push
    git add .
@@ -673,7 +794,7 @@ This repository enforces the following rules:
 
 ### Core Architecture Principle
 
-**Key Principle**: This service acts as a *transparent proxy* with a key modification. The router selects an actual vendor/model based on its internal logic (e.g., random selection, vendor filter). The `model` field in the request to the downstream vendor is overridden with this *actual selected model*. However, the `model` field in the final response back to the client is modified to reflect the *original model name the client sent in its initial request*. All other request and response data (headers, body structure excluding the model field, status code) from the vendor **must** be passed *exactly* to the client, and vice-versa. Changes must not interfere with this.
+**Key Principle**: This service acts as a *transparent proxy* with a key modification. The router selects an actual vendor/model based on its internal logic (e.g., even distribution selection, vendor filter). The `model` field in the request to the downstream vendor is overridden with this *actual selected model*. However, the `model` field in the final response back to the client is modified to reflect the *original model name the client sent in its initial request*. All other request and response data (headers, body structure excluding the model field, status code) from the vendor **must** be passed *exactly* to the client, and vice-versa. Changes must not interfere with this.
 
 ### Testing
 
@@ -828,6 +949,7 @@ git commit -m "feat!: remove metrics implementation" -m "BREAKING CHANGE: /metri
 - [ ] Tests passing (`make test`)
 - [ ] Linting clean (`make lint`)
 - [ ] Security scan clean (`make security-scan`)
+- [ ] Multi-vendor functionality tested
 - [ ] Commit message follows conventional format
 - [ ] Version bump appropriate for changes
 - [ ] Release notes comprehensive and accurate

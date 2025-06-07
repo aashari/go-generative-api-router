@@ -9,6 +9,26 @@ This guide provides step-by-step instructions for setting up, running, and testi
 
 > **Development Workflow**: For development best practices and Git workflow, see [Development Guide](mdc:development_guide.mdc)
 
+## 🏗️ **Service Overview**
+
+### **Multi-Vendor OpenAI-Compatible Router**
+
+This service is a **transparent proxy** that provides a unified OpenAI-compatible API interface while routing requests to multiple LLM vendors (OpenAI, Gemini) behind the scenes. Key testing considerations:
+
+- **19 credentials** (18 Gemini + 1 OpenAI) with **4 models** (2 Gemini + 2 OpenAI)
+- **Even distribution** across 114 vendor-credential-model combinations
+- **Transparent model handling** - preserves original model names in responses
+- **Enterprise-grade features** - retry logic, circuit breakers, health monitoring
+
+### **Recent Major Improvements (2024)**
+
+The service includes comprehensive enterprise-grade improvements that affect testing:
+
+- ✅ **Security**: AES-GCM encryption, sensitive data masking
+- ✅ **Reliability**: Exponential backoff, circuit breaker patterns
+- ✅ **Monitoring**: Health checks with vendor connectivity
+- ✅ **Performance**: Production-optimized logging
+
 ## 📚 **Documentation Quick Reference**
 
 ### **Core Development Guides** (.cursor/rules/)
@@ -16,15 +36,17 @@ This guide provides step-by-step instructions for setting up, running, and testi
 - **[Running & Testing Guide](mdc:running_and_testing.mdc)** - Setup, testing procedures, debugging techniques (this document)
 
 ### **User & API Documentation** (docs/)
-- **[User Guide](mdc:../docs/user/README.md)** - *When integrating with the service* - API usage, configuration, client examples
-- **[API Reference](mdc:../docs/api)** - *When implementing API calls* - OpenAPI specs, endpoint documentation
+- **[User Guide](mdc:../docs/user-guide.md)** - *When integrating with the service* - API usage, configuration, client examples
+- **[API Reference](mdc:../docs/api-reference.md)** - *When implementing API calls* - Complete API documentation with examples
 - **[Examples](mdc:../examples)** - *When writing client code* - Ready-to-use examples in Python, Node.js, Go
 
-### **Development Documentation** (docs/development/)
-- **[Development Guide](mdc:../docs/development/DEVELOPMENT.md)** - *When setting up locally* - Quick start, project structure, daily commands
-- **[Contributing Guide](mdc:../docs/development/CONTRIBUTING.md)** - *When contributing code* - PR process, coding standards, review guidelines
-- **[Testing Guide](mdc:../docs/development/TESTING.md)** - *When writing/running tests* - Test strategies, coverage, debugging
-- **[Deployment Guide](mdc:../docs/development/DEPLOYMENT.md)** - *When managing AWS infrastructure* - xyz-aduh-genapi service, monitoring, troubleshooting
+### **Development Documentation** (docs/)
+- **[Development Guide](mdc:../docs/development-guide.md)** - *When setting up locally* - Quick start, project structure, daily commands
+- **[Contributing Guide](mdc:../docs/contributing-guide.md)** - *When contributing code* - PR process, coding standards, review guidelines
+- **[Testing Guide](mdc:../docs/testing-guide.md)** - *When writing/running tests* - Test strategies, coverage, debugging
+- **[Deployment Guide](mdc:../docs/deployment-guide.md)** - *When managing AWS infrastructure* - Production deployment, monitoring, troubleshooting
+- **[Logging Guide](mdc:../docs/logging-guide.md)** - *When debugging issues* - Comprehensive logging system documentation
+- **[Production Monitoring Guide](mdc:../docs/production-monitoring-guide.md)** - *When monitoring production* - Log querying, monitoring procedures
 
 ### **Project Overview**
 - **[Main README](mdc:../README.md)** - *When getting project overview* - Features, quick start, architecture summary
@@ -39,6 +61,7 @@ This guide provides step-by-step instructions for setting up, running, and testi
 - [Running Tests](mdc:#running-tests) - Unit tests and test coverage
 - [Log Monitoring & Debugging](mdc:#log-monitoring--debugging) - Essential debugging skills
 - [Testing the Service](mdc:#testing-the-service) - Manual API testing
+- [Multi-Vendor Testing](mdc:#multi-vendor-testing) - Testing both OpenAI and Gemini vendors
 - [Troubleshooting](mdc:#troubleshooting) - Common issues and solutions
 - [Quick Commands Reference](mdc:#quick-commands-reference) - Daily development commands
 
@@ -62,7 +85,12 @@ This guide provides step-by-step instructions for setting up, running, and testi
    
 4. **Configure Credentials**:
    - The setup script creates `configs/credentials.json` from the example file
-   - Edit `configs/credentials.json` with valid API keys (mostly you don't need to, because it might already exists with valid API keys already):
+   - **IMPORTANT**: The service likely already has 19 working credentials configured
+   - Check existing configuration before making changes:
+     ```bash
+     cat configs/credentials.json | jq length && echo "credentials configured" | cat
+     ```
+   - Only edit if you need to add/modify credentials:
      ```json
      [
        {
@@ -79,7 +107,12 @@ This guide provides step-by-step instructions for setting up, running, and testi
      ```
 
 5. **Configure Models**:
-   - Edit `configs/models.json` to specify which models you want to use (mostly you don't need to, because it might already exists with valid models already):
+   - Check existing model configuration:
+     ```bash
+     cat configs/models.json | jq length && echo "models configured" | cat
+     ```
+   - The service likely already has 4 models configured (2 Gemini + 2 OpenAI)
+   - Only edit if you need to add/modify models:
      ```json
      [
        {
@@ -92,6 +125,12 @@ This guide provides step-by-step instructions for setting up, running, and testi
        }
      ]
      ```
+
+6. **Verify Configuration**:
+   ```bash
+   # Check total configuration
+   echo "=== CONFIGURATION SUMMARY ===" && cat configs/credentials.json | jq length && echo "total credentials" && cat configs/models.json | jq length && echo "total models" | cat
+   ```
 
 ## Running the Service
 
@@ -162,7 +201,7 @@ This guide provides step-by-step instructions for setting up, running, and testi
 
 ## Running Tests
 
-The project includes comprehensive test coverage added in Phase 2:
+The project includes comprehensive test coverage with enterprise-grade improvements:
 
 ### Unit Tests
 
@@ -185,6 +224,10 @@ The project includes comprehensive test coverage added in Phase 2:
    # Test handlers
    go test ./internal/handlers
    
+   # Test new reliability features
+   go test ./internal/reliability
+   go test ./internal/health
+   
    # Test with verbose output
    go test -v ./internal/errors
    ```
@@ -200,6 +243,7 @@ The project uses:
 - `github.com/stretchr/testify` v1.10.0 - For assertions and test suites
 - `github.com/go-playground/validator/v10` v10.26.0 - For struct validation
 - `github.com/joho/godotenv` v1.5.1 - For environment variable loading from .env files
+- `github.com/google/uuid` v1.6.0 - **NEW** - For cryptographically secure UUID generation
 
 Note: Some tests may skip if `configs/credentials.json` is not present, which is expected behavior.
 
@@ -208,7 +252,7 @@ Note: Some tests may skip if `configs/credentials.json` is not present, which is
 ### 📋 Essential Log Monitoring (CRITICAL SKILL)
 
 **Log Structure:**
-The service generates structured JSON logs in the `logs/` directory:
+The service generates structured JSON logs in the `logs/` directory with enterprise-grade improvements:
 
 ```json
 {
@@ -218,7 +262,12 @@ The service generates structured JSON logs in the `logs/` directory:
   "request_id": "req_abc123",
   "component": "ProxyHandler",
   "vendor": "openai",
-  "model": "gpt-4o"
+  "model": "gpt-4o",
+  "data": {
+    "complete_request": "...",
+    "vendor_selection": "...",
+    "circuit_breaker_status": "CLOSED"
+  }
 }
 ```
 
@@ -240,6 +289,14 @@ grep "request_id.*abc123" logs/server.log | cat
 # Component-specific logs
 grep "ProxyHandler" logs/server.log | tail -5 | cat
 grep "VendorSelector" logs/server.log | tail -5 | cat
+
+# NEW - Monitor reliability features
+grep "CircuitBreaker" logs/server.log | tail -5 | cat
+grep "RetryAttempt" logs/server.log | tail -5 | cat
+grep "HealthCheck" logs/server.log | tail -5 | cat
+
+# Monitor vendor distribution
+grep "Even distribution selected combination" logs/server.log | tail -10 | cat
 ```
 
 **🕵️ Log Debugging Workflow:**
@@ -248,6 +305,7 @@ grep "VendorSelector" logs/server.log | tail -5 | cat
 2. **During Testing**: Monitor with `tail -f logs/server.log` in separate terminal
 3. **After Testing**: Review with `tail -20 logs/server.log | cat`
 4. **Error Investigation**: Use `grep` to find error patterns
+5. **Multi-Vendor Analysis**: Check vendor selection and routing patterns
 
 ### 🚨 Emergency Commands
 
@@ -268,6 +326,9 @@ ps aux | grep -E "(server|generative)" | grep -v grep | cat
 
 # Memory usage check
 free -h | cat
+
+# NEW - Check circuit breaker status
+grep "CircuitBreaker.*state" logs/server.log | tail -3 | cat
 ```
 
 **🔧 Process Management:**
@@ -295,16 +356,20 @@ lsof -i :8082 | cat
 3. **Process Status**: `ps aux | grep server | grep -v grep | cat`
 4. **Port Conflicts**: `lsof -i :8082 | cat`
 5. **Recent Errors**: `grep -i "error" logs/server.log | tail -10 | cat`
-6. **Configuration**: `cat configs/credentials.json | jq | cat` (check if valid JSON)
+6. **Configuration**: `cat configs/credentials.json | jq length && cat configs/models.json | jq length | cat`
+7. **NEW - Circuit Breaker Status**: `grep "CircuitBreaker.*state" logs/server.log | tail -3 | cat`
+8. **NEW - Health Check Status**: `grep "HealthCheck" logs/server.log | tail -3 | cat`
 
 **🔧 Common Issues & Solutions:**
 
 | Issue | Symptoms | Solution |
-|-------|----------|----------|
+|----|----|----|
 | Server Crash | `curl` connection refused | `pgrep -f "build/server$" \| xargs -r kill -9 && make run` |
 | Port Conflict | "address already in use" | `lsof -i :8082 \| grep LISTEN \| awk '{print $2}' \| xargs -r kill -9` |
-| Config Error | Server won't start | `cat configs/credentials.json \| jq` to validate JSON |
+| Config Error | Server won't start | `cat configs/credentials.json \| jq && cat configs/models.json \| jq` |
 | Memory Issues | Slow responses | `free -h && ps aux --sort=-%mem \| head -10` |
+| Circuit Breaker Open | Requests failing | `grep "CircuitBreaker.*OPEN" logs/server.log \| tail -3` |
+| Vendor Timeout | Slow responses | `grep "RetryAttempt" logs/server.log \| tail -5` |
 
 ## Testing the Service
 
@@ -331,6 +396,12 @@ lsof -i :8082 | cat
    curl -s http://localhost:8082/health | cat || echo "Service not ready yet"
    ```
 
+3. **Verify Multi-Vendor Configuration**:
+   ```bash
+   # Check configuration before testing
+   echo "=== CONFIGURATION CHECK ===" && cat configs/credentials.json | jq length && echo "credentials" && cat configs/models.json | jq length && echo "models" | cat
+   ```
+
 ### Using Example Scripts
 
 Example scripts are provided in the `examples/` directory:
@@ -350,15 +421,17 @@ Example scripts are provided in the `examples/` directory:
 
 1. **Health Check**:
    ```bash
-   curl -X GET http://localhost:8082/health | cat
+   curl -X GET http://localhost:8082/health | jq | cat
    ```
-   - Expected: `OK` with status code 200
+   - Expected: Structured health response with service status
+   - NEW: Should include circuit breaker and health check status
 
 2. **List Available Models**:
    ```bash
    curl -X GET http://localhost:8082/v1/models | jq | cat
    ```
    - Lists all configured models in OpenAI-compatible format
+   - Should show 4 models (2 Gemini + 2 OpenAI)
 
 3. **Basic Chat Completion**:
    ```bash
@@ -370,58 +443,83 @@ Example scripts are provided in the `examples/` directory:
      - A proper `"id"` field with `"chatcmpl-"` prefix
      - Content in the expected format
      - The `"model"` field in the response should match the `"model"` field sent in the request (e.g., `"any-model-name-you-like"`).
-   - **Log Check**: Verify server logs (e.g., `grep "VERBOSE_DEBUG: ProxyRequest" logs/server.log | tail -n 1`) show the requested model and the actual model selected by the router. Example:
-     `VERBOSE_DEBUG: ProxyRequest - Original requested model: 'any-model-name-you-like', will route to: 'actual-selected-model'`
-   - Also check for `Processing response from actual model:` log line.
+   - **Log Check**: Verify server logs show the requested model and the actual model selected by the router:
+     ```bash
+     grep "Even distribution selected combination" logs/server.log | tail -1 | cat
+     ```
 
+## Multi-Vendor Testing
 
+### 🔄 **CRITICAL: Multi-Vendor Test Suite**
 
-### Advanced Testing
+**IMPORTANT**: This is a multi-vendor service. Always test both vendors to ensure proper functionality.
+
+### **Vendor-Specific Testing**
+
+1. **OpenAI Vendor Test**:
+   ```bash
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "specific-vendor-openai-model", "messages": [{"role": "user", "content": "Hello from OpenAI test"}]}' | jq | cat
+   ```
+
+2. **Gemini Vendor Test**:
+   ```bash
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "specific-vendor-gemini-model", "messages": [{"role": "user", "content": "Hello from Gemini test"}]}' | jq | cat
+   ```
+
+3. **Verify Model Name Preservation**:
+   ```bash
+   # Test that original model names are preserved in responses
+   RESPONSE=$(curl -s -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model": "my-custom-model-name", "messages": [{"role": "user", "content": "Test"}]}')
+   echo $RESPONSE | jq '.model' | cat
+   # Should return: "my-custom-model-name"
+   ```
+
+4. **Monitor Vendor Distribution**:
+   ```bash
+   # Send multiple requests and monitor vendor selection
+   for i in {1..5}; do
+     curl -s -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model": "test-'$i'", "messages": [{"role": "user", "content": "Test '$i'"}]}' > /dev/null
+     sleep 1
+   done
+   
+   # Check vendor distribution in logs
+   grep "Even distribution selected combination" logs/server.log | tail -5 | cat
+   ```
+
+### **Advanced Multi-Vendor Testing**
 
 1. **Streaming Response Test**:
    ```bash
-   curl -X POST http://localhost:8082/v1/chat/completions \\
-     -H "Content-Type: application/json" \\
-     -d \'{\"model\": \"my-streaming-test-model\", \"messages\": [{\"role\": \"user\", \"content\": \"Count from 1 to 3\"}], \"stream\": true}\' | cat
+   # Test streaming with vendor selection
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "my-streaming-test-model", "messages": [{"role": "user", "content": "Count from 1 to 3"}], "stream": true}' | cat
    ```
    - Verify that responses come as Server-Sent Events with `data:` prefix.
-   - Check each chunk has a consistent `\"id\"` field.
-   - **Crucially, verify each data chunk's `\"model\"` field matches the requested model (e.g., `\"my-streaming-test-model\"`).**
+   - Check each chunk has a consistent `"id"` field.
+   - **Crucially, verify each data chunk's `"model"` field matches the requested model (e.g., `"my-streaming-test-model"`).**
    - Confirm the stream ends with `data: [DONE]`.
-   - **Log Check**: Verify server logs for entries like `Initiating streaming from vendor ... will be presented as my-streaming-test-model`.
 
 2. **Tool Calling Test**:
    ```bash
-   curl -X POST http://localhost:8082/v1/chat/completions \\
-     -H "Content-Type: application/json" \\
-     -d \'{\"model\": \"tool-test-model\", \"messages\": [{\"role\": \"user\", \"content\": \"What is the weather in Boston?\"}], \"tools\": [{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get weather information for a location\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}], \"tool_choice\": \"auto\"}\' | jq | cat
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "tool-test-model", "messages": [{"role": "user", "content": "What is the weather in Boston?"}], "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get weather information for a location", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "City name"}}, "required": ["location"]}}}], "tool_choice": "auto"}' | jq | cat
    ```
-   - Verify that tool calls include a proper `\"id\"` field with `\"call_\"` prefix.
+   - Verify that tool calls include a proper `"id"` field with `"call_"` prefix.
    - Check tool call arguments and function name are correctly formatted.
-   - Ensure the `\"model\"` field in the response matches `\"tool-test-model\"`.
-   - **Log Check**: Verify server logs for original vs. actual model routing.
+   - Ensure the `"model"` field in the response matches `"tool-test-model"`.
 
-3. **Vendor-Specific Testing**:
-   ```bash
-   curl -X POST \"http://localhost:8082/v1/chat/completions?vendor=openai\" \\
-     -H \"Content-Type: application/json\" \\
-     -d \'{\"model\": \"specific-vendor-openai-model\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello from OpenAI test\"}]}\' | jq | cat
-   ```
-   ```bash
-   curl -X POST \"http://localhost:8082/v1/chat/completions?vendor=gemini\" \\
-     -H \"Content-Type: application/json\" \\
-     -d \'{\"model\": \"specific-vendor-gemini-model\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello from Gemini test\"}]}\' | jq | cat
-   ```
-   - Verify that each vendor properly responds.
-   - Ensure the `\"model\"` field in each response matches what was sent in the request for that vendor.
-   - **Log Check**: Verify server logs for vendor-specific routing and model name handling.
-
-4. **Error Response Testing**:
+3. **Error Response Testing**:
    ```bash
    # Test missing messages field (validation error)
-   curl -X POST http://localhost:8082/v1/chat/completions \\
-     -H "Content-Type: application/json" \\
-     -d \'{\"model\": \"test-model\"}\' | jq | cat
+   curl -X POST http://localhost:8082/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{"model": "test-model"}' | jq | cat
    ```
    - Expected: Standardized error response with:
      - `error.type` - Error category (e.g., "invalid_request_error")
@@ -430,11 +528,32 @@ Example scripts are provided in the `examples/` directory:
 
    ```bash
    # Test with invalid JSON
-   curl -X POST http://localhost:8082/v1/chat/completions \\
-     -H "Content-Type: application/json" \\
-     -d \'invalid json\' | jq | cat
+   curl -X POST http://localhost:8082/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d 'invalid json' | jq | cat
    ```
    - Expected: JSON parsing error with proper error structure
+
+### **Reliability Feature Testing**
+
+1. **Circuit Breaker Testing**:
+   ```bash
+   # Monitor circuit breaker status during testing
+   grep "CircuitBreaker" logs/server.log | tail -5 | cat
+   ```
+
+2. **Retry Logic Testing**:
+   ```bash
+   # Monitor retry attempts in logs
+   grep "RetryAttempt" logs/server.log | tail -5 | cat
+   ```
+
+3. **Health Check Testing**:
+   ```bash
+   # Test enhanced health endpoint
+   curl -X GET http://localhost:8082/health | jq '.services' | cat
+   ```
+   - Should show status for: api, credentials, models, selector
 
 ## Troubleshooting
 
@@ -455,21 +574,33 @@ Example scripts are provided in the `examples/` directory:
 3. **Invalid API Key Errors**:
    - Verify your API keys in `configs/credentials.json` are valid and current.
    - Check vendor-specific error messages in the response.
+   - **NEW**: Check if credentials are properly encrypted/decrypted
 
 4. **Request Validation Errors**:
-   - Ensure your request has the required `\"messages\"` field.
+   - Ensure your request has the required `"messages"` field.
    - Check that tools and tool_choice are properly formatted.
    - The service now provides detailed validation error messages in a standardized format.
 
 5. **Server Crashes**:
    - Check the server logs for error messages (e.g., `tail logs/server.log`).
    - Ensure `configs/credentials.json` and `configs/models.json` are valid JSON files.
+   - **NEW**: Check circuit breaker status and retry logic in logs
 
-6. **Deployment Issues**:
+6. **Multi-Vendor Issues**:
+   - **Configuration Mismatch**: Verify both vendors have working credentials
+   - **Model Selection**: Check logs for vendor selection patterns
+   - **Response Inconsistency**: Verify model name preservation across vendors
+
+7. **Deployment Issues**:
    - **ECR Login Failed**: Ensure AWS CLI is configured with correct profile
    - **Docker Build Failed**: Check if Dockerfile exists in expected location
    - **ECS Task Failed to Start**: Check CloudWatch logs for the task
    - **Load Balancer Not Responding**: Wait a few minutes for tasks to become healthy
+
+8. **NEW - Reliability Issues**:
+   - **Circuit Breaker Open**: Check `grep "CircuitBreaker.*OPEN" logs/server.log`
+   - **Retry Exhausted**: Check `grep "RetryExhausted" logs/server.log`
+   - **Health Check Failed**: Check `grep "HealthCheck.*failed" logs/server.log`
 
 ## Stopping the Service
 
@@ -505,51 +636,56 @@ docker-compose -f deployments/docker/docker-compose.yml down
 # Complete development session startup
 make build && ./build/server > logs/server.log 2>&1 & sleep 3 && curl http://localhost:8082/health | cat
 
-# Full API test cycle
-curl http://localhost:8082/health && echo "✅ Health OK" && curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"Hello"}]}' | jq '.model' && echo "✅ Chat OK" | cat
+# Full multi-vendor API test cycle
+curl http://localhost:8082/health && echo "✅ Health OK" && curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test-openai","messages":[{"role":"user","content":"Hello"}]}' | jq '.model' && curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test-gemini","messages":[{"role":"user","content":"Hello"}]}' | jq '.model' && echo "✅ Multi-vendor OK" | cat
 
 # Quick health check all endpoints
-echo "Health:" && curl -s http://localhost:8082/health | head -c 20 && echo "..." && echo "Models:" && curl -s http://localhost:8082/v1/models | jq '.data | length' && echo "models available" | cat
+echo "Health:" && curl -s http://localhost:8082/health | jq '.status' && echo "Models:" && curl -s http://localhost:8082/v1/models | jq '.data | length' && echo "models available" | cat
 
-# Log monitoring with error filtering
-tail -f logs/server.log | grep -E "(error|Error|failed|Failed|panic)" --color=always
+# Log monitoring with error filtering and vendor tracking
+tail -f logs/server.log | grep -E "(error|Error|failed|Failed|Even distribution|CircuitBreaker)" --color=always
 
-# Process and memory status
-echo "=== PROCESS STATUS ===" && ps aux | grep -E "(server|go)" | grep -v grep && echo "=== MEMORY USAGE ===" && free -h | cat
+# Process and memory status with configuration check
+echo "=== PROCESS STATUS ===" && ps aux | grep -E "(server|go)" | grep -v grep && echo "=== MEMORY USAGE ===" && free -h && echo "=== CONFIG STATUS ===" && cat configs/credentials.json | jq length && echo "credentials" && cat configs/models.json | jq length && echo "models" | cat
 ```
 
 ### 🔧 Maintenance Commands
 
 ```bash
-# Clean restart
-pgrep -f "build/server$" | xargs -r kill -9 && make clean && make build && ./build/server > logs/server.log 2>&1 & sleep 3 && curl http://localhost:8082/health | cat
+# Clean restart with configuration verification
+pgrep -f "build/server$" | xargs -r kill -9 && make clean && make build && echo "=== CONFIG CHECK ===" && cat configs/credentials.json | jq length && cat configs/models.json | jq length && ./build/server > logs/server.log 2>&1 & sleep 3 && curl http://localhost:8082/health | cat
 
-# Log file management
-ls -lh logs/ && echo "=== Recent Errors ===" && grep -i "error" logs/server.log | tail -3 | cat
+# Log file management with vendor analysis
+ls -lh logs/ && echo "=== Recent Errors ===" && grep -i "error" logs/server.log | tail -3 && echo "=== Vendor Distribution ===" && grep "Even distribution selected combination" logs/server.log | tail -3 | cat
 
-# Configuration validation
-echo "=== Credentials Check ===" && cat configs/credentials.json | jq length && echo "credentials configured" && echo "=== Models Check ===" && cat configs/models.json | jq length && echo "models configured" | cat
+# Configuration validation with multi-vendor check
+echo "=== Credentials Check ===" && cat configs/credentials.json | jq length && echo "credentials configured" && echo "=== Models Check ===" && cat configs/models.json | jq length && echo "models configured" && echo "=== Vendor Distribution ===" && cat configs/credentials.json | jq 'group_by(.platform) | map({vendor: .[0].platform, count: length})' | cat
 
-# Performance check
-echo "=== Response Time Test ===" && time curl -s http://localhost:8082/health > /dev/null && echo "=== Memory Usage ===" && ps aux --sort=-%mem | head -5 | cat
+# Performance check with reliability monitoring
+echo "=== Response Time Test ===" && time curl -s http://localhost:8082/health > /dev/null && echo "=== Memory Usage ===" && ps aux --sort=-%mem | head -5 && echo "=== Circuit Breaker Status ===" && grep "CircuitBreaker.*state" logs/server.log | tail -3 | cat
 ```
 
 ### 🧪 Testing Commands
 
 ```bash
-# Comprehensive API test
-echo "=== HEALTH TEST ===" && curl http://localhost:8082/health && echo "" && echo "=== MODELS TEST ===" && curl -s http://localhost:8082/v1/models | jq '.data[0].id' && echo "=== CHAT TEST ===" && curl -s -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' | jq '.model' | cat
+# Comprehensive multi-vendor API test
+echo "=== HEALTH TEST ===" && curl http://localhost:8082/health | jq '.status' && echo "=== MODELS TEST ===" && curl -s http://localhost:8082/v1/models | jq '.data | length' && echo "models available" && echo "=== OPENAI VENDOR TEST ===" && curl -s -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test-openai","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' | jq '.model' && echo "=== GEMINI VENDOR TEST ===" && curl -s -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test-gemini","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' | jq '.model' | cat
 
-# Streaming test
-curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"stream-test","messages":[{"role":"user","content":"Count 1 to 3"}],"stream":true,"max_tokens":20}' | head -10 | cat
+# Streaming test with vendor selection
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"stream-test","messages":[{"role":"user","content":"Count 1 to 3"}],"stream":true,"max_tokens":20}' | head -10 | cat
 
-# Error handling test
-echo "=== VALIDATION ERROR TEST ===" && curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test"}' | jq '.error.message' | cat
+# Error handling test with validation
+echo "=== VALIDATION ERROR TEST ===" && curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test"}' | jq '.error.message' && echo "=== VENDOR DISTRIBUTION TEST ===" && for i in {1..3}; do curl -s -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test-'$i'","messages":[{"role":"user","content":"Test"}],"max_tokens":5}' > /dev/null; done && grep "Even distribution selected combination" logs/server.log | tail -3 | cat
+
+# Reliability features test
+echo "=== CIRCUIT BREAKER STATUS ===" && grep "CircuitBreaker" logs/server.log | tail -3 && echo "=== RETRY ATTEMPTS ===" && grep "RetryAttempt" logs/server.log | tail -3 && echo "=== HEALTH CHECKS ===" && grep "HealthCheck" logs/server.log | tail -3 | cat
 ```
 
 ## Additional Resources
 
-- See `docs/development/` for development guides
+- See `docs/` for comprehensive documentation
 - Check `examples/clients/` for client library examples in Go, Node.js, and Python
 - Run `make help` to see all available Makefile targets
 - Review `scripts/verify-structure.sh` to validate project structure
+- **NEW**: Check `docs/logging-guide.md` for detailed logging documentation
+- **NEW**: Review `docs/production-monitoring-guide.md` for production monitoring procedures
