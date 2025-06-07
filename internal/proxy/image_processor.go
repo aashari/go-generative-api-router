@@ -147,7 +147,7 @@ func (p *ImageProcessor) processContentArray(ctx context.Context, arr []interfac
 	return result, nil
 }
 
-// processContentParts processes content parts concurrently
+// processContentParts processes content parts concurrently with graceful error handling
 func (p *ImageProcessor) processContentParts(ctx context.Context, parts []ContentPart) ([]ContentPart, error) {
 	// Find all image URLs that need processing
 	imagesToProcess := make(map[int]int) // maps result index to parts index
@@ -164,11 +164,20 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 		return parts, nil
 	}
 
+	// Count total images in the request (including non-public URLs)
+	totalImages := 0
+	for _, part := range parts {
+		if part.Type == "image_url" && part.ImageURL != nil {
+			totalImages++
+		}
+	}
+
 	// Log image processing start
 	logger.LogWithStructure(ctx, logger.LevelInfo, "Processing image URLs concurrently",
 		map[string]interface{}{
 			"image_count":       len(imagesToProcess),
 			"total_parts":       len(parts),
+			"total_images":      totalImages,
 			"images_to_process": imagesToProcess,
 		},
 		nil, // request
@@ -209,36 +218,118 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 		close(results)
 	}()
 
-	// Collect results
+	// Collect results with graceful error handling
 	processedParts := make([]ContentPart, len(parts))
 	copy(processedParts, parts)
 
 	var errors []error
+	var failedImages []int
 	for result := range results {
 		if result.Error != nil {
+			// Instead of failing the entire request, replace failed image with system message
 			errors = append(errors, fmt.Errorf("image at index %d: %w", result.Index, result.Error))
+			failedImages = append(failedImages, result.Index)
+
+			// Calculate image position for better context
+			imagePosition := 1
+			for i := 0; i <= result.Index; i++ {
+				if parts[i].Type == "image_url" && parts[i].ImageURL != nil {
+					if i == result.Index {
+						break
+					}
+					imagePosition++
+				}
+			}
+
+			// Generate contextual system message for failed image
+			systemMessage := p.generateImageFailureSystemMessage(result.Error, imagePosition, totalImages, len(imagesToProcess) > 1)
+			processedParts[result.Index] = ContentPart{
+				Type: "text",
+				Text: systemMessage,
+			}
+
+			logger.LogWithStructure(ctx, logger.LevelWarn, "Image download failed, replaced with system message",
+				map[string]interface{}{
+					"image_index":    result.Index,
+					"image_position": imagePosition,
+					"total_images":   totalImages,
+					"mixed_scenario": len(imagesToProcess) > 1,
+					"error":          result.Error.Error(),
+					"system_message": systemMessage,
+				},
+				nil, // request
+				nil, // response
+				nil) // error
 		} else {
 			processedParts[result.Index] = result.Content
 		}
 	}
 
-	// Log processing completion
-	logger.LogWithStructure(ctx, logger.LevelInfo, "Image URL processing completed",
+	// Log processing completion with graceful handling summary
+	logger.LogWithStructure(ctx, logger.LevelInfo, "Image URL processing completed with graceful error handling",
 		map[string]interface{}{
-			"processed_count": len(imagesToProcess),
-			"error_count":     len(errors),
-			"errors":          errors,
+			"processed_count":      len(imagesToProcess),
+			"successful_count":     len(imagesToProcess) - len(errors),
+			"failed_count":         len(errors),
+			"failed_image_indices": failedImages,
+			"total_images":         totalImages,
+			"mixed_scenario":       len(imagesToProcess) > 1 && len(errors) > 0 && len(errors) < len(imagesToProcess),
+			"errors":               errors,
+			"graceful_handling":    len(errors) > 0,
 		},
 		nil, // request
 		nil, // response
 		nil) // error
 
-	// If any errors occurred, return the first one
-	if len(errors) > 0 {
-		return nil, fmt.Errorf("failed to process %d images: %w", len(errors), errors[0])
+	// Always return success - errors are now handled gracefully
+	return processedParts, nil
+}
+
+// generateImageFailureSystemMessage creates a contextual system message for failed image downloads
+func (p *ImageProcessor) generateImageFailureSystemMessage(err error, imagePosition, totalImages int, hasMixedScenario bool) string {
+	// Determine the type of error for more specific messaging
+	errorMsg := err.Error()
+	var baseMessage string
+	var contextPrefix string
+
+	// Create context prefix for mixed scenarios
+	if hasMixedScenario && totalImages > 1 {
+		contextPrefix = fmt.Sprintf("Image %d of %d could not be processed. ", imagePosition, totalImages)
+	} else if totalImages > 1 {
+		contextPrefix = fmt.Sprintf("One of the %d images provided could not be processed. ", totalImages)
+	} else {
+		contextPrefix = "The image provided could not be processed. "
 	}
 
-	return processedParts, nil
+	// Determine specific error message based on error type
+	if strings.Contains(errorMsg, "no such host") || strings.Contains(errorMsg, "dial tcp") {
+		baseMessage = "The image URL could not be accessed due to network connectivity issues. The image server appears to be unreachable or the domain does not exist. Please inform the user that this image could not be processed and ask them to verify the URL or provide an alternative image."
+	} else if strings.Contains(errorMsg, "status 401") || strings.Contains(errorMsg, "status 403") {
+		baseMessage = "The image URL requires authentication or access permissions that were not provided or are invalid. The image could not be accessed due to authorization issues. Please inform the user that this image could not be processed due to access restrictions and suggest they provide proper authentication headers or use a publicly accessible image."
+	} else if strings.Contains(errorMsg, "status 404") {
+		baseMessage = "The image URL points to a resource that does not exist (404 Not Found). The image could not be processed because it was not found at the specified location. Please inform the user that this image URL appears to be broken or the image has been moved/deleted, and ask them to provide a valid image URL."
+	} else if strings.Contains(errorMsg, "invalid content type") {
+		baseMessage = "The URL does not point to a valid image file. The content at the URL is not an image format that can be processed. Please inform the user that the provided URL does not contain a valid image and ask them to provide a direct link to an image file (PNG, JPEG, GIF, WebP, etc.)."
+	} else if strings.Contains(errorMsg, "size exceeds limit") {
+		baseMessage = "The image file is too large to process (exceeds 20MB limit). Please inform the user that this image is too large and ask them to provide a smaller image or compress the image before sharing."
+	} else if strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "deadline exceeded") {
+		baseMessage = "The image took too long to download (timeout). The image server may be slow or experiencing issues. Please inform the user that this image could not be processed due to slow response from the image server and suggest they try again later or provide an alternative image."
+	} else {
+		// Generic error message for unknown error types
+		baseMessage = "There was a technical issue accessing or processing this image. Please inform the user that there was a problem with this image and ask them to try providing the image again or use an alternative image."
+	}
+
+	// Add guidance for mixed scenarios
+	var mixedScenarioGuidance string
+	if hasMixedScenario && totalImages > 1 {
+		mixedScenarioGuidance = " You can still analyze and respond to the other images that were successfully processed."
+	}
+
+	// Construct the complete system message
+	systemMessage := fmt.Sprintf("<system>\n%s%s%s Note: The user cannot see this system message.\n</system>",
+		contextPrefix, baseMessage, mixedScenarioGuidance)
+
+	return systemMessage
 }
 
 // isPublicURL checks if a URL is a public HTTP/HTTPS URL

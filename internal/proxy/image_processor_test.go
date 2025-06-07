@@ -637,7 +637,7 @@ func TestImageProcessor_ProcessRequestBodyWithMissingHeaders(t *testing.T) {
 	processor := NewImageProcessor()
 	ctx := context.Background()
 
-	// Test request without required headers (should fail)
+	// Test request without required headers (should now succeed with graceful error handling)
 	requestBody := fmt.Sprintf(`{
 		"model": "vision-model",
 		"messages": [{
@@ -654,9 +654,34 @@ func TestImageProcessor_ProcessRequestBodyWithMissingHeaders(t *testing.T) {
 		}]
 	}`, server.URL)
 
-	_, err := processor.ProcessRequestBody(ctx, []byte(requestBody))
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to download image: status 401")
+	processedBody, err := processor.ProcessRequestBody(ctx, []byte(requestBody))
+	assert.NoError(t, err) // Should succeed with graceful error handling
+
+	// Parse the processed body to verify the failed image was replaced with system message
+	var processedData map[string]interface{}
+	err = json.Unmarshal(processedBody, &processedData)
+	assert.NoError(t, err)
+
+	// Verify the structure
+	messages := processedData["messages"].([]interface{})
+	message := messages[0].(map[string]interface{})
+	content := message["content"].([]interface{})
+
+	// Find the text part that should contain the system message
+	var systemMessagePart map[string]interface{}
+	for _, part := range content {
+		if partMap := part.(map[string]interface{}); partMap["type"] == "text" {
+			if text, ok := partMap["text"].(string); ok && strings.Contains(text, "<system>") {
+				systemMessagePart = partMap
+				break
+			}
+		}
+	}
+
+	assert.NotNil(t, systemMessagePart, "Should have a system message for failed image")
+	systemText := systemMessagePart["text"].(string)
+	assert.Contains(t, systemText, "authentication or access permissions")
+	assert.Contains(t, systemText, "<system>")
 }
 
 func TestImageProcessor_ConcurrentErrorHandling(t *testing.T) {
@@ -688,11 +713,27 @@ func TestImageProcessor_ConcurrentErrorHandling(t *testing.T) {
 		{Type: "image_url", ImageURL: &ImageURL{URL: server.URL + "/error2.png"}},
 	}
 
-	// Process should fail due to errors
-	_, err := processor.processContentParts(ctx, parts)
+	// Process should now succeed with graceful error handling
+	result, err := processor.processContentParts(ctx, parts)
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to process 2 images")
+	assert.NoError(t, err) // Should succeed with graceful error handling
+	assert.Len(t, result, len(parts))
+
+	// Verify successful images were processed
+	assert.Equal(t, "image_url", result[0].Type)
+	assert.True(t, strings.HasPrefix(result[0].ImageURL.URL, "data:image/png;base64,"))
+
+	assert.Equal(t, "image_url", result[2].Type)
+	assert.True(t, strings.HasPrefix(result[2].ImageURL.URL, "data:image/png;base64,"))
+
+	// Verify failed images were replaced with system messages
+	assert.Equal(t, "text", result[1].Type)
+	assert.Contains(t, result[1].Text, "<system>")
+	assert.Contains(t, result[1].Text, "technical issue")
+
+	assert.Equal(t, "text", result[3].Type)
+	assert.Contains(t, result[3].Text, "<system>")
+	assert.Contains(t, result[3].Text, "not an image format")
 }
 
 func TestImageProcessor_downloadWithGenericContentType(t *testing.T) {
