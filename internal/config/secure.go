@@ -226,13 +226,19 @@ func getUniquePlatforms(credentials []Credential) []string {
 
 // LoadCredentialsSecurely attempts to load credentials using the most secure method available
 func LoadCredentialsSecurely() ([]Credential, error) {
-	// Priority 1: Environment variables (most secure)
-	if creds, err := LoadCredentialsFromEnv(); err == nil {
+	// Priority 1: Existing configuration file (current working method)
+	if creds, err := LoadCredentials("configs/credentials.json"); err == nil {
+		logger.Info("Loaded credentials from configuration file")
+		return creds, nil
+	}
+
+	// Priority 2: Environment variables (only if file loading fails)
+	if creds, err := LoadCredentialsFromEnv(); err == nil && len(creds) > 0 {
 		logger.Info("Loaded credentials from environment variables (secure)")
 		return creds, nil
 	}
 
-	// Priority 2: Encrypted file
+	// Priority 3: Encrypted file (future enhancement)
 	secureManager, err := NewSecureConfigManager()
 	if err != nil {
 		logger.Warn("Failed to initialize secure config manager", "error", err)
@@ -241,12 +247,6 @@ func LoadCredentialsSecurely() ([]Credential, error) {
 			logger.Info("Loaded credentials from encrypted file")
 			return creds, nil
 		}
-	}
-
-	// Priority 3: Plain file (fallback, with warning)
-	if creds, err := LoadCredentials("configs/credentials.json"); err == nil {
-		logger.Warn("Loaded credentials from plain text file - consider using environment variables or encryption")
-		return creds, nil
 	}
 
 	return nil, fmt.Errorf("no credentials could be loaded from any source")
