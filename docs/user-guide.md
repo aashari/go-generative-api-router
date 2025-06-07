@@ -86,10 +86,26 @@ GET /health
 **Response:**
 ```json
 {
-  "status": "OK",
-  "timestamp": "2024-01-27T10:30:45.123Z"
+  "status": "healthy",
+  "timestamp": "2025-06-07T05:56:39Z",
+  "services": {
+    "api": "up",
+    "credentials": "up",
+    "models": "up",
+    "selector": "up"
+  },
+  "details": {
+    "uptime": 196,
+    "version": "unknown"
+  }
 }
 ```
+
+**Response Fields:**
+- `status`: Overall service health ("healthy" or "unhealthy")
+- `services`: Status of individual components (api, credentials, models, selector)
+- `details.uptime`: Service uptime in seconds
+- `details.version`: Service version from VERSION environment variable
 
 #### List Models
 ```bash

@@ -175,6 +175,9 @@ LOG_LEVEL=info
 # Environment File Loading (Node.js dotenv equivalent)
 # The application automatically loads from .env file at startup
 # Supports multiple locations: .env, configs/.env, ../.env, ~/.env
+
+# Version Configuration (CI/CD sets this to git commit hash)
+VERSION=v2.1.0                    # Application version (defaults to "unknown")
 ```
 
 **Environment Setup:**
@@ -186,7 +189,7 @@ LOG_LEVEL=info
 echo "AWS Profile: $AWS_PROFILE" && echo "AWS Region: $AWS_REGION" | cat
 
 # Verify application configuration
-echo "Port: $PORT" && echo "Log Level: $LOG_LEVEL" | cat
+echo "Port: $PORT" && echo "Log Level: $LOG_LEVEL" && echo "Version: $VERSION" | cat
 
 # Manual loading (if needed for scripts)
 export $(cat .env | grep -v '^#' | xargs) && echo "Environment manually loaded" | cat
@@ -476,73 +479,259 @@ When approaching complex development tasks, use this systematic methodology:
 
 ## AWS Deployment & Monitoring
 
-### Enhanced ECS Deployment
+### 🏗️ **Infrastructure Overview**
 
-The project includes comprehensive AWS ECS deployment with monitoring capabilities:
+**AWS Account & Region:**
+- **AWS Account**: `836322468413`
+- **Region**: `ap-southeast-3` (Asia Pacific - Jakarta)
+- **Service Name**: `xyz-aduh-genapi`
 
-**Deployment Prerequisites:**
+**Architecture:**
+- **CodeBuild** → **ECR** → **ECS Fargate**
+- Separate environments for development and production
+- Automated CI/CD pipeline triggered by Git commits/tags
+
+### 🌍 **Environment Configuration**
+
+**Development Environment:**
+- **CodeBuild Project**: `dev-xyz-aduh-genapi`
+- **ECR Repository**: `dev-xyz-aduh-genapi`
+- **ECS Cluster**: `dev-xyz-aduh-genapi`
+- **ECS Service**: `dev-xyz-aduh-genapi`
+- **Log Group**: `/aws/ecs/service/dev-xyz-aduh-genapi`
+- **Trigger**: Commits to main branch
+
+**Production Environment:**
+- **CodeBuild Project**: `prod-xyz-aduh-genapi`
+- **ECR Repository**: `prod-xyz-aduh-genapi`
+- **ECS Cluster**: `prod-xyz-aduh-genapi`
+- **ECS Service**: `prod-xyz-aduh-genapi`
+- **Log Group**: `/aws/ecs/service/prod-xyz-aduh-genapi`
+- **Trigger**: Git tags (releases)
+
+### 🔧 **AWS Environment Setup**
+
+**Essential Environment Variables:**
 ```bash
-# Verify AWS configuration
-aws --profile $AWS_PROFILE sts get-caller-identity | cat
+# Development environment
+export AWS_PROFILE=836322468413 AWS_REGION=ap-southeast-3 AWS_CLUSTER_DEV=dev-xyz-aduh-genapi AWS_SERVICE_DEV=dev-xyz-aduh-genapi && echo "✅ Dev environment loaded" | cat
 
-# Check ECS cluster status
-aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-clusters --clusters $AWS_CLUSTER_DEV | cat
-
-# Verify ECR repository access
-aws --profile $AWS_PROFILE --region $AWS_REGION ecr describe-repositories --repository-names generative-api-router | cat
+# Production environment
+export AWS_PROFILE=836322468413 AWS_REGION=ap-southeast-3 AWS_CLUSTER_PROD=prod-xyz-aduh-genapi AWS_SERVICE_PROD=prod-xyz-aduh-genapi && echo "✅ Prod environment loaded" | cat
 ```
 
-**Deployment Process:**
+**Time Range Helpers for Log Queries:**
 ```bash
-# 1. Build and push Docker image
-./scripts/deploy.sh
+# Past 30 minutes (most common for debugging)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 ))
 
-# 2. Monitor deployment
-aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_DEV --services $AWS_SERVICE_DEV --query 'services[0].deployments' | cat
+# Past 1 hour
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 ))
 
-# 3. Check task health
-aws --profile $AWS_PROFILE --region $AWS_REGION ecs list-tasks --cluster $AWS_CLUSTER_DEV --service-name $AWS_SERVICE_DEV | cat
+# Past 3 hours
+START_TS=$(( $(date -u -d '3 hours ago' +%s) * 1000 ))
 
-# 4. Monitor logs
-aws --profile $AWS_PROFILE --region $AWS_REGION logs tail /ecs/generative-api-router --follow | cat
+# Past 24 hours
+START_TS=$(( $(date -u -d '24 hours ago' +%s) * 1000 ))
+
+# Current time for end range
+END_TS=$(( $(date -u +%s) * 1000 ))
 ```
 
-**Post-Deployment Verification:**
+### 🔍 **AWS Debugging Guide**
+
+### **Essential Log Debugging Commands**
+
+**1. Find Recent Errors (Most Important):**
 ```bash
-# Health check
-curl -X GET https://your-load-balancer-url/health | cat
+# Development environment errors
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_DEV" --start-time $START_TS --filter-pattern "?ERROR ?error ?Error ?failed ?Failed ?panic ?timeout" | jq -r '.events[].message' | cat
 
-# Functional test
-curl -X POST https://your-load-balancer-url/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"Hello"}]}' | jq | cat
-
-# Monitor CloudWatch metrics
-aws --profile $AWS_PROFILE --region $AWS_REGION cloudwatch get-metric-statistics --namespace AWS/ECS --metric-name CPUUtilization --dimensions Name=ServiceName,Value=$AWS_SERVICE_DEV --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) --end-time $(date -u +%Y-%m-%dT%H:%M:%S) --period 300 --statistics Average | cat
+# Production environment errors
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "?ERROR ?error ?Error ?failed ?Failed ?panic ?timeout" | jq -r '.events[].message' | cat
 ```
 
-**Troubleshooting Commands:**
+**2. Search for Specific Messages:**
 ```bash
-# Check service events
-aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_DEV --services $AWS_SERVICE_DEV --query 'services[0].events' | cat
+# Find specific user message (like "halo apa kabar?")
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_DEV" --start-time $START_TS --filter-pattern "halo apa kabar" | jq -r '.events[].message' | cat
 
-# Get task definition details
-aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-task-definition --task-definition $AWS_SERVICE_DEV --query 'taskDefinition.containerDefinitions[0]' | cat
-
-# Check load balancer health
-aws --profile $AWS_PROFILE --region $AWS_REGION elbv2 describe-target-health --target-group-arn your-target-group-arn | cat
+# Find specific request ID
+REQUEST_ID="your-request-id-here"
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_DEV" --start-time $START_TS --filter-pattern "\"$REQUEST_ID\"" | jq -r '.events[].message | fromjson | "\(.timestamp) - \(.message)"' | cat
 ```
 
-### CloudWatch Integration
+**3. Monitor API Usage Patterns:**
+```bash
+# Chat completion requests count
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"/v1/chat/completions\"" | jq -r '.events | length' && echo "chat completion requests" | cat
+
+# Vendor distribution analysis
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | .attributes.selected_vendor' | sort | uniq -c | sort -nr | cat
+
+# Model usage patterns
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | "\(.attributes.original_model) -> \(.attributes.selected_vendor):\(.attributes.selected_model)"' | sort | uniq -c | sort -nr | cat
+```
+
+**4. Performance Analysis:**
+```bash
+# Response time analysis
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | sort -n | tail -10 | cat
+
+# Slow requests (>5 seconds)
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | select(.attributes.duration_ms > 5000) | "\(.timestamp) - \(.attributes.duration_ms)ms - \(.request.path)"' | cat
+
+# Average response time
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
+```
+
+### **Service Health Monitoring**
+
+**1. ECS Service Status:**
+```bash
+# Development service status
+aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_DEV --services $AWS_SERVICE_DEV --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount,Platform:platformVersion}' | cat
+
+# Production service status
+aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_PROD --services $AWS_SERVICE_PROD --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount,Platform:platformVersion}' | cat
+
+# Check recent deployments
+aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_PROD --services $AWS_SERVICE_PROD --query 'services[0].deployments[0].{Status:status,CreatedAt:createdAt,UpdatedAt:updatedAt,TaskDefinition:taskDefinition}' | cat
+```
+
+**2. Task Health:**
+```bash
+# List running tasks
+aws --region $AWS_REGION ecs list-tasks --cluster $AWS_CLUSTER_PROD --service-name $AWS_SERVICE_PROD | cat
+
+# Get task details
+aws --region $AWS_REGION ecs list-tasks --cluster $AWS_CLUSTER_PROD --service-name $AWS_SERVICE_PROD | jq -r '.taskArns[]' | head -1 | xargs -I {} aws --region $AWS_REGION ecs describe-tasks --cluster $AWS_CLUSTER_PROD --tasks {} --query 'tasks[0].{Status:lastStatus,Health:healthStatus,CPU:cpu,Memory:memory}' | cat
+```
+
+**3. Service Events (Issues):**
+```bash
+# Check for service issues
+aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_PROD --services $AWS_SERVICE_PROD --query 'services[0].events[0:5].{CreatedAt:createdAt,Message:message}' | cat
+```
+
+### **Deployment Monitoring**
+
+**1. CodeBuild Status:**
+```bash
+# Check recent builds for dev
+aws --profile $AWS_PROFILE --region $AWS_REGION codebuild list-builds-for-project --project-name $AWS_SERVICE_DEV --sort-order DESCENDING | head -5 | cat
+
+# Check recent builds for prod
+aws --profile $AWS_PROFILE --region $AWS_REGION codebuild list-builds-for-project --project-name $AWS_SERVICE_PROD --sort-order DESCENDING | head -5 | cat
+
+# Get detailed build information
+BUILD_ID="prod-xyz-aduh-genapi:latest-build-id"
+aws --profile $AWS_PROFILE --region $AWS_REGION codebuild batch-get-builds --ids $BUILD_ID --query 'builds[0].{Status:buildStatus,Phase:currentPhase,Logs:logs.groupName}' | cat
+```
+
+**2. ECR Repository Status:**
+```bash
+# Check recent images in dev
+aws --profile $AWS_PROFILE --region $AWS_REGION ecr describe-images --repository-name $AWS_SERVICE_DEV --query 'imageDetails[*].{Tags:imageTags,Digest:imageDigest,PushedAt:imagePushedAt}' --output table | cat
+
+# Check recent images in prod
+aws --profile $AWS_PROFILE --region $AWS_REGION ecr describe-images --repository-name $AWS_SERVICE_PROD --query 'imageDetails[*].{Tags:imageTags,Digest:imageDigest,PushedAt:imagePushedAt}' --output table | cat
+```
+
+### **Advanced Debugging Techniques**
+
+**1. Error Deep Dive:**
+```bash
+# Error count by type
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[].message | fromjson | .error.type // "unknown"' | sort | uniq -c | sort -nr | cat
+
+# Recent critical errors
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[-5:][].message | fromjson | "\(.timestamp) - \(.error.type // "unknown") - \(.error.message // .message)"' | cat
+
+# Vendor-specific errors
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[].message | fromjson | select(.attributes.vendor) | "\(.timestamp) - \(.attributes.vendor) - \(.error.message // .message)"' | cat
+```
+
+**2. User Agent Analysis:**
+```bash
+# Client distribution
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .request.headers["User-Agent"][0] // "unknown"' | sort | uniq -c | sort -nr | cat
+
+# High-traffic IPs
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .request.headers["X-Forwarded-For"][0] // .request.headers["X-Real-IP"][0] // "unknown"' | sort | uniq -c | sort -nr | head -10 | cat
+```
+
+**3. Business Intelligence:**
+```bash
+# Requests per minute
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .timestamp[:16]' | sort | uniq -c | cat
+
+# HTTP status code distribution
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .response.status_code' | sort | uniq -c | sort -nr | cat
+
+# Streaming vs non-streaming
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"/v1/chat/completions\"" | jq -r '.events[].message | fromjson | if .request.body | contains("\"stream\":true") then "streaming" else "non-streaming" end' | sort | uniq -c | cat
+```
+
+### **Emergency Procedures**
+
+**1. Rollback Production:**
+```bash
+# List recent task definitions
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs list-task-definitions --family-prefix $AWS_SERVICE_PROD --sort DESC | cat
+
+# Update service to previous task definition
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs update-service --cluster $AWS_CLUSTER_PROD --service $AWS_SERVICE_PROD --task-definition prod-xyz-aduh-genapi:previous-version | cat
+```
+
+**2. Scale Service:**
+```bash
+# Scale up for high load
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs update-service --cluster $AWS_CLUSTER_PROD --service $AWS_SERVICE_PROD --desired-count 3 | cat
+
+# Scale down for maintenance
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs update-service --cluster $AWS_CLUSTER_PROD --service $AWS_SERVICE_PROD --desired-count 0 | cat
+```
+
+### **Quick AWS Debugging Commands Reference**
+
+**🚨 Emergency Commands:**
+```bash
+# Quick health check
+curl -f https://genapi.aduh.xyz/health && echo "✅ Production OK" || echo "❌ Production DOWN" | cat
+curl -f https://genapi-dev.aduh.xyz/health && echo "✅ Development OK" || echo "❌ Development DOWN" | cat
+
+# Recent errors (last 30 minutes)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[-3:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
+
+# Service status
+aws --region ap-southeast-3 ecs describe-services --cluster prod-xyz-aduh-genapi --services prod-xyz-aduh-genapi --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' | cat
+```
+
+**🔍 Daily Monitoring Commands:**
+```bash
+# Request volume (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "requests in last hour" | cat
+
+# Vendor distribution (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | .attributes.selected_vendor' | sort | uniq -c | sort -nr | cat
+
+# Average response time (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
+```
+
+### **CloudWatch Integration**
 
 **Log Analysis:**
 ```bash
-# Stream CloudWatch logs
-aws --profile $AWS_PROFILE --region $AWS_REGION logs tail /ecs/generative-api-router --follow --filter-pattern "ERROR" | cat
+# Stream CloudWatch logs with error filtering
+aws --profile $AWS_PROFILE --region $AWS_REGION logs tail /aws/ecs/service/$AWS_SERVICE_PROD --follow --filter-pattern "ERROR" | cat
 
 # Query specific time range
-aws --profile $AWS_PROFILE --region $AWS_REGION logs filter-log-events --log-group-name /ecs/generative-api-router --start-time $(date -d '1 hour ago' +%s)000 --filter-pattern "ProxyHandler" | cat
+aws --profile $AWS_PROFILE --region $AWS_REGION logs filter-log-events --log-group-name /aws/ecs/service/$AWS_SERVICE_PROD --start-time $(date -d '1 hour ago' +%s)000 --filter-pattern "ProxyHandler" | cat
 
 # Export logs for analysis
-aws --profile $AWS_PROFILE --region $AWS_REGION logs create-export-task --log-group-name /ecs/generative-api-router --from $(date -d '1 day ago' +%s)000 --to $(date +%s)000 --destination your-s3-bucket | cat
+aws --profile $AWS_PROFILE --region $AWS_REGION logs create-export-task --log-group-name /aws/ecs/service/$AWS_SERVICE_PROD --from $(date -d '1 day ago' +%s)000 --to $(date +%s)000 --destination your-s3-bucket | cat
 ```
 
 ## Maintenance

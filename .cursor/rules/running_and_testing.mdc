@@ -424,6 +424,23 @@ Example scripts are provided in the `examples/` directory:
    curl -X GET http://localhost:8082/health | jq | cat
    ```
    - Expected: Structured health response with service status
+   - **Response Structure**:
+     ```json
+     {
+       "status": "healthy",
+       "timestamp": "2025-06-07T05:56:39Z",
+       "services": {
+         "api": "up",
+         "credentials": "up",
+         "models": "up",
+         "selector": "up"
+       },
+       "details": {
+         "uptime": 196,
+         "version": "unknown"
+       }
+     }
+     ```
    - NEW: Should include circuit breaker and health check status
 
 2. **List Available Models**:
@@ -551,9 +568,12 @@ Example scripts are provided in the `examples/` directory:
 3. **Health Check Testing**:
    ```bash
    # Test enhanced health endpoint
-   curl -X GET http://localhost:8082/health | jq '.services' | cat
+curl -X GET http://localhost:8082/health | jq '.services' | cat
+# Should show status for: api, credentials, models, selector
+# Also includes details.version from VERSION environment variable
    ```
    - Should show status for: api, credentials, models, selector
+   - **Version Field**: Shows value from `VERSION` environment variable (defaults to "unknown")
 
 ## Troubleshooting
 
@@ -681,6 +701,172 @@ echo "=== VALIDATION ERROR TEST ===" && curl -X POST http://localhost:8082/v1/ch
 echo "=== CIRCUIT BREAKER STATUS ===" && grep "CircuitBreaker" logs/server.log | tail -3 && echo "=== RETRY ATTEMPTS ===" && grep "RetryAttempt" logs/server.log | tail -3 && echo "=== HEALTH CHECKS ===" && grep "HealthCheck" logs/server.log | tail -3 | cat
 ```
 
+## AWS Environment Debugging
+
+### 🌍 **AWS Infrastructure Overview**
+
+The service is deployed on AWS with separate development and production environments:
+
+**AWS Account & Region:**
+- **AWS Account**: `836322468413`
+- **Region**: `ap-southeast-3` (Asia Pacific - Jakarta)
+
+**Development Environment:**
+- **ECS Cluster**: `dev-xyz-aduh-genapi`
+- **ECS Service**: `dev-xyz-aduh-genapi`
+- **Log Group**: `/aws/ecs/service/dev-xyz-aduh-genapi`
+- **Health URL**: `https://genapi-dev.aduh.xyz/health`
+
+**Production Environment:**
+- **ECS Cluster**: `prod-xyz-aduh-genapi`
+- **ECS Service**: `prod-xyz-aduh-genapi`
+- **Log Group**: `/aws/ecs/service/prod-xyz-aduh-genapi`
+- **Health URL**: `https://genapi.aduh.xyz/health`
+
+### 🔧 **AWS Environment Setup**
+
+**Essential Environment Variables:**
+```bash
+# Development environment
+export AWS_PROFILE=836322468413 AWS_REGION=ap-southeast-3 AWS_CLUSTER_DEV=dev-xyz-aduh-genapi AWS_SERVICE_DEV=dev-xyz-aduh-genapi && echo "✅ Dev environment loaded" | cat
+
+# Production environment
+export AWS_PROFILE=836322468413 AWS_REGION=ap-southeast-3 AWS_CLUSTER_PROD=prod-xyz-aduh-genapi AWS_SERVICE_PROD=prod-xyz-aduh-genapi && echo "✅ Prod environment loaded" | cat
+```
+
+**Time Range Helpers for Log Queries:**
+```bash
+# Past 30 minutes (most common for debugging)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 ))
+
+# Past 1 hour
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 ))
+
+# Past 3 hours
+START_TS=$(( $(date -u -d '3 hours ago' +%s) * 1000 ))
+```
+
+### 🔍 **Essential AWS Debugging Commands**
+
+### **1. Quick Health Checks**
+
+```bash
+# Check both environments
+curl -f https://genapi.aduh.xyz/health && echo "✅ Production OK" || echo "❌ Production DOWN" | cat
+curl -f https://genapi-dev.aduh.xyz/health && echo "✅ Development OK" || echo "❌ Development DOWN" | cat
+
+# ECS service status
+aws --region ap-southeast-3 ecs describe-services --cluster prod-xyz-aduh-genapi --services prod-xyz-aduh-genapi --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' | cat
+```
+
+### **2. Find Recent Errors**
+
+```bash
+# Production errors (last 30 minutes)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "?ERROR ?error ?Error ?failed ?Failed ?panic ?timeout" | jq -r '.events[-5:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
+
+# Development errors (last 30 minutes)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/dev-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "?ERROR ?error ?Error ?failed ?Failed ?panic ?timeout" | jq -r '.events[-5:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
+```
+
+### **3. Search for Specific Messages**
+
+```bash
+# Find specific user message (like "halo apa kabar?")
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/dev-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "halo apa kabar" | jq -r '.events[].message' | cat
+
+# Find specific request ID
+REQUEST_ID="your-request-id-here"
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"$REQUEST_ID\"" | jq -r '.events[].message | fromjson | "\(.timestamp) - \(.message)"' | cat
+```
+
+### **4. Monitor API Usage Patterns**
+
+```bash
+# Request volume (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "requests in last hour" | cat
+
+# Vendor distribution (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | .attributes.selected_vendor' | sort | uniq -c | sort -nr | cat
+
+# Model usage patterns
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | "\(.attributes.original_model) -> \(.attributes.selected_vendor):\(.attributes.selected_model)"' | sort | uniq -c | sort -nr | cat
+```
+
+### **5. Performance Analysis**
+
+```bash
+# Average response time (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
+
+# Slow requests (>5 seconds)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | select(.attributes.duration_ms > 5000) | "\(.timestamp) - \(.attributes.duration_ms)ms - \(.request.path)"' | cat
+```
+
+### **6. User Agent Analysis**
+
+```bash
+# Client distribution (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .request.headers["User-Agent"][0] // "unknown"' | sort | uniq -c | sort -nr | head -10 | cat
+
+# High-traffic IPs (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .request.headers["X-Forwarded-For"][0] // .request.headers["X-Real-IP"][0] // "unknown"' | sort | uniq -c | sort -nr | head -10 | cat
+```
+
+### **🚨 Emergency AWS Debugging Commands**
+
+**Quick Status Check:**
+```bash
+# Complete health check
+echo "=== PRODUCTION STATUS ===" && curl -f https://genapi.aduh.xyz/health && echo "✅ Production OK" || echo "❌ Production DOWN" && echo "=== DEVELOPMENT STATUS ===" && curl -f https://genapi-dev.aduh.xyz/health && echo "✅ Development OK" || echo "❌ Development DOWN" && echo "=== ECS STATUS ===" && aws --region ap-southeast-3 ecs describe-services --cluster prod-xyz-aduh-genapi --services prod-xyz-aduh-genapi --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' | cat
+```
+
+**Recent Errors (Last 30 Minutes):**
+```bash
+# Production errors
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[-3:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
+```
+
+**Service Recovery:**
+```bash
+# Scale up if needed
+aws --region ap-southeast-3 ecs update-service --cluster prod-xyz-aduh-genapi --service prod-xyz-aduh-genapi --desired-count 2 | cat
+
+# Check task health
+aws --region ap-southeast-3 ecs list-tasks --cluster prod-xyz-aduh-genapi --service-name prod-xyz-aduh-genapi | jq -r '.taskArns[]' | head -1 | xargs -I {} aws --region ap-southeast-3 ecs describe-tasks --cluster prod-xyz-aduh-genapi --tasks {} --query 'tasks[0].{Status:lastStatus,Health:healthStatus}' | cat
+```
+
+### **📊 AWS Monitoring Best Practices**
+
+**Daily Monitoring Routine:**
+```bash
+# 1. Check service health
+curl -f https://genapi.aduh.xyz/health && echo "✅ Production healthy" | cat
+
+# 2. Check request volume (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "requests in last hour" | cat
+
+# 3. Check for errors
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events | length' && echo "errors in last hour" | cat
+
+# 4. Check vendor distribution
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | .attributes.selected_vendor' | sort | uniq -c | sort -nr | cat
+```
+
+**Weekly Monitoring Routine:**
+```bash
+# 1. Check average response time (last 24 hours)
+START_TS=$(( $(date -u -d '24 hours ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
+
+# 2. Check top user agents (last 24 hours)
+START_TS=$(( $(date -u -d '24 hours ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .request.headers["User-Agent"][0] // "unknown"' | sort | uniq -c | sort -nr | head -5 | cat
+
+# 3. Check error patterns (last 24 hours)
+START_TS=$(( $(date -u -d '24 hours ago' +%s) * 1000 )) && aws logs filter-log-events --profile 836322468413 --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-xyz-aduh-genapi" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[].message | fromjson | .error.type // "unknown"' | sort | uniq -c | sort -nr | cat
+```
+
+> **Complete AWS Guide**: For comprehensive AWS deployment and monitoring instructions, see [Development Guide - AWS Deployment & Monitoring Section](mdc:development_guide.mdc#aws-deployment--monitoring)
+
 ## Additional Resources
 
 - See `docs/` for comprehensive documentation
@@ -689,3 +875,4 @@ echo "=== CIRCUIT BREAKER STATUS ===" && grep "CircuitBreaker" logs/server.log |
 - Review `scripts/verify-structure.sh` to validate project structure
 - **NEW**: Check `docs/logging-guide.md` for detailed logging documentation
 - **NEW**: Review `docs/production-monitoring-guide.md` for production monitoring procedures
+- **AWS**: See [Development Guide AWS Section](mdc:development_guide.mdc#aws-deployment--monitoring) for complete AWS debugging guide

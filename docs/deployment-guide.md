@@ -54,6 +54,21 @@ Git Commit/Tag → CodeBuild → Docker Build → ECR Push → ECS Deploy
 - **Architecture**: ARM64 (Graviton2)
 - **Tag Strategy**: `latest` for both environments
 
+### Environment Variables
+The deployment pipeline automatically sets the following environment variables:
+
+| Variable | Description | Development | Production |
+|----------|-------------|-------------|------------|
+| `VERSION` | Service version identifier | Git commit hash | Git tag version |
+| `ENVIRONMENT` | Deployment environment | `development` | `production` |
+| `LOG_LEVEL` | Logging level | `debug` | `info` |
+
+**VERSION Variable:**
+- **Development**: Set to the git commit hash (e.g., `0fa92ae`)
+- **Production**: Set to the git tag version (e.g., `v2.0.1`)
+- **Default**: `"unknown"` if not set
+- **Usage**: Displayed in `/health` endpoint under `details.version`
+
 ## 📊 Monitoring & Health Checks
 
 ### Service Status Commands

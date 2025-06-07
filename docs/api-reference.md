@@ -59,10 +59,35 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-  "status": "OK",
-  "timestamp": "2025-01-27T10:30:45.123Z"
+  "status": "healthy",
+  "timestamp": "2025-06-07T05:56:39Z",
+  "services": {
+    "api": "up",
+    "credentials": "up",
+    "models": "up",
+    "selector": "up"
+  },
+  "details": {
+    "uptime": 196,
+    "version": "unknown"
+  }
 }
 ```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | Overall service status ("healthy" or "unhealthy") |
+| `timestamp` | string | ISO 8601 timestamp of the health check |
+| `services` | object | Status of individual service components |
+| `services.api` | string | API service status ("up" or "down") |
+| `services.credentials` | string | Credentials loading status ("up" or "down") |
+| `services.models` | string | Models configuration status ("up" or "down") |
+| `services.selector` | string | Vendor selector status ("up" or "down") |
+| `details` | object | Additional service details |
+| `details.uptime` | integer | Service uptime in seconds |
+| `details.version` | string | Service version from VERSION environment variable |
 
 ### List Models
 
