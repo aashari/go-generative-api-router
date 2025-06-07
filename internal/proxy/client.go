@@ -224,12 +224,6 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 	w.WriteHeader(resp.StatusCode)
 }
 
-// AddCustomServiceHeader adds a custom header specific to the proxy service.
-// This function can be used to add service identification or custom metadata headers.
-func AddCustomServiceHeader(w http.ResponseWriter, key, value string) {
-	w.Header().Set(key, value)
-}
-
 // handleStreaming processes streaming responses
 func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string) error {
 	// Log complete streaming request processing start

@@ -3,12 +3,12 @@ package main
 import (
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/app"
 	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // version is set at build time via ldflags
@@ -33,24 +33,6 @@ var version = "unknown"
 // @in header
 // @name Authorization
 // @description Type "Bearer" followed by a space and the API key value.
-
-// getEnvDuration gets a duration from environment variable with a default fallback
-func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
-	if value := os.Getenv(key); value != "" {
-		if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
-			return time.Duration(seconds) * time.Second
-		}
-	}
-	return defaultValue
-}
-
-// getEnvString gets a string from environment variable with a default fallback
-func getEnvString(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
 
 // CORSMiddleware adds CORS headers to allow cross-origin requests
 func CORSMiddleware(next http.Handler) http.Handler {
@@ -105,16 +87,16 @@ func main() {
 	corsHandler := CORSMiddleware(handler)
 
 	// Configure server address and timeouts from environment variables
-	serverAddr := getEnvString("SERVER_ADDR", "0.0.0.0:8082")
+	serverAddr := utils.GetEnvString("SERVER_ADDR", "0.0.0.0:8082")
 	if port := os.Getenv("PORT"); port != "" {
 		serverAddr = "0.0.0.0:" + port
 	}
 
 	// Configure timeouts with generous defaults for AI workloads
 	// Server timeouts should be longer than client timeout to prevent premature connection closure
-	readTimeout := getEnvDuration("READ_TIMEOUT", 600*time.Second)   // 10 minutes default
-	writeTimeout := getEnvDuration("WRITE_TIMEOUT", 600*time.Second) // 10 minutes default
-	idleTimeout := getEnvDuration("IDLE_TIMEOUT", 900*time.Second)   // 15 minutes default
+	readTimeout := utils.GetEnvDuration("READ_TIMEOUT", 600*time.Second)   // 10 minutes default
+	writeTimeout := utils.GetEnvDuration("WRITE_TIMEOUT", 600*time.Second) // 10 minutes default
+	idleTimeout := utils.GetEnvDuration("IDLE_TIMEOUT", 900*time.Second)   // 15 minutes default
 
 	logger.Info("Server starting",
 		"address", serverAddr,

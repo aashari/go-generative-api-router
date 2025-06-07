@@ -379,17 +379,6 @@ func TestAPIClient_SetupResponseHeadersWithVendor(t *testing.T) {
 	}
 }
 
-func TestAddCustomServiceHeader(t *testing.T) {
-	w := httptest.NewRecorder()
-
-	// Test adding custom headers
-	AddCustomServiceHeader(w, "X-Custom-Header", "custom-value")
-	AddCustomServiceHeader(w, "X-Another-Header", "another-value")
-
-	assert.Equal(t, "custom-value", w.Header().Get("X-Custom-Header"))
-	assert.Equal(t, "another-value", w.Header().Get("X-Another-Header"))
-}
-
 func TestHeaderStandardization_VendorHeadersCompletelyDiscarded(t *testing.T) {
 	tests := []struct {
 		name            string

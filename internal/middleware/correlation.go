@@ -148,12 +148,3 @@ func (w *responseWriterWrapper) Write(data []byte) (int, error) {
 
 	return n, err
 }
-
-// VendorContextMiddleware enriches context with vendor information from request body
-func VendorContextMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// This middleware can be enhanced to extract vendor/model from request body
-		// For now, it passes through to the next handler
-		next.ServeHTTP(w, r)
-	})
-}
