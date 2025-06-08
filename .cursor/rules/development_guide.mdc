@@ -1,0 +1,1165 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Generative API Router Development Guide
+
+This guide provides development workflow, best practices, and architectural guidance for the Generative API Router project.
+
+> **Quick Start**: For setup and running instructions, see [Running Guide](mdc:running_guide.mdc)
+
+## 🏗️ **Project Architecture Overview**
+
+### **Core Concept: Multi-Vendor OpenAI-Compatible Router**
+
+This service is a **transparent proxy** that provides a unified OpenAI-compatible API interface while routing requests to multiple LLM vendors behind the scenes. Key architectural principles:
+
+1. **OpenAI API Compatibility**: All vendors (OpenAI, Gemini) are accessed through OpenAI-compatible endpoints
+2. **Transparent Model Handling**: Client sends model name → Router selects vendor/model → Router restores original model name in response
+3. **Multi-Vendor Design**: Currently supports 19 credentials (18 Gemini + 1 OpenAI) with 4 models (2 Gemini + 2 OpenAI)
+4. **Even Distribution**: Fair selection across all vendor-credential-model combinations (114 total combinations)
+
+### **Recent Major Improvements (2024)**
+
+The service has undergone comprehensive enterprise-grade improvements:
+
+- ✅ **Security Enhancements**: AES-GCM encryption for credentials, sensitive data masking in logs
+- ✅ **Reliability Features**: Exponential backoff retry logic, circuit breaker pattern implementation
+- ✅ **Monitoring & Health**: Comprehensive health checks with vendor connectivity monitoring
+- ✅ **Code Quality**: DRY principles, centralized utilities, eliminated code duplication
+- ✅ **Performance**: Production-optimized logging, conditional detail levels
+
+## 📚 **Documentation Quick Reference**
+
+### **Core Development Guides** (.cursor/rules/)
+- **[Development Guide](mdc:development_guide.mdc)** - Complete workflow, Git practices, architecture principles (this document)
+- **[Running Guide](mdc:running_guide.mdc)** - Setup, running procedures, debugging techniques
+
+### **User & API Documentation** (docs/)
+- **[User Guide](mdc:../docs/user-guide.md)** - *When integrating with the service* - API usage, configuration, client examples
+- **[API Reference](mdc:../docs/api-reference.md)** - *When implementing API calls* - Complete API documentation with examples
+- **[Vision API Guide](mdc:../docs/user/PUBLIC_IMAGE_URL_SUPPORT.md)** - *When using vision API* - Image processing, custom headers, authentication
+- **[Examples](mdc:../examples)** - *When writing client code* - Ready-to-use examples in Python, Node.js, Go
+
+### **Development Documentation** (docs/)
+- **[Development Guide](mdc:../docs/development-guide.md)** - *When setting up locally* - Quick start, project structure, daily commands
+- **[Contributing Guide](mdc:../docs/contributing-guide.md)** - *When contributing code* - PR process, coding standards, review guidelines
+
+- **[Deployment Guide](mdc:../docs/deployment-guide.md)** - *When managing AWS infrastructure* - Production deployment, monitoring, troubleshooting
+- **[Logging Guide](mdc:../docs/logging-guide.md)** - *When debugging issues* - Comprehensive logging system documentation
+- **[Production Monitoring Guide](mdc:../docs/production-monitoring-guide.md)** - *When monitoring production* - Log querying, monitoring procedures
+
+### **Project Overview**
+- **[Main README](mdc:../README.md)** - *When getting project overview* - Features, quick start, architecture summary
+- **[Documentation Index](mdc:../docs/README.md)** - *When navigating docs* - Complete documentation roadmap
+
+---
+
+## Table of Contents
+
+- [Essential Development Rules](mdc:#essential-development-rules) - Core principles and mandatory approaches
+- [Multi-Vendor Architecture](mdc:#multi-vendor-architecture) - Understanding the OpenAI-compatible design
+- [Environment Management](mdc:#environment-management) - AWS profiles, variables, and configuration
+- [Project Structure](mdc:#project-structure) - Architecture and file organization
+- [Terminal Command Rules](mdc:#terminal-command-rules) - Essential command-line best practices
+- [Comprehensive Logging](mdc:#comprehensive-logging) - Complete logging without redaction or truncation
+- [Development Workflow](mdc:#development-workflow) - Core development cycle with sequential thinking
+- [Security Best Practices](mdc:#security-best-practices) - Sensitive data management
+- [Git Workflow](mdc:#git-workflow) - PR creation and CI/CD monitoring
+- [Release Process](mdc:#release-process) - Version management and releases
+- [AWS Deployment & Monitoring](mdc:#aws-deployment--monitoring) - Enhanced ECS deployment and monitoring
+- [Maintenance](mdc:#maintenance) - Ongoing maintenance tasks
+- [Common Pitfalls](mdc:#common-pitfalls--lessons-learned) - Lessons learned and troubleshooting
+
+## Essential Development Rules
+
+### 🚨 MANDATORY APPROACH
+
+1. **Sequential Thinking**: Break down complex requests systematically using structured analysis
+2. **Research First**: Always investigate existing code, patterns, and conventions before implementing
+3. **Commit Discipline**: Only commit and push when explicitly requested by the user
+4. **Complete Logging**: Log full data without truncation, cherry-picking, or redaction (see Comprehensive Logging section)
+5. **Environment Variables**: Always use proper environment variables for AWS profiles, regions, and configurations
+6. **Monitor Logs**: Always check `logs/server.log` during development and debugging
+7. **Build Verification**: Run full CI checks locally before any commit
+8. **Multi-Vendor Awareness**: Remember this is a multi-vendor service, not just OpenAI
+
+### 🔄 Standard Development Workflow
+
+```bash
+# 1. Research and analyze the request
+# 2. Make code changes using sequential thinking
+# 3. Check logs for issues
+tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
+# 4. Run full verification
+make ci-check
+# 5. Only commit when user explicitly requests it
+```
+
+## Multi-Vendor Architecture
+
+### 🏗️ **Core Architecture Principles**
+
+**CRITICAL UNDERSTANDING**: This service is NOT just an OpenAI service with some vendor support. It's a **true multi-vendor OpenAI-compatible router** designed from the ground up for multiple vendors.
+
+### **How Multi-Vendor Works**
+
+1. **OpenAI-Compatible Endpoints**: All vendors expose OpenAI-compatible APIs:
+   ```go
+   BaseURLs: map[string]string{
+       "openai": "https://api.openai.com/v1",
+       "gemini": "https://generativelanguage.googleapis.com/v1beta/openai", // ← OpenAI-compatible!
+   }
+   ```
+
+2. **Transparent Model Handling**:
+   - Client sends: `{"model": "my-preferred-model", ...}`
+   - Router selects: `vendor=gemini, model=gemini-2.0-flash`
+   - Router sends to vendor: `{"model": "gemini-2.0-flash", ...}`
+   - Router returns to client: `{"model": "my-preferred-model", ...}` (original restored)
+
+3. **Current Configuration**:
+   ```bash
+   # Check actual configuration
+   cat configs/credentials.json | jq length  # 19 credentials (18 Gemini + 1 OpenAI)
+   cat configs/models.json | jq length       # 4 models (2 Gemini + 2 OpenAI)
+   ```
+
+4. **Even Distribution Selection**:
+   - **114 total combinations** (19 credentials × models they support)
+   - **Each combination gets exactly 1/114 = 0.877% probability**
+   - **Gemini overall**: 108/114 = 94.7% (due to more credentials)
+   - **OpenAI overall**: 6/114 = 5.3%
+
+### **Configuration Priority (IMPORTANT)**
+
+**Credentials Loading Priority** (learned from recent fixes):
+1. **Primary**: `configs/credentials.json` (contains working 19 credentials)
+2. **Fallback**: Environment variables
+3. **Never override** existing working configurations without explicit user request
+
+### **Vendor-Specific Behavior**
+
+```bash
+# Test specific vendor routing
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "my-model", "messages": [{"role": "user", "content": "Hello"}]}'
+
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "my-model", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+### **Vision API & Image Processing**
+
+**IMPORTANT**: The service supports OpenAI-compatible vision API with automatic image processing:
+
+- **Public URL Detection**: Automatically downloads and converts http/https URLs to base64
+- **Custom Headers Support**: Authentication, user-agent, referer headers for protected images
+- **Concurrent Processing**: Multiple images processed simultaneously for performance
+- **Header Removal**: Headers automatically removed before sending to vendors for compatibility
+
+```bash
+# Test vision API with custom headers
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "vision-test", "messages": [{"role": "user", "content": [{"type": "text", "text": "What do you see?"}, {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg", "headers": {"Authorization": "Bearer token"}}}]}]}' | cat
+
+# Monitor image processing in logs
+grep "image" logs/server.log | tail -5 | cat
+```
+
+## Environment Management
+
+### 🔧 Key Environment Variables
+
+**AWS Configuration:**
+```bash
+# AWS Profiles and Regions
+AWS_PROFILE=your-aws-profile
+AWS_REGION=ap-southeast-3
+
+# ECS Clusters and Services
+AWS_CLUSTER_DEV=dev-generative-api-router
+AWS_SERVICE_DEV=dev-generative-api-router
+AWS_CLUSTER_PROD=prod-generative-api-router
+AWS_SERVICE_PROD=prod-generative-api-router
+
+# Application Configuration
+GENAPI_API_KEY=your-api-key
+PORT=8082
+LOG_LEVEL=info
+
+# Environment File Loading (Node.js dotenv equivalent)
+# The application automatically loads from .env file at startup
+# Supports multiple locations: .env, configs/.env, ../.env, ~/.env
+
+# Version Configuration (CI/CD sets this to git commit hash)
+VERSION=v2.1.0                    # Application version (defaults to "unknown")
+```
+
+**Environment Setup:**
+```bash
+# The application automatically loads .env file at startup (Node.js dotenv equivalent)
+# No manual export needed - just ensure .env file exists in project root
+
+# Verify environment variables are loaded
+echo "AWS Profile: $AWS_PROFILE" && echo "AWS Region: $AWS_REGION" | cat
+
+# Verify application configuration
+echo "Port: $PORT" && echo "Log Level: $LOG_LEVEL" && echo "Version: $VERSION" | cat
+
+# Manual loading (if needed for scripts)
+export $(cat .env | grep -v '^#' | xargs) && echo "Environment manually loaded" | cat
+```
+
+**AWS Command Patterns:**
+```bash
+# ECS service status
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_DEV --services $AWS_SERVICE_DEV | cat
+
+# CloudWatch logs
+aws --profile $AWS_PROFILE --region $AWS_REGION logs describe-log-groups --log-group-name-prefix "/ecs/generative-api-router" | cat
+
+# Task definitions
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-task-definition --task-definition $AWS_SERVICE_DEV | cat
+```
+
+## Project Structure
+
+### Core Application Code
+- **`cmd/server/main.go`**: Main application entry point. Initializes and starts the HTTP server with automatic .env loading.
+- **`internal/app/app.go`**: Centralizes application configuration and dependencies.
+- **`internal/proxy/proxy.go`**: Handles incoming requests, orchestrates vendor selection, request modification, and API communication.
+- **`internal/proxy/client.go`**: Manages communication with downstream vendor APIs through OpenAI-compatible endpoints.
+- **`internal/proxy/response_processor.go`**: Processes non-streaming responses from vendors.
+- **`internal/proxy/stream_processor.go`**: Handles streaming responses from vendors.
+- **`internal/proxy/image_processor.go`**: **NEW** - Handles vision API image processing with concurrent downloads and custom headers support.
+- **`internal/selector/selector.go`**: Implements strategies for selecting vendors and models (EvenDistributionSelector for fair distribution).
+- **`internal/validator/validator.go`**: Handles validation of incoming requests. It also extracts the original model name from the request.
+- **`internal/config/config.go`**: Loads and manages configuration from JSON files.
+- **`internal/config/secure.go`**: **NEW** - Handles secure credential loading with AES-GCM encryption and environment variable loading.
+- **`internal/config/env.go`**: Handles environment variable loading from .env files (Node.js dotenv equivalent).
+- **`internal/config/validation.go`**: Validates credentials and model configurations.
+- **`internal/handlers/api_handlers.go`**: HTTP handlers for health, chat completions, and models endpoints.
+- **`internal/errors/errors.go`**: Standardized error types and JSON error responses.
+- **`internal/filter/utils.go`**: Utility functions for filtering credentials and models by vendor.
+- **`internal/monitoring/metrics.go`**: Performance profiling endpoints (pprof).
+- **`internal/router/routes.go`**: Centralized route setup with middleware integration.
+- **`internal/health/health.go`**: **NEW** - Comprehensive health check system with vendor connectivity monitoring.
+- **`internal/reliability/retry.go`**: **NEW** - Exponential backoff retry logic for vendor communication.
+- **`internal/reliability/circuit_breaker.go`**: **NEW** - Circuit breaker pattern implementation for reliability.
+- **`internal/utils/sanitization.go`**: **NEW** - Comprehensive sensitive data masking for logs.
+- **`internal/utils/env.go`**: **NEW** - Centralized environment variable utilities.
+- **`internal/utils/random.go`**: **NEW** - Cryptographically secure ID generation.
+- **`internal/logger/conditional.go`**: **NEW** - Production-optimized logging with environment-aware detail levels.
+
+### Configuration Files
+- **`configs/credentials.json`**: Stores API keys for different vendors (gitignored). **Contains 19 working credentials**.
+- **`configs/models.json`**: Defines the available models and their vendors. **Contains 4 models**.
+- **`.env`**: Environment variables file (gitignored, use `.env.example` as template).
+
+### Deployment Files
+- **`deployments/docker/Dockerfile`**: For building the Docker image.
+- **`deployments/docker/docker-compose.yml`**: For running the service with Docker Compose.
+- **`scripts/deploy.sh`**: AWS ECS deployment script (contains sensitive data, gitignored).
+
+### Development Tools
+- **`Makefile`**: Build automation and common tasks.
+- **`scripts/`**: Helper scripts for deployment, testing, and setup
+- **`examples/`**: Usage examples for cURL and various client languages
+- **`docs/`**: Comprehensive documentation (API, development, user guides)
+- **`.golangci.yml`**: Linter configuration for code quality
+
+## Terminal Command Rules
+
+### 🚨 CRITICAL CONSTRAINTS
+
+When using terminal commands in development, follow these essential rules:
+
+- **SINGLE-LINE ONLY**: No newline characters (`\n`) in commands
+- **ALWAYS PIPE TO CAT**: End every command with `| cat` to avoid terminal issues
+- **PROPER ESCAPING**: Use single quotes inside double quotes
+- **NO LINE CONTINUATION**: Use semicolons (`;`) instead of backslashes (`\`)
+- **COMMAND CHAINING**: Use `&&` for conditional execution, `;` for sequential execution
+
+### ✅ Correct Terminal Patterns
+
+```bash
+# Git commits with multiple messages
+git commit -m "feat: main commit message" -m "- First bullet point" -m "- Second bullet point" | cat
+
+# Command chaining with proper error handling
+make build && ./build/server > logs/server.log 2>&1 & echo "Server started" | cat
+
+# Process checking and cleanup
+pgrep -f "build/server$" | xargs -r kill -9 && echo "Server stopped" | cat
+
+# Log monitoring with grep
+tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
+
+# AWS commands with proper formatting
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER --services $AWS_SERVICE | cat
+
+# Multi-vendor configuration checks
+cat configs/credentials.json | jq length && echo "credentials configured" && cat configs/models.json | jq length && echo "models configured" | cat
+```
+
+### ❌ Common Terminal Mistakes to Avoid
+
+```bash
+# These patterns will fail - avoid them
+echo "multiline \
+command"                         # Line continuation doesn't work
+
+command_without_pipe             # Missing | cat can cause issues
+
+curl http://example.com          # Should be: curl http://example.com | cat
+```
+
+## Comprehensive Logging
+
+### 🎯 Core Logging Principles
+
+The Generative API Router implements comprehensive, unfiltered logging that captures complete data structures without any redaction, truncation, or selective filtering.
+
+**FUNDAMENTAL RULE**: Log everything. External logging systems handle redaction, size management, and sensitive data filtering.
+
+### ✅ Logging Best Practices
+
+1. **Log Complete Data**: Always log entire objects, arrays, and strings without truncation
+2. **No Cherry-Picking**: Log complete data structures, not selected attributes
+3. **No Redaction**: Log everything including sensitive data (API keys, credentials) - **NEW**: Now with secure masking in production
+4. **No Truncation**: Never use substring(), slice(), or size limits
+5. **No Derived Data**: Don't log .length, .size, .count - log the actual data
+6. **Complete Context**: Include all relevant objects, configurations, and state
+7. **Raw Data Logging**: Log raw objects without transformations or filtering
+8. **Environment-Aware**: **NEW** - Production logs use conditional detail levels for performance
+
+### 📝 Logging Examples
+
+**✅ Correct Comprehensive Logging:**
+```go
+// Log complete request data
+logger.LogRequest(ctx, "Processing chat completion request", map[string]any{
+    "complete_request": request,           // Entire request object
+    "headers": headers,                    // All headers including auth
+    "vendor_config": vendorConfig,         // Complete vendor configuration
+    "api_keys": credentials,               // Complete credentials including keys (masked in production)
+    "processing_context": processingCtx,   // Complete processing context
+})
+
+// Log complete vendor communication
+logger.LogVendorCommunication(ctx, "Sending request to vendor", map[string]any{
+    "vendor": vendor,
+    "complete_request_payload": payload,   // Complete payload sent to vendor
+    "complete_headers": requestHeaders,    // All headers sent
+    "api_key": apiKey,                    // Complete API key (masked in production)
+    "endpoint_url": endpointURL,          // Complete endpoint
+    "timeout_config": timeoutConfig,       // Complete timeout configuration
+})
+
+// Log complete response processing
+logger.LogResponse(ctx, "Processing vendor response", map[string]any{
+    "vendor": vendor,
+    "complete_response": response,         // Entire response object
+    "response_headers": responseHeaders,   // All response headers
+    "original_model": originalModel,       // Original requested model
+    "actual_model": actualModel,          // Actual vendor model used
+    "processing_metadata": metadata,       // Complete processing metadata
+})
+```
+
+**❌ Avoid Partial/Filtered Logging:**
+```go
+// Don't do this - partial data logging
+logger.Info("Processing request", map[string]any{
+    "model": request.Model,              // Only one field
+    "message_count": len(request.Messages), // Derived data instead of actual messages
+    "api_key_prefix": apiKey[:8] + "...", // Truncated sensitive data
+})
+
+// Don't do this - filtered/redacted logging
+logger.Info("Vendor response", map[string]any{
+    "status": "success",                 // Derived status instead of complete response
+    "response_size": len(response),      // Size instead of actual response
+    "model": response.Model,             // Single field instead of complete object
+})
+```
+
+### 🔍 Log Monitoring Commands
+
+**Essential Log Monitoring:**
+```bash
+# Monitor real-time logs during development
+tail -f logs/server.log
+
+# Check recent logs after testing
+tail -50 logs/server.log | cat
+
+# Search for errors
+grep -i "error" logs/server.log | tail -10 | cat
+
+# Search for specific components
+grep "ProxyHandler" logs/server.log | tail -5 | cat
+grep "VendorSelector" logs/server.log | tail -5 | cat
+
+# Monitor specific request flows
+grep "request_id.*abc123" logs/server.log | cat
+
+# Check vendor communication logs
+grep "VendorCommunication" logs/server.log | tail -10 | cat
+
+# Monitor multi-vendor selection
+grep "Even distribution selected combination" logs/server.log | tail -10 | cat
+```
+
+### 📊 Log Analysis Patterns
+
+**Request Flow Analysis:**
+```bash
+# Trace complete request lifecycle
+grep "Processing chat completion request" logs/server.log | tail -1 | jq '.data.complete_request' | cat
+
+# Analyze vendor selection
+grep "Selected vendor" logs/server.log | tail -5 | jq '.data' | cat
+
+# Review response processing
+grep "Response processing completed" logs/server.log | tail -1 | jq '.data.complete_response_data' | cat
+
+# Monitor vendor distribution
+grep "Even distribution selected combination" logs/server.log | tail -20 | cat
+```
+
+## Development Workflow
+
+> **Prerequisites**: Complete setup instructions are in [Running and Testing Guide](mdc:running_and_testing.mdc)
+
+### Core Development Cycle
+
+```bash
+# 1. Make code changes
+# 2. Run linting
+make lint
+
+# 3. Build and run locally  
+make build && ./build/server > logs/server.log 2>&1 & sleep 3 && curl http://localhost:8082/health | cat
+
+# 4. Check logs for issues
+tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
+
+# 5. Verify multi-vendor functionality
+curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq '.model' | cat
+
+# 6. Commit when ready (see Git Workflow section)
+```
+
+### Sequential Thinking Approach
+
+When approaching complex development tasks, use this systematic methodology:
+
+1. **Analysis Phase**:
+   ```bash
+   # Research existing patterns
+   grep -r "similar_pattern" internal/ | cat
+   
+   # Understand current architecture
+   find internal/ -name "*.go" -exec grep -l "relevant_interface" {} \; | cat
+   
+   # Check multi-vendor configuration
+   cat configs/credentials.json | jq length && cat configs/models.json | jq length | cat
+   ```
+
+2. **Planning Phase**:
+   - Break down the request into discrete steps
+   - Identify all affected components
+   - Plan verification approach for both vendors
+- Consider edge cases and error scenarios
+- **Remember**: This is a multi-vendor service, verify accordingly
+
+3. **Implementation Phase**:
+   - Implement one component at a time
+   - Verify each component individually
+- Verify logs show expected behavior for all vendors
+- Check for integration issues
+
+4. **Verification Phase**:
+   ```bash
+   # Run comprehensive checks
+   make ci-check
+   
+   # Verify logs
+   tail -20 logs/server.log | cat
+   
+   # Verify functionality with both vendors
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+   ```
+
+## AWS Deployment & Monitoring
+
+### 🏗️ **Infrastructure Overview**
+
+**AWS Account & Region:**
+- **AWS Account**: `${AWS_ACCOUNT_ID}`
+- **Region**: `ap-southeast-3` (Asia Pacific - Jakarta)
+- **Service Name**: `go-generative-api-router`
+
+**Architecture:**
+- **CodeBuild** → **ECR** → **ECS Fargate**
+- Separate environments for development and production
+- Automated CI/CD pipeline triggered by Git commits/tags
+
+### 🌍 **Environment Configuration**
+
+**Development Environment:**
+- **CodeBuild Project**: `dev-${SERVICE_NAME}`
+- **ECR Repository**: `dev-${SERVICE_NAME}`
+- **ECS Cluster**: `dev-${SERVICE_NAME}`
+- **ECS Service**: `dev-${SERVICE_NAME}`
+- **Log Group**: `/aws/ecs/service/dev-${SERVICE_NAME}`
+- **Trigger**: Commits to main branch
+
+**Production Environment:**
+- **CodeBuild Project**: `prod-${SERVICE_NAME}`
+- **ECR Repository**: `prod-${SERVICE_NAME}`
+- **ECS Cluster**: `prod-${SERVICE_NAME}`
+- **ECS Service**: `prod-${SERVICE_NAME}`
+- **Log Group**: `/aws/ecs/service/prod-${SERVICE_NAME}`
+- **Trigger**: Git tags (releases)
+
+### 🔧 **AWS Environment Setup**
+
+**Essential Environment Variables:**
+```bash
+# Development environment
+export AWS_PROFILE=${AWS_ACCOUNT_ID} AWS_REGION=ap-southeast-3 AWS_CLUSTER_DEV=dev-${SERVICE_NAME} AWS_SERVICE_DEV=dev-${SERVICE_NAME} && echo "✅ Dev environment loaded" | cat
+
+# Production environment
+export AWS_PROFILE=${AWS_ACCOUNT_ID} AWS_REGION=ap-southeast-3 AWS_CLUSTER_PROD=prod-${SERVICE_NAME} AWS_SERVICE_PROD=prod-${SERVICE_NAME} && echo "✅ Prod environment loaded" | cat
+```
+
+**Time Range Helpers for Log Queries:**
+```bash
+# Past 30 minutes (most common for debugging)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 ))
+
+# Past 1 hour
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 ))
+
+# Past 3 hours
+START_TS=$(( $(date -u -d '3 hours ago' +%s) * 1000 ))
+
+# Past 24 hours
+START_TS=$(( $(date -u -d '24 hours ago' +%s) * 1000 ))
+
+# Current time for end range
+END_TS=$(( $(date -u +%s) * 1000 ))
+```
+
+### 🔍 **AWS Debugging Guide**
+
+### **Essential Log Debugging Commands**
+
+**1. Find Recent Errors (Most Important):**
+```bash
+# Development environment errors
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_DEV" --start-time $START_TS --filter-pattern "?ERROR ?error ?Error ?failed ?Failed ?panic ?timeout" | jq -r '.events[].message' | cat
+
+# Production environment errors
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "?ERROR ?error ?Error ?failed ?Failed ?panic ?timeout" | jq -r '.events[].message' | cat
+```
+
+**2. Search for Specific Messages:**
+```bash
+# Find specific user message (like "halo apa kabar?")
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_DEV" --start-time $START_TS --filter-pattern "halo apa kabar" | jq -r '.events[].message' | cat
+
+# Find specific request ID
+REQUEST_ID="your-request-id-here"
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_DEV" --start-time $START_TS --filter-pattern "\"$REQUEST_ID\"" | jq -r '.events[].message | fromjson | "\(.timestamp) - \(.message)"' | cat
+```
+
+**3. Monitor API Usage Patterns:**
+```bash
+# Chat completion requests count
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"/v1/chat/completions\"" | jq -r '.events | length' && echo "chat completion requests" | cat
+
+# Vendor distribution analysis
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | .attributes.selected_vendor' | sort | uniq -c | sort -nr | cat
+
+# Model usage patterns
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | "\(.attributes.original_model) -> \(.attributes.selected_vendor):\(.attributes.selected_model)"' | sort | uniq -c | sort -nr | cat
+```
+
+**4. Performance Analysis:**
+```bash
+# Response time analysis
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | sort -n | tail -10 | cat
+
+# Slow requests (>5 seconds)
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | select(.attributes.duration_ms > 5000) | "\(.timestamp) - \(.attributes.duration_ms)ms - \(.request.path)"' | cat
+
+# Average response time
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
+```
+
+### **Service Health Monitoring**
+
+**1. ECS Service Status:**
+```bash
+# Development service status
+aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_DEV --services $AWS_SERVICE_DEV --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount,Platform:platformVersion}' | cat
+
+# Production service status
+aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_PROD --services $AWS_SERVICE_PROD --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount,Platform:platformVersion}' | cat
+
+# Check recent deployments
+aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_PROD --services $AWS_SERVICE_PROD --query 'services[0].deployments[0].{Status:status,CreatedAt:createdAt,UpdatedAt:updatedAt,TaskDefinition:taskDefinition}' | cat
+```
+
+**2. Task Health:**
+```bash
+# List running tasks
+aws --region $AWS_REGION ecs list-tasks --cluster $AWS_CLUSTER_PROD --service-name $AWS_SERVICE_PROD | cat
+
+# Get task details
+aws --region $AWS_REGION ecs list-tasks --cluster $AWS_CLUSTER_PROD --service-name $AWS_SERVICE_PROD | jq -r '.taskArns[]' | head -1 | xargs -I {} aws --region $AWS_REGION ecs describe-tasks --cluster $AWS_CLUSTER_PROD --tasks {} --query 'tasks[0].{Status:lastStatus,Health:healthStatus,CPU:cpu,Memory:memory}' | cat
+```
+
+**3. Service Events (Issues):**
+```bash
+# Check for service issues
+aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_PROD --services $AWS_SERVICE_PROD --query 'services[0].events[0:5].{CreatedAt:createdAt,Message:message}' | cat
+```
+
+### **Deployment Monitoring**
+
+**1. CodeBuild Status:**
+```bash
+# Check recent builds for dev
+aws --profile $AWS_PROFILE --region $AWS_REGION codebuild list-builds-for-project --project-name $AWS_SERVICE_DEV --sort-order DESCENDING | head -5 | cat
+
+# Check recent builds for prod
+aws --profile $AWS_PROFILE --region $AWS_REGION codebuild list-builds-for-project --project-name $AWS_SERVICE_PROD --sort-order DESCENDING | head -5 | cat
+
+# Get detailed build information
+BUILD_ID="prod-${SERVICE_NAME}:latest-build-id"
+aws --profile $AWS_PROFILE --region $AWS_REGION codebuild batch-get-builds --ids $BUILD_ID --query 'builds[0].{Status:buildStatus,Phase:currentPhase,Logs:logs.groupName}' | cat
+```
+
+**2. ECR Repository Status:**
+```bash
+# Check recent images in dev
+aws --profile $AWS_PROFILE --region $AWS_REGION ecr describe-images --repository-name $AWS_SERVICE_DEV --query 'imageDetails[*].{Tags:imageTags,Digest:imageDigest,PushedAt:imagePushedAt}' --output table | cat
+
+# Check recent images in prod
+aws --profile $AWS_PROFILE --region $AWS_REGION ecr describe-images --repository-name $AWS_SERVICE_PROD --query 'imageDetails[*].{Tags:imageTags,Digest:imageDigest,PushedAt:imagePushedAt}' --output table | cat
+```
+
+### **Advanced Debugging Techniques**
+
+**1. Error Deep Dive:**
+```bash
+# Error count by type
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[].message | fromjson | .error.type // "unknown"' | sort | uniq -c | sort -nr | cat
+
+# Recent critical errors
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[-5:][].message | fromjson | "\(.timestamp) - \(.error.type // "unknown") - \(.error.message // .message)"' | cat
+
+# Vendor-specific errors
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[].message | fromjson | select(.attributes.vendor) | "\(.timestamp) - \(.attributes.vendor) - \(.error.message // .message)"' | cat
+```
+
+**2. User Agent Analysis:**
+```bash
+# Client distribution
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .request.headers["User-Agent"][0] // "unknown"' | sort | uniq -c | sort -nr | cat
+
+# High-traffic IPs
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .request.headers["X-Forwarded-For"][0] // .request.headers["X-Real-IP"][0] // "unknown"' | sort | uniq -c | sort -nr | head -10 | cat
+```
+
+**3. Business Intelligence:**
+```bash
+# Requests per minute
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .timestamp[:16]' | sort | uniq -c | cat
+
+# HTTP status code distribution
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .response.status_code' | sort | uniq -c | sort -nr | cat
+
+# Streaming vs non-streaming
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"/v1/chat/completions\"" | jq -r '.events[].message | fromjson | if .request.body | contains("\"stream\":true") then "streaming" else "non-streaming" end' | sort | uniq -c | cat
+```
+
+### **Emergency Procedures**
+
+**1. Rollback Production:**
+```bash
+# List recent task definitions
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs list-task-definitions --family-prefix $AWS_SERVICE_PROD --sort DESC | cat
+
+# Update service to previous task definition
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs update-service --cluster $AWS_CLUSTER_PROD --service $AWS_SERVICE_PROD --task-definition prod-${SERVICE_NAME}:previous-version | cat
+```
+
+**2. Scale Service:**
+```bash
+# Scale up for high load
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs update-service --cluster $AWS_CLUSTER_PROD --service $AWS_SERVICE_PROD --desired-count 3 | cat
+
+# Scale down for maintenance
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs update-service --cluster $AWS_CLUSTER_PROD --service $AWS_SERVICE_PROD --desired-count 0 | cat
+```
+
+### **Quick AWS Debugging Commands Reference**
+
+**🚨 Emergency Commands:**
+```bash
+# Quick health check
+curl -f https://genapi.example.com/health && echo "✅ Production OK" || echo "❌ Production DOWN" | cat
+curl -f https://dev-genapi.example.com/health && echo "✅ Development OK" || echo "❌ Development DOWN" | cat
+
+# Recent errors (last 30 minutes)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[-3:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
+
+# Service status
+aws --region ap-southeast-3 ecs describe-services --cluster prod-${SERVICE_NAME} --services prod-${SERVICE_NAME} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' | cat
+```
+
+**🔍 Daily Monitoring Commands:**
+```bash
+# Request volume (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "requests in last hour" | cat
+
+# Vendor distribution (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | .attributes.selected_vendor' | sort | uniq -c | sort -nr | cat
+
+# Average response time (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
+```
+
+### **CloudWatch Integration**
+
+**Log Analysis:**
+```bash
+# Stream CloudWatch logs with error filtering
+aws --profile $AWS_PROFILE --region $AWS_REGION logs tail /aws/ecs/service/$AWS_SERVICE_PROD --follow --filter-pattern "ERROR" | cat
+
+# Query specific time range
+aws --profile $AWS_PROFILE --region $AWS_REGION logs filter-log-events --log-group-name /aws/ecs/service/$AWS_SERVICE_PROD --start-time $(date -d '1 hour ago' +%s)000 --filter-pattern "ProxyHandler" | cat
+
+# Export logs for analysis
+aws --profile $AWS_PROFILE --region $AWS_REGION logs create-export-task --log-group-name /aws/ecs/service/$AWS_SERVICE_PROD --from $(date -d '1 day ago' +%s)000 --to $(date +%s)000 --destination your-s3-bucket | cat
+```
+
+## Maintenance
+
+*   **Dependencies**: Run `go mod tidy` periodically to clean up dependencies. Key dependencies include:
+    *   `github.com/go-playground/validator/v10` v10.26.0 - Struct validation
+    *   `github.com/joho/godotenv` v1.5.1 - Environment variable loading from .env files
+    *   `github.com/google/uuid` v1.6.0 - **NEW** - Cryptographically secure UUID generation
+*   **Configuration Updates**: API keys (`configs/credentials.json`) and model lists (`configs/models.json`) can be updated without code changes. Restart the server for changes to take effect.
+*   **Multi-Vendor Monitoring**: Review logs for vendor distribution and selection patterns. Key log lines include `Even distribution selected combination` and vendor-specific routing decisions.
+*   **Logging**: Review logs in the `logs/` directory or console output. The server logs selected vendors/models for each request, the original requested model, and how the response model is being presented. Key log lines for debugging model handling include `VERBOSE_DEBUG: ProxyRequest - Original requested model:`, `VERBOSE_DEBUG: ProxyRequest - Selected Vendor:`, and `Processing response from actual model: ... will be presented as:`.
+*   **Profiling**: The service includes pprof endpoints for performance profiling at `/debug/pprof/`.
+*   **Code Quality**: 
+    ```bash
+    # Format code
+    make format
+    
+    # Run linter
+    make lint
+    
+    # Clean build artifacts and logs
+    make clean
+    make clean-logs
+    ```
+
+## Common Pitfalls & Lessons Learned
+
+*   **Multi-Vendor Misunderstanding**: **CRITICAL** - This is NOT an OpenAI service with some vendor support. It's a true multi-vendor router with 19 credentials (18 Gemini + 1 OpenAI). Always verify with both vendors.
+*   **Configuration Priority**: The service prioritizes `configs/credentials.json` over environment variables. Don't override working configurations without explicit user request.
+*   **Model Name Handling**: The service preserves original model names in responses while routing to actual vendor models. Verify this behavior in logs with `VERBOSE_DEBUG` entries.
+*   **Port Conflicts**: Always ensure port `:8082` (or the configured port) is free before starting the server. Use `sudo lsof -i :<port> | cat` and `sudo kill -9 <PID>`. For the local server, prefer `pgrep -f "^./server$" | xargs kill -9`.
+*   **Server Startup Time**: *Always* add a short delay (e.g., `sleep 3`) after starting the server in the background before sending `curl` requests. This prevents premature "Connection refused" errors.
+*   **Curl Command Formatting**: Ensure JSON payloads in `curl -d` arguments are properly quoted and escaped, especially when using multi-line JSON. Single-line JSON with escaped quotes (e.g., `\'{\"key\": \"value\"}\'`) is often safer in scripts.
+*   **Background Processes**: When starting the server with `&`, ensure it's managed correctly (e.g., `pgrep -f "^./server$" | xargs kill -9` to stop it specifically).
+*   **Error Message Reliance**: Avoid relying on exact string matching for error messages. Use typed errors (`errors.Is()`) for more robust error handling.
+*   **Project Structure Changes**: When reorganizing project structure:
+    *   Update all file references in code
+    *   Update Docker build contexts and COPY commands
+    *   Update documentation paths
+    *   Run verification scripts to ensure completeness
+*   **Security Scans**: Always scan for sensitive data before committing:
+    *   AWS account IDs, access keys, secrets
+    *   Infrastructure IDs (VPCs, subnets, security groups)
+    *   Any hardcoded credentials or tokens
+*   **Vision API Usage**: When using vision API with custom headers:
+    *   Headers are used during download but removed before sending to vendors
+    *   Works with both public URLs and protected URLs requiring authentication
+    *   Monitor logs for image processing details: `grep "image" logs/server.log`
+    *   Verify concurrent processing works with multiple images
+
+---
+
+Important: you can't read the `configs/credentials.json` using `read_file` tool, you can use `run_terminal_cmd` to `cat configs/credentials.json` instead
+
+## Security Best Practices
+
+### Sensitive Data Management
+1. **ALWAYS check for sensitive data before committing**:
+   ```bash
+   # Check for AWS account IDs (12-digit numbers)
+   grep -r -E '\b[0-9]{12}\b' --exclude-dir={.git,node_modules,vendor,.terraform,build} --exclude="*.log" .
+   
+   # Check for AWS access keys
+   grep -r -E '(AKIA|ASIA|aws_access_key|aws_secret|AWS_ACCESS|AWS_SECRET)' --exclude-dir={.git,node_modules,vendor,.terraform,build} --exclude="*.log" .
+   ```
+
+2. **Deployment scripts often contain sensitive information**:
+   - `scripts/deploy.sh` is gitignored as it contains AWS account IDs, VPC IDs, etc.
+   - Never commit files with hardcoded credentials or infrastructure IDs
+
+3. **Use environment variables or secret management for production**
+
+4. **NEW - Secure Credential Handling**:
+   - Credentials are now encrypted with AES-GCM in `internal/config/secure.go`
+   - Sensitive data is masked in production logs via `internal/utils/sanitization.go`
+   - Environment variables are securely loaded with fallback mechanisms
+
+## Git Workflow
+
+### Creating Pull Requests
+1. **Create a feature branch**:
+   ```bash
+   git checkout -b feat/your-feature-name
+   ```
+
+2. **Commit with detailed messages using multiple -m flags**:
+   ```bash
+   git commit -m "feat: main commit message" \
+     -m "- First bullet point" \
+     -m "- Second bullet point" \
+     -m "" \
+     -m "- Additional details"
+   ```
+
+3. **Push and create PR using GitHub CLI**:
+   ```bash
+   # Push branch
+   git push -u origin feat/your-feature-name
+   
+   # Create PR with temporary file
+   cat > pr-body-temp.md << 'EOF'
+   # PR Title
+   
+   ## Summary
+   ...
+   EOF
+   
+   gh pr create --title "feat: your feature" --body-file pr-body-temp.md --base main
+   rm pr-body-temp.md
+   ```
+
+### Monitoring GitHub Actions & CI/CD
+
+**IMPORTANT**: After creating a PR, you MUST proactively monitor the GitHub Actions CI/CD pipeline and fix any issues before requesting review.
+
+1. **Monitor PR Checks**:
+   ```bash
+   # Wait for CI to start (usually 30 seconds)
+   sleep 30
+   
+   # Check PR CI status
+   gh pr checks <PR_NUMBER>
+   
+   # Watch checks in real-time (refreshes every 10 seconds)
+   watch -n 10 'gh pr checks <PR_NUMBER>'
+   ```
+
+2. **View Detailed CI Run**:
+   ```bash
+   # List recent workflow runs for your branch
+   gh run list --branch <your-branch-name> --limit 5
+   
+   # View specific run details
+   gh run view <RUN_ID>
+   
+   # View failed job logs
+   gh run view <RUN_ID> --log-failed
+   
+   # View specific job logs
+   gh run view --job=<JOB_ID>
+   ```
+
+3. **Common CI Monitoring Commands**:
+   ```bash
+   # Check PR status including CI checks
+   gh pr view <PR_NUMBER>
+   
+   # Get PR checks in JSON format
+   gh pr checks <PR_NUMBER> --json name,status,conclusion
+   
+   # Wait for checks to complete
+   gh pr checks <PR_NUMBER> --watch
+   ```
+
+### Handling CI Failures
+
+If CI checks fail, follow these steps:
+
+1. **Identify the Issue**:
+   ```bash
+   # View failed logs
+   gh run view <RUN_ID> --log-failed | grep -B 10 -A 10 "error\|Error\|failed\|Failed"
+   
+   # Check specific job that failed
+   gh run view <RUN_ID> --job=<JOB_ID>
+   ```
+
+2. **Fix Issues Locally**:
+   ```bash
+   # Run CI checks locally before pushing
+   make ci-check
+   
+   # Individual checks
+   make format-check    # Code formatting
+   make lint           # Linting
+   make build          # Build verification
+   make security-scan  # Security scanning
+   ```
+
+3. **Push Fixes**:
+   ```bash
+   # After fixing issues
+   git add .
+   git commit -m "fix: address CI failures" \
+     -m "- Fix formatting issues" \
+     -m "- Resolve linting errors"
+   git push
+   
+   # Monitor new CI run
+   sleep 30 && gh pr checks <PR_NUMBER>
+   ```
+
+### Branch Protection Rules
+
+This repository enforces the following rules:
+- **No direct pushes to main**: All changes must go through pull requests
+- **CI must pass**: PRs cannot be merged unless all CI checks are green
+- **Up-to-date branch**: PRs must be up-to-date with main before merging
+
+### PR Lifecycle Best Practices
+
+1. **Before Creating PR**:
+   - Run `make ci-check` locally
+   - Check for sensitive data leaks
+- Verify multi-vendor functionality
+
+2. **After Creating PR**:
+   - Monitor CI pipeline immediately
+   - Fix any failures proactively
+   - Don't wait for reviewers if CI is failing
+
+3. **Example Complete Workflow**:
+   ```bash
+   # Create feature branch
+   git checkout -b feat/awesome-feature
+   
+   # Make changes and verify locally
+make lint && make build
+
+# Verify multi-vendor functionality
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+   
+   # Commit and push
+   git add .
+   git commit -m "feat: add awesome feature" -m "- Implementation details"
+   git push -u origin feat/awesome-feature
+   
+   # Create PR
+   gh pr create --title "feat: awesome feature" --body "Add awesome feature with XYZ functionality"
+   
+   # Monitor CI (get PR number from create output)
+   PR_NUM=$(gh pr list --head feat/awesome-feature --json number -q '.[0].number')
+   echo "Monitoring PR #$PR_NUM"
+   
+   # Wait and check
+   sleep 30
+   gh pr checks $PR_NUM --watch
+   
+   # If failures occur
+   gh run list --branch feat/awesome-feature --limit 1
+   gh run view <RUN_ID> --log-failed
+   
+   # Fix and push
+   # ... make fixes ...
+   git add . && git commit -m "fix: address CI issues" && git push
+   
+   # Monitor again
+   gh pr checks $PR_NUM --watch
+   ```
+
+### Core Architecture Principle
+
+**Key Principle**: This service acts as a *transparent proxy* with a key modification. The router selects an actual vendor/model based on its internal logic (e.g., even distribution selection, vendor filter). The `model` field in the request to the downstream vendor is overridden with this *actual selected model*. However, the `model` field in the final response back to the client is modified to reflect the *original model name the client sent in its initial request*. All other request and response data (headers, body structure excluding the model field, status code) from the vendor **must** be passed *exactly* to the client, and vice-versa. Changes must not interfere with this.
+
+### Manual Verification
+
+> **Complete Running Guide**: For comprehensive running instructions including manual verification and debugging, see [Running Guide](mdc:running_guide.mdc)
+
+## Release Process
+
+### 🏷️ MANDATORY Release Workflow
+
+Follow this systematic approach for creating releases:
+
+#### 1. Pre-Commit Review Process
+
+```bash
+# 1. List modified files
+git status --porcelain | grep '^ M' | cut -c 4- | cat
+
+# 2. Review each file (replace <file> with actual path)
+git diff --color <file> | cat
+
+# 3. Check final logs for any issues
+tail -10 logs/server.log | cat
+
+# 4. Stage and commit with proper message
+git add .
+git commit -m "feat: describe changes based on diff review" -m "Detailed description if needed" | cat
+```
+
+#### 2. Version Management
+
+```bash
+# 1. Get current version and prepare for bump
+CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") && echo "Current version: $CURRENT_VERSION" | cat
+
+# 2. Review changes since last release
+git log $(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD~10")..HEAD --oneline | cat
+
+# 3. Determine version bump type:
+# - patch: Bug fixes, small improvements
+# - minor: New features, non-breaking changes  
+# - major: Breaking changes, API changes
+
+# 4. Create new version tag (replace X.X.X with new version)
+NEW_VERSION="v2.1.0"  # Example: increment based on changes
+```
+
+#### 3. Create Release Tag
+
+```bash
+# Create annotated tag with detailed release notes
+git tag -a $NEW_VERSION -m "$NEW_VERSION: Brief release title" \
+  -m "" \
+  -m "FEATURES:" \
+  -m "- New feature descriptions" \
+  -m "" \
+  -m "IMPROVEMENTS:" \
+  -m "- Performance improvements" \
+  -m "- Code quality enhancements" \
+  -m "" \
+  -m "FIXES:" \
+  -m "- Bug fix descriptions" \
+  -m "" \
+  -m "BREAKING CHANGES:" \
+  -m "- Any breaking changes (if major version)" | cat
+```
+
+#### 4. Push and Create GitHub Release
+
+```bash
+# 1. Push the tag to remote
+git push origin $NEW_VERSION | cat
+
+# 2. Create release notes file (temp file for GitHub release)
+cat > temp-release-notes.md << 'EOF'
+## ✨ What's New
+
+### Features
+- New feature descriptions with details
+- Enhanced functionality explanations
+
+### Improvements  
+- Performance optimizations
+- Code quality enhancements
+- Better error handling
+
+### Bug Fixes
+- Fixed specific issues
+- Resolved edge cases
+
+### Technical Changes
+- Updated dependencies
+- Improved test coverage
+- Enhanced documentation
+
+## 🔧 Migration Guide
+
+If there are breaking changes, provide migration instructions here.
+
+## 📊 Impact
+
+- Performance improvements
+- Reduced memory usage
+- Better reliability
+
+## 🧪 Verification
+
+- ✅ Manual verification completed
+- ✅ Performance verified
+EOF
+
+# 3. Create and publish GitHub release
+gh release create $NEW_VERSION --title "🚀 Generative API Router $NEW_VERSION" --notes-file temp-release-notes.md | cat
+
+# 4. Cleanup temp files
+rm temp-release-notes.md && echo "Cleaned up release notes file" | cat
+```
+
+#### 5. Post-Release Verification
+
+```bash
+# 1. Verify release was created
+gh release view $NEW_VERSION | cat
+
+# 2. Check latest releases
+gh release list --limit 3 | cat
+
+# 3. Verify tag exists locally and remotely
+git tag --sort=-version:refname | head -5 | cat
+```
+
+### ✅ Good Commit Message Examples
+
+```bash
+# Feature commits
+git commit -m "feat: add health check monitoring" -m "Added comprehensive health check with dependency verification" | cat
+
+# Documentation commits  
+git commit -m "docs: update API documentation" -m "Added examples for streaming and tool calling endpoints" | cat
+
+# Fix commits
+git commit -m "fix: resolve proxy timeout issues" -m "Increased timeout values and added retry logic for vendor APIs" | cat
+
+# Breaking change commits
+git commit -m "feat!: remove metrics implementation" -m "BREAKING CHANGE: /metrics endpoint no longer available" | cat
+```
+
+### 📋 Pre-Release Checklist
+
+- [ ] All modified files reviewed (`git diff --color <file>`)
+- [ ] Logs checked for errors (`tail -20 logs/server.log`)
+- [ ] Linting clean (`make lint`)
+- [ ] Security scan clean (`make security-scan`)
+- [ ] Multi-vendor functionality verified
+- [ ] Commit message follows conventional format
+- [ ] Version bump appropriate for changes
+- [ ] Release notes comprehensive and accurate

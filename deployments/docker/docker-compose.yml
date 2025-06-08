@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+    ports:
+      - "8082:8082"
+    volumes:
+      - ../../configs/credentials.json:/app/configs/credentials.json
+      - ../../configs/models.json:/app/configs/models.json

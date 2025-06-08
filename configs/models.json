@@ -1,0 +1,18 @@
+[
+    {
+        "vendor": "gemini",
+        "model": "gemini-2.5-flash-preview-04-17"
+    },
+    {
+        "vendor": "gemini",
+        "model": "gemini-2.5-flash-preview-05-20"
+    },
+    {
+        "vendor": "openai",
+        "model": "gpt-4o"
+    },
+    {
+        "vendor": "openai",
+        "model": "gpt-4.1"
+    }
+]
