@@ -5,10 +5,17 @@ Practical guide for querying and monitoring production workloads for the Generat
 ## 🔧 Environment Setup
 
 ### AWS Environment Variables
-Always set these environment variables first for consistent querying:
+**CRITICAL: Load .env First, Then Configure AWS:**
 
 ```bash
-export AWS_PROFILE=${AWS_ACCOUNT_ID} AWS_REGION=ap-southeast-3 AWS_CLUSTER_PROD=prod-${SERVICE_NAME} AWS_SERVICE_PROD=prod-${SERVICE_NAME} && echo "✅ Environment loaded" | cat
+# STEP 1: Load environment variables from .env file (MANDATORY)
+export $(cat .env | grep -v '^#' | xargs) && echo "✅ Environment loaded from .env" | cat
+
+# STEP 2: Set up AWS cluster/service names based on SERVICE_NAME from .env
+export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ AWS environment configured" | cat
+
+# STEP 3: Verify configuration
+echo "Service Name: $SERVICE_NAME" && echo "AWS Account: $AWS_ACCOUNT_ID" && echo "AWS Region: $AWS_REGION" && echo "Prod Cluster: $AWS_CLUSTER_PROD" && echo "Prod Service: $AWS_SERVICE_PROD" | cat
 ```
 
 ### Time Range Helpers

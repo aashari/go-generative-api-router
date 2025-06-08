@@ -5,9 +5,9 @@ This guide covers the AWS deployment infrastructure and procedures for the Gener
 ## 🏗️ Infrastructure Overview
 
 ### AWS Account & Region
-- **AWS Account**: `${AWS_ACCOUNT_ID}`
+- **AWS Account**: `${AWS_ACCOUNT_ID}` (from .env)
 - **Region**: `ap-southeast-3` (Asia Pacific - Jakarta)
-- **Service Name**: `go-generative-api-router`
+- **Service Name**: `${SERVICE_NAME}` (from .env)
 
 ### Architecture
 The service is deployed using a modern AWS serverless architecture:
@@ -73,18 +73,27 @@ The deployment pipeline automatically sets the following environment variables:
 
 ### Service Status Commands
 
+**CRITICAL: Load .env First**
+```bash
+# STEP 1: Load environment variables from .env file (MANDATORY)
+export $(cat .env | grep -v '^#' | xargs) && echo "✅ Environment loaded from .env" | cat
+
+# STEP 2: Set up AWS cluster/service names based on SERVICE_NAME from .env
+export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ AWS environment configured" | cat
+```
+
 #### Check CodeBuild Projects
 ```bash
 # List all projects
-aws --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 codebuild list-projects
+aws --profile $AWS_PROFILE --region $AWS_REGION codebuild list-projects
 
 # Check recent builds for dev
-aws --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 codebuild list-builds-for-project \
-  --project-name dev-${SERVICE_NAME} --sort-order DESCENDING
+aws --profile $AWS_PROFILE --region $AWS_REGION codebuild list-builds-for-project \
+  --project-name $AWS_SERVICE_DEV --sort-order DESCENDING
 
 # Check recent builds for prod
-aws --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 codebuild list-builds-for-project \
-  --project-name prod-${SERVICE_NAME} --sort-order DESCENDING
+aws --profile $AWS_PROFILE --region $AWS_REGION codebuild list-builds-for-project \
+  --project-name $AWS_SERVICE_PROD --sort-order DESCENDING
 ```
 
 #### Check ECR Repositories

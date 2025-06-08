@@ -175,24 +175,28 @@ grep "image" logs/server.log | tail -5 | cat
 
 ### 🔧 Key Environment Variables
 
-**AWS Configuration:**
+**CRITICAL: Always Load .env First**
 ```bash
-# AWS Profiles and Regions
-AWS_PROFILE=your-aws-profile
-AWS_REGION=ap-southeast-3
+# STEP 1: Load environment variables from .env file (MANDATORY)
+export $(cat .env | grep -v '^#' | xargs) && echo "✅ Environment loaded from .env" | cat
 
-# ECS Clusters and Services
-AWS_CLUSTER_DEV=dev-generative-api-router
-AWS_SERVICE_DEV=dev-generative-api-router
-AWS_CLUSTER_PROD=prod-generative-api-router
-AWS_SERVICE_PROD=prod-generative-api-router
+# STEP 2: Set up AWS cluster/service names based on SERVICE_NAME
+export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ AWS environment configured" | cat
+```
 
+**Environment Variables from .env:**
+```bash
 # Application Configuration
-GENAPI_API_KEY=your-api-key
-PORT=8082
-LOG_LEVEL=info
+SERVICE_NAME=your-service-name     # Service name for AWS resources
+ENVIRONMENT=dev                    # Environment (dev/prod)
+PORT=8082                         # Application port
+LOG_LEVEL=info                    # Logging level
 
-# Environment File Loading (Node.js dotenv equivalent)
+# AWS Configuration  
+AWS_ACCOUNT_ID=your-account-id    # AWS Account ID
+AWS_PROFILE=your-aws-profile      # AWS CLI profile
+AWS_REGION=ap-southeast-3         # AWS region
+
 # The application automatically loads from .env file at startup
 # Supports multiple locations: .env, configs/.env, ../.env, ~/.env
 
@@ -200,19 +204,17 @@ LOG_LEVEL=info
 VERSION=v2.1.0                    # Application version (defaults to "unknown")
 ```
 
-**Environment Setup:**
+**Environment Setup Verification:**
 ```bash
-# The application automatically loads .env file at startup (Node.js dotenv equivalent)
-# No manual export needed - just ensure .env file exists in project root
-
 # Verify environment variables are loaded
-echo "AWS Profile: $AWS_PROFILE" && echo "AWS Region: $AWS_REGION" | cat
+echo "Service Name: $SERVICE_NAME" && echo "AWS Profile: $AWS_PROFILE" && echo "AWS Region: $AWS_REGION" | cat
+
+# Verify AWS cluster/service names
+echo "Dev Cluster: $AWS_CLUSTER_DEV" && echo "Dev Service: $AWS_SERVICE_DEV" | cat
+echo "Prod Cluster: $AWS_CLUSTER_PROD" && echo "Prod Service: $AWS_SERVICE_PROD" | cat
 
 # Verify application configuration
 echo "Port: $PORT" && echo "Log Level: $LOG_LEVEL" && echo "Version: $VERSION" | cat
-
-# Manual loading (if needed for scripts)
-export $(cat .env | grep -v '^#' | xargs) && echo "Environment manually loaded" | cat
 ```
 
 **AWS Command Patterns:**
@@ -221,7 +223,7 @@ export $(cat .env | grep -v '^#' | xargs) && echo "Environment manually loaded" 
 aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_DEV --services $AWS_SERVICE_DEV | cat
 
 # CloudWatch logs
-aws --profile $AWS_PROFILE --region $AWS_REGION logs describe-log-groups --log-group-name-prefix "/ecs/generative-api-router" | cat
+aws --profile $AWS_PROFILE --region $AWS_REGION logs describe-log-groups --log-group-name-prefix "/ecs/$SERVICE_NAME" | cat
 
 # Task definitions
 aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-task-definition --task-definition $AWS_SERVICE_DEV | cat
@@ -503,9 +505,9 @@ curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Conte
 ### 🏗️ **Infrastructure Overview**
 
 **AWS Account & Region:**
-- **AWS Account**: `${AWS_ACCOUNT_ID}`
+- **AWS Account**: `${AWS_ACCOUNT_ID}` (from .env)
 - **Region**: `ap-southeast-3` (Asia Pacific - Jakarta)
-- **Service Name**: `go-generative-api-router`
+- **Service Name**: `${SERVICE_NAME}` (from .env)
 
 **Architecture:**
 - **CodeBuild** → **ECR** → **ECS Fargate**
@@ -532,13 +534,16 @@ curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Conte
 
 ### 🔧 **AWS Environment Setup**
 
-**Essential Environment Variables:**
+**CRITICAL: Load .env First, Then Configure AWS:**
 ```bash
-# Development environment
-export AWS_PROFILE=${AWS_ACCOUNT_ID} AWS_REGION=ap-southeast-3 AWS_CLUSTER_DEV=dev-${SERVICE_NAME} AWS_SERVICE_DEV=dev-${SERVICE_NAME} && echo "✅ Dev environment loaded" | cat
+# STEP 1: Load environment variables from .env file (MANDATORY)
+export $(cat .env | grep -v '^#' | xargs) && echo "✅ Environment loaded from .env" | cat
 
-# Production environment
-export AWS_PROFILE=${AWS_ACCOUNT_ID} AWS_REGION=ap-southeast-3 AWS_CLUSTER_PROD=prod-${SERVICE_NAME} AWS_SERVICE_PROD=prod-${SERVICE_NAME} && echo "✅ Prod environment loaded" | cat
+# STEP 2: Set up AWS cluster/service names based on SERVICE_NAME from .env
+export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ AWS environment configured" | cat
+
+# STEP 3: Verify configuration
+echo "Service Name: $SERVICE_NAME" && echo "AWS Account: $AWS_ACCOUNT_ID" && echo "AWS Region: $AWS_REGION" && echo "Dev Cluster: $AWS_CLUSTER_DEV" && echo "Prod Cluster: $AWS_CLUSTER_PROD" | cat
 ```
 
 **Time Range Helpers for Log Queries:**
@@ -718,27 +723,33 @@ aws --profile $AWS_PROFILE --region $AWS_REGION ecs update-service --cluster $AW
 
 **🚨 Emergency Commands:**
 ```bash
+# PREREQUISITE: Load .env first
+export $(cat .env | grep -v '^#' | xargs) && export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ Environment loaded" | cat
+
 # Quick health check
 curl -f https://genapi.example.com/health && echo "✅ Production OK" || echo "❌ Production DOWN" | cat
 curl -f https://dev-genapi.example.com/health && echo "✅ Development OK" || echo "❌ Development DOWN" | cat
 
 # Recent errors (last 30 minutes)
-START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[-3:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[-3:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
 
 # Service status
-aws --region ap-southeast-3 ecs describe-services --cluster prod-${SERVICE_NAME} --services prod-${SERVICE_NAME} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' | cat
+aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_PROD --services $AWS_SERVICE_PROD --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' | cat
 ```
 
 **🔍 Daily Monitoring Commands:**
 ```bash
+# PREREQUISITE: Load .env first
+export $(cat .env | grep -v '^#' | xargs) && export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ Environment loaded" | cat
+
 # Request volume (last hour)
-START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "requests in last hour" | cat
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "requests in last hour" | cat
 
 # Vendor distribution (last hour)
-START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | .attributes.selected_vendor' | sort | uniq -c | sort -nr | cat
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | .attributes.selected_vendor' | sort | uniq -c | sort -nr | cat
 
 # Average response time (last hour)
-START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
 ```
 
 ### **CloudWatch Integration**
