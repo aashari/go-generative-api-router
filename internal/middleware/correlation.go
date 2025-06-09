@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
@@ -126,7 +127,18 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 			"status_code":    wrapper.statusCode,
 			"content_length": wrapper.bytesWritten,
 			"headers":        map[string][]string(wrapper.Header()),
-			"body":           wrapper.responseData.String(),
+		}
+		
+		// Only include response body for non-streaming responses
+		if wrapper.isStreaming {
+			responseData["body"] = "[STREAMING_RESPONSE]"
+			responseData["streaming"] = true
+		} else if wrapper.responseData != nil {
+			responseData["body"] = wrapper.responseData.String()
+			responseData["streaming"] = false
+		} else {
+			responseData["body"] = ""
+			responseData["streaming"] = false
 		}
 
 		attributes = map[string]interface{}{
@@ -146,10 +158,20 @@ type responseWriterWrapper struct {
 	statusCode   int
 	bytesWritten int64
 	responseData *bytes.Buffer
+	isStreaming  bool
 }
 
 func (w *responseWriterWrapper) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
+	
+	// Check if this is a streaming response
+	contentType := w.Header().Get("Content-Type")
+	if strings.Contains(contentType, "text/event-stream") {
+		w.isStreaming = true
+		// Don't buffer streaming responses
+		w.responseData = nil
+	}
+	
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
@@ -157,8 +179,8 @@ func (w *responseWriterWrapper) Write(data []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(data)
 	w.bytesWritten += int64(n)
 
-	// Capture response data for complete logging
-	if w.responseData != nil {
+	// Only capture response data for non-streaming responses
+	if w.responseData != nil && !w.isStreaming {
 		w.responseData.Write(data[:n]) // Only write successfully written bytes
 	}
 

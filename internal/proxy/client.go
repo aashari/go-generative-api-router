@@ -193,10 +193,22 @@ func (c *APIClient) setupRequest(r *http.Request, selection *selector.VendorSele
 	return req, isStreaming, nil
 }
 
-// setupResponseHeadersWithVendor configures response headers with vendor info
+// setupResponseHeadersWithVendor sets up response headers with vendor awareness
 func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *http.Response, isStreaming bool, vendor string) {
-	// Set base compliant headers (content-length will be set per chunk for streaming)
+	// Set base compliant headers (content-length=0 for streaming to prevent it being set)
 	c.standardizer.setCompliantHeaders(w, vendor, 0, false)
+	
+	// Log complete header mapping
+	logger.LogWithStructure(context.Background(), logger.LevelInfo, "Setting up response headers with complete data",
+		map[string]interface{}{
+			"vendor":       vendor,
+			"is_streaming": isStreaming,
+		},
+		nil, // request
+		map[string]interface{}{
+			"vendor_response_headers": map[string][]string(resp.Header),
+		},
+		nil) // error
 
 	// Override content type for streaming mode
 	if isStreaming {
@@ -206,22 +218,36 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 		w.Header().Set("Connection", "keep-alive")
 		// Remove Content-Length for streaming as it's chunked
 		w.Header().Del("Content-Length")
+		// Explicitly set Transfer-Encoding to chunked so Go will not add a Content-Length later
+		w.Header().Set("Transfer-Encoding", "chunked")
+		// Set X-Accel-Buffering to no to prevent nginx from buffering
+		w.Header().Set("X-Accel-Buffering", "no")
 		// Log complete streaming headers setup
 		logger.LogWithStructure(context.Background(), logger.LevelInfo, "Set streaming headers with complete data",
 			map[string]interface{}{
-				"vendor":       vendor,
-				"is_streaming": isStreaming,
+				"vendor":                  vendor,
+				"final_response_headers":  map[string][]string(w.Header()),
+				"content_type":            w.Header().Get("Content-Type"),
+				"cache_control":           w.Header().Get("Cache-Control"),
+				"connection":              w.Header().Get("Connection"),
+				"content_length_removed":  w.Header().Get("Content-Length") == "",
+				"transfer_encoding":       w.Header().Get("Transfer-Encoding"),
+				"x_accel_buffering":       w.Header().Get("X-Accel-Buffering"),
 			},
 			nil, // request
-			map[string]interface{}{
-				"complete_response_headers": map[string][]string(w.Header()),
-				"original_vendor_headers":   map[string][]string(resp.Header),
-			},
+			nil, // response
 			nil) // error
 	}
 
 	// Write status code after setting all headers
 	w.WriteHeader(resp.StatusCode)
+	
+	// For streaming, immediately flush headers to ensure chunked transfer encoding
+	if isStreaming {
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	}
 }
 
 // handleStreaming processes streaming responses

@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"content":"\n","role":"assistant"},"finish_reason":"length","index":0}],"created":1749459571,"id":"c6JGaJ29Oumhz7IPtLO46QQ","model":"gemini-2.5-flash-preview-04-17","object":"chat.completion.chunk"}
+
+data: [DONE]
+
