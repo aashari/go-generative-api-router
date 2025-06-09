@@ -48,6 +48,7 @@ Recent comprehensive improvements include:
 - **Health Check**: Built-in health check endpoint with service status monitoring
 - **Comprehensive Testing**: Full test coverage with unit tests for all components
 - **🌐 Public Image URL Support**: Automatic downloading and conversion of public image URLs to base64
+- **📄 File Processing Support**: Automatic downloading and text conversion of documents (PDF, Word, etc.) using markitdown
 
 ## Quick Start
 

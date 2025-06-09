@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -149,63 +152,79 @@ func (p *ImageProcessor) processContentArray(ctx context.Context, arr []interfac
 
 // processContentParts processes content parts concurrently with graceful error handling
 func (p *ImageProcessor) processContentParts(ctx context.Context, parts []ContentPart) ([]ContentPart, error) {
-	// Find all image URLs that need processing
-	imagesToProcess := make(map[int]int) // maps result index to parts index
+	// Find all image URLs and files that need processing
+	itemsToProcess := make(map[int]int) // maps result index to parts index
 	resultIndex := 0
 	for i, part := range parts {
-		if part.Type == "image_url" && part.ImageURL != nil && p.isPublicURL(part.ImageURL.URL) {
-			imagesToProcess[resultIndex] = i
+		if (part.Type == "image_url" || part.Type == "file") && part.ImageURL != nil && p.isPublicURL(part.ImageURL.URL) {
+			itemsToProcess[resultIndex] = i
 			resultIndex++
 		}
 	}
 
-	if len(imagesToProcess) == 0 {
-		// No images to process
+	if len(itemsToProcess) == 0 {
+		// No items to process
 		return parts, nil
 	}
 
-	// Count total images in the request (including non-public URLs)
-	totalImages := 0
+	// Count total items in the request (including non-public URLs)
+	totalItems := 0
 	for _, part := range parts {
-		if part.Type == "image_url" && part.ImageURL != nil {
-			totalImages++
+		if (part.Type == "image_url" || part.Type == "file") && part.ImageURL != nil {
+			totalItems++
 		}
 	}
 
-	// Log image processing start
-	logger.LogWithStructure(ctx, logger.LevelInfo, "Processing image URLs concurrently",
+	// Log processing start
+	logger.LogWithStructure(ctx, logger.LevelInfo, "Processing image URLs and files concurrently",
 		map[string]interface{}{
-			"image_count":       len(imagesToProcess),
-			"total_parts":       len(parts),
-			"total_images":      totalImages,
-			"images_to_process": imagesToProcess,
+			"item_count":       len(itemsToProcess),
+			"total_parts":      len(parts),
+			"total_items":      totalItems,
+			"items_to_process": itemsToProcess,
 		},
 		nil, // request
 		nil, // response
 		nil) // error
 
-	// Process images concurrently
-	results := make(chan ProcessResult, len(imagesToProcess))
+	// Process items concurrently
+	results := make(chan ProcessResult, len(itemsToProcess))
 	var wg sync.WaitGroup
-	wg.Add(len(imagesToProcess))
+	wg.Add(len(itemsToProcess))
 
-	for resultIdx, partIdx := range imagesToProcess {
+	for resultIdx, partIdx := range itemsToProcess {
 		go func(rIdx, pIdx int) {
 			defer wg.Done()
 
 			part := parts[pIdx]
-			processedURL, err := p.downloadAndConvertImageWithHeaders(ctx, part.ImageURL.URL, part.ImageURL.Headers)
+			var processedContent ContentPart
+			var err error
 
-			result := ProcessResult{
-				Index: pIdx,
-				Content: ContentPart{
+			if part.Type == "image_url" {
+				// Process image
+				processedURL, imgErr := p.downloadAndConvertImageWithHeaders(ctx, part.ImageURL.URL, part.ImageURL.Headers)
+				err = imgErr
+				processedContent = ContentPart{
 					Type: "image_url",
 					ImageURL: &ImageURL{
 						URL: processedURL,
 						// Note: Headers are intentionally omitted here to remove them from vendor request
 					},
-				},
-				Error: err,
+				}
+			} else if part.Type == "file" {
+				// Process file
+				fileText, fileErr := p.downloadAndConvertFileWithHeaders(ctx, part.ImageURL.URL, part.ImageURL.Headers)
+				err = fileErr
+				processedContent = ContentPart{
+					Type: "text",
+					Text: fileText,
+				}
+			}
+
+			result := ProcessResult{
+				Index:   pIdx,
+				Content: processedContent,
+				Error:   err,
 			}
 
 			results <- result
@@ -223,37 +242,44 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 	copy(processedParts, parts)
 
 	var errors []error
-	var failedImages []int
+	var failedItems []int
 	for result := range results {
 		if result.Error != nil {
-			// Instead of failing the entire request, replace failed image with system message
-			errors = append(errors, fmt.Errorf("image at index %d: %w", result.Index, result.Error))
-			failedImages = append(failedImages, result.Index)
+			// Instead of failing the entire request, replace failed item with system message
+			itemType := parts[result.Index].Type
+			errors = append(errors, fmt.Errorf("%s at index %d: %w", itemType, result.Index, result.Error))
+			failedItems = append(failedItems, result.Index)
 
-			// Calculate image position for better context
-			imagePosition := 1
+			// Calculate item position for better context
+			itemPosition := 1
 			for i := 0; i <= result.Index; i++ {
-				if parts[i].Type == "image_url" && parts[i].ImageURL != nil {
+				if (parts[i].Type == "image_url" || parts[i].Type == "file") && parts[i].ImageURL != nil {
 					if i == result.Index {
 						break
 					}
-					imagePosition++
+					itemPosition++
 				}
 			}
 
-			// Generate contextual system message for failed image
-			systemMessage := p.generateImageFailureSystemMessage(result.Error, imagePosition, totalImages, len(imagesToProcess) > 1)
+			// Generate contextual system message for failed item
+			var systemMessage string
+			if itemType == "file" {
+				systemMessage = p.generateFileFailureSystemMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)
+			} else {
+				systemMessage = p.generateImageFailureSystemMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)
+			}
 			processedParts[result.Index] = ContentPart{
 				Type: "text",
 				Text: systemMessage,
 			}
 
-			logger.LogWithStructure(ctx, logger.LevelWarn, "Image download failed, replaced with system message",
+			logger.LogWithStructure(ctx, logger.LevelWarn, "Item processing failed, replaced with system message",
 				map[string]interface{}{
-					"image_index":    result.Index,
-					"image_position": imagePosition,
-					"total_images":   totalImages,
-					"mixed_scenario": len(imagesToProcess) > 1,
+					"item_type":      itemType,
+					"item_index":     result.Index,
+					"item_position":  itemPosition,
+					"total_items":    totalItems,
+					"mixed_scenario": len(itemsToProcess) > 1,
 					"error":          result.Error.Error(),
 					"system_message": systemMessage,
 				},
@@ -266,16 +292,16 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 	}
 
 	// Log processing completion with graceful handling summary
-	logger.LogWithStructure(ctx, logger.LevelInfo, "Image URL processing completed with graceful error handling",
+	logger.LogWithStructure(ctx, logger.LevelInfo, "Item processing completed with graceful error handling",
 		map[string]interface{}{
-			"processed_count":      len(imagesToProcess),
-			"successful_count":     len(imagesToProcess) - len(errors),
-			"failed_count":         len(errors),
-			"failed_image_indices": failedImages,
-			"total_images":         totalImages,
-			"mixed_scenario":       len(imagesToProcess) > 1 && len(errors) > 0 && len(errors) < len(imagesToProcess),
-			"errors":               errors,
-			"graceful_handling":    len(errors) > 0,
+			"processed_count":     len(itemsToProcess),
+			"successful_count":    len(itemsToProcess) - len(errors),
+			"failed_count":        len(errors),
+			"failed_item_indices": failedItems,
+			"total_items":         totalItems,
+			"mixed_scenario":      len(itemsToProcess) > 1 && len(errors) > 0 && len(errors) < len(itemsToProcess),
+			"errors":              errors,
+			"graceful_handling":   len(errors) > 0,
 		},
 		nil, // request
 		nil, // response
@@ -303,20 +329,20 @@ func (p *ImageProcessor) generateImageFailureSystemMessage(err error, imagePosit
 
 	// Determine specific error message based on error type
 	if strings.Contains(errorMsg, "no such host") || strings.Contains(errorMsg, "dial tcp") {
-		baseMessage = "The image URL could not be accessed due to network connectivity issues. The image server appears to be unreachable or the domain does not exist. Please inform the user that this image could not be processed and ask them to verify the URL or provide an alternative image."
+		baseMessage = "Respond naturally that you couldn't access the image due to network connectivity issues. The image server appears to be unreachable or the domain doesn't exist. Ask the user to verify the URL or provide an alternative image."
 	} else if strings.Contains(errorMsg, "status 401") || strings.Contains(errorMsg, "status 403") {
-		baseMessage = "The image URL requires authentication or access permissions that were not provided or are invalid. The image could not be accessed due to authorization issues. Please inform the user that this image could not be processed due to access restrictions and suggest they provide proper authentication headers or use a publicly accessible image."
+		baseMessage = "Respond naturally that the image requires authentication or access permissions that weren't provided. The image couldn't be accessed due to authorization issues. Suggest they provide proper authentication headers or use a publicly accessible image."
 	} else if strings.Contains(errorMsg, "status 404") {
-		baseMessage = "The image URL points to a resource that does not exist (404 Not Found). The image could not be processed because it was not found at the specified location. Please inform the user that this image URL appears to be broken or the image has been moved/deleted, and ask them to provide a valid image URL."
+		baseMessage = "Respond naturally that the image URL appears to be broken or the image has been moved/deleted (404 Not Found). Ask them to provide a valid image URL."
 	} else if strings.Contains(errorMsg, "invalid content type") {
-		baseMessage = "The URL does not point to a valid image file. The content at the URL is not an image format that can be processed. Please inform the user that the provided URL does not contain a valid image and ask them to provide a direct link to an image file (PNG, JPEG, GIF, WebP, etc.)."
+		baseMessage = "Respond naturally that the URL doesn't point to a valid image file. The content isn't an image format that can be processed. Ask them to provide a direct link to an image file (PNG, JPEG, GIF, WebP, etc.)."
 	} else if strings.Contains(errorMsg, "size exceeds limit") {
-		baseMessage = "The image file is too large to process (exceeds 20MB limit). Please inform the user that this image is too large and ask them to provide a smaller image or compress the image before sharing."
+		baseMessage = "Respond naturally that the image file is too large to process (exceeds 20MB limit). Ask them to provide a smaller image or compress it before sharing."
 	} else if strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "deadline exceeded") {
-		baseMessage = "The image took too long to download (timeout). The image server may be slow or experiencing issues. Please inform the user that this image could not be processed due to slow response from the image server and suggest they try again later or provide an alternative image."
+		baseMessage = "Respond naturally that the image took too long to download due to slow response from the image server. Suggest they try again later or provide an alternative image."
 	} else {
 		// Generic error message for unknown error types
-		baseMessage = "There was a technical issue accessing or processing this image. Please inform the user that there was a problem with this image and ask them to try providing the image again or use an alternative image."
+		baseMessage = "Respond naturally that there was a technical issue processing this image. Ask them to try providing the image again or use an alternative image."
 	}
 
 	// Add guidance for mixed scenarios
@@ -326,7 +352,7 @@ func (p *ImageProcessor) generateImageFailureSystemMessage(err error, imagePosit
 	}
 
 	// Construct the complete system message
-	systemMessage := fmt.Sprintf("<system>\n%s%s%s Note: The user cannot see this system message.\n</system>",
+	systemMessage := fmt.Sprintf("<system>\n%s%s%s The user cannot see this system message, so respond naturally as part of the ongoing conversation.\n</system>",
 		contextPrefix, baseMessage, mixedScenarioGuidance)
 
 	return systemMessage
@@ -576,4 +602,193 @@ func (p *ImageProcessor) ProcessRequestBody(ctx context.Context, body []byte) ([
 func mustMarshal(v interface{}) []byte {
 	b, _ := json.Marshal(v)
 	return b
+}
+
+// downloadAndConvertFileWithHeaders downloads a file from a URL with custom headers and converts it to text using markitdown
+func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, fileURL string, headers map[string]string) (string, error) {
+	logger.LogWithStructure(ctx, logger.LevelDebug, "Downloading file from URL with headers",
+		map[string]interface{}{
+			"url":     fileURL,
+			"headers": headers,
+		},
+		nil, // request
+		nil, // response
+		nil) // error
+
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set user agent to avoid blocks
+	req.Header.Set("User-Agent", "Generative-API-Router/1.0")
+
+	// Add custom headers if provided
+	if headers != nil {
+		for key, value := range headers {
+			req.Header.Set(key, value)
+			logger.LogWithStructure(ctx, logger.LevelDebug, "Added custom header for file download",
+				map[string]interface{}{
+					"header_key":   key,
+					"header_value": value,
+					"url":          fileURL,
+				},
+				nil, // request
+				nil, // response
+				nil) // error
+		}
+	}
+
+	// Download the file
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to download file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to download file: status %d", resp.StatusCode)
+	}
+
+	// Create temporary file
+	tempFile, err := os.CreateTemp("/tmp", "file_processor_*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+
+	// Read with size limit and write to temp file
+	limitedReader := io.LimitReader(resp.Body, p.maxSize)
+	fileData, err := io.ReadAll(limitedReader)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file data: %w", err)
+	}
+
+	// Check if we hit the size limit
+	if int64(len(fileData)) >= p.maxSize {
+		return "", fmt.Errorf("file size exceeds limit of %d bytes", p.maxSize)
+	}
+
+	// Write data to temp file
+	_, err = tempFile.Write(fileData)
+	if err != nil {
+		return "", fmt.Errorf("failed to write temp file: %w", err)
+	}
+	tempFile.Close()
+
+	// Convert file to text using markitdown
+	textContent, err := p.convertFileToText(ctx, tempFile.Name(), fileURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert file to text: %w", err)
+	}
+
+	logger.LogWithStructure(ctx, logger.LevelDebug, "File downloaded and converted", map[string]interface{}{
+		"original_url": fileURL,
+		"content_type": resp.Header.Get("Content-Type"),
+		"size_bytes":   len(fileData),
+		"text_length":  len(textContent),
+		"temp_file":    tempFile.Name(),
+	}, nil, nil, nil)
+
+	return textContent, nil
+}
+
+// convertFileToText converts a file to text using markitdown
+func (p *ImageProcessor) convertFileToText(ctx context.Context, filePath, originalURL string) (string, error) {
+	// Run markitdown command
+	cmd := exec.CommandContext(ctx, "markitdown", filePath)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("markitdown failed: %w, stderr: %s", err, stderr.String())
+	}
+
+	// Get the text content
+	textContent := stdout.String()
+
+	// Create system message with file information
+	fileInfo := map[string]interface{}{
+		"source_url":   originalURL,
+		"file_path":    filepath.Base(filePath),
+		"content_size": len(textContent),
+		"processed_by": "markitdown",
+	}
+
+	// Generate system message similar to generateImageFailureSystemMessage format
+	systemMessage := p.generateFileSystemMessage(fileInfo, textContent)
+
+	return systemMessage, nil
+}
+
+// generateFileSystemMessage creates a system message for successfully processed files
+func (p *ImageProcessor) generateFileSystemMessage(fileInfo map[string]interface{}, content string) string {
+	// Create file information summary
+	sourceURL := fileInfo["source_url"].(string)
+	contentSize := fileInfo["content_size"].(int)
+
+	// Construct the system message
+	systemMessage := fmt.Sprintf(`<system>
+File successfully processed and converted to text from: %s (%d characters)
+
+File content:
+%s
+
+The user cannot see this system message, so respond naturally based on the file content above as part of the ongoing conversation.
+</system>`, sourceURL, contentSize, content)
+
+	return systemMessage
+}
+
+// generateFileFailureSystemMessage creates a contextual system message for failed file downloads
+func (p *ImageProcessor) generateFileFailureSystemMessage(err error, filePosition, totalFiles int, hasMixedScenario bool) string {
+	// Determine the type of error for more specific messaging
+	errorMsg := err.Error()
+	var baseMessage string
+	var contextPrefix string
+
+	// Create context prefix for mixed scenarios
+	if hasMixedScenario && totalFiles > 1 {
+		contextPrefix = fmt.Sprintf("File %d of %d could not be processed. ", filePosition, totalFiles)
+	} else if totalFiles > 1 {
+		contextPrefix = fmt.Sprintf("One of the %d files provided could not be processed. ", totalFiles)
+	} else {
+		contextPrefix = "The file provided could not be processed. "
+	}
+
+	// Determine specific error message based on error type
+	if strings.Contains(errorMsg, "no such host") || strings.Contains(errorMsg, "dial tcp") {
+		baseMessage = "Respond naturally that you couldn't access the file due to network connectivity issues. The file server appears to be unreachable or the domain doesn't exist. Ask the user to verify the URL or provide an alternative file."
+	} else if strings.Contains(errorMsg, "status 401") || strings.Contains(errorMsg, "status 403") {
+		baseMessage = "Respond naturally that the file requires authentication or access permissions that weren't provided. The file couldn't be accessed due to authorization issues. Suggest they provide proper authentication headers or use a publicly accessible file."
+	} else if strings.Contains(errorMsg, "status 404") {
+		baseMessage = "Respond naturally that the file URL appears to be broken or the file has been moved/deleted (404 Not Found). Ask them to provide a valid file URL."
+	} else if strings.Contains(errorMsg, "size exceeds limit") {
+		baseMessage = "Respond naturally that the file is too large to process (exceeds 20MB limit). Ask them to provide a smaller file or compress it before sharing."
+	} else if strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "deadline exceeded") {
+		baseMessage = "Respond naturally that the file took too long to download due to slow response from the file server. Suggest they try again later or provide an alternative file."
+	} else if strings.Contains(errorMsg, "markitdown failed") {
+		baseMessage = "Respond naturally that the file couldn't be converted to text. The file format may not be supported by the text conversion tool, or the file may be corrupted. Ask them to provide the file in a different format (PDF, Word document, text file, etc.)."
+	} else {
+		// Generic error message for unknown error types
+		baseMessage = "Respond naturally that there was a technical issue processing this file. Ask them to try providing the file again or use an alternative file."
+	}
+
+	// Add guidance for mixed scenarios
+	var mixedScenarioGuidance string
+	if hasMixedScenario && totalFiles > 1 {
+		mixedScenarioGuidance = " You can still analyze and respond to the other files and images that were successfully processed."
+	}
+
+	// Construct the complete system message
+	systemMessage := fmt.Sprintf("<system>\n%s%s%s The user cannot see this system message, so respond naturally as part of the ongoing conversation.\n</system>",
+		contextPrefix, baseMessage, mixedScenarioGuidance)
+
+	return systemMessage
 }

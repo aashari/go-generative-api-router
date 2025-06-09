@@ -197,7 +197,7 @@ func (c *APIClient) setupRequest(r *http.Request, selection *selector.VendorSele
 func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *http.Response, isStreaming bool, vendor string) {
 	// Set base compliant headers (content-length=0 for streaming to prevent it being set)
 	c.standardizer.setCompliantHeaders(w, vendor, 0, false)
-	
+
 	// Log complete header mapping
 	logger.LogWithStructure(context.Background(), logger.LevelInfo, "Setting up response headers with complete data",
 		map[string]interface{}{
@@ -225,14 +225,14 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 		// Log complete streaming headers setup
 		logger.LogWithStructure(context.Background(), logger.LevelInfo, "Set streaming headers with complete data",
 			map[string]interface{}{
-				"vendor":                  vendor,
-				"final_response_headers":  map[string][]string(w.Header()),
-				"content_type":            w.Header().Get("Content-Type"),
-				"cache_control":           w.Header().Get("Cache-Control"),
-				"connection":              w.Header().Get("Connection"),
-				"content_length_removed":  w.Header().Get("Content-Length") == "",
-				"transfer_encoding":       w.Header().Get("Transfer-Encoding"),
-				"x_accel_buffering":       w.Header().Get("X-Accel-Buffering"),
+				"vendor":                 vendor,
+				"final_response_headers": map[string][]string(w.Header()),
+				"content_type":           w.Header().Get("Content-Type"),
+				"cache_control":          w.Header().Get("Cache-Control"),
+				"connection":             w.Header().Get("Connection"),
+				"content_length_removed": w.Header().Get("Content-Length") == "",
+				"transfer_encoding":      w.Header().Get("Transfer-Encoding"),
+				"x_accel_buffering":      w.Header().Get("X-Accel-Buffering"),
 			},
 			nil, // request
 			nil, // response
@@ -241,7 +241,7 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 
 	// Write status code after setting all headers
 	w.WriteHeader(resp.StatusCode)
-	
+
 	// For streaming, immediately flush headers to ensure chunked transfer encoding
 	if isStreaming {
 		if flusher, ok := w.(http.Flusher); ok {

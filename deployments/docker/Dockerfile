@@ -18,6 +18,13 @@ COPY . .
 RUN GOOS=linux go build -ldflags "-X main.version=${VERSION}" -o generative-api-router ./cmd/server
 
 FROM alpine:latest
+
+# Install Python 3 and pip
+RUN apk add --no-cache python3 py3-pip
+
+# Install MarkItDown for document conversion to Markdown
+RUN pip3 install --no-cache-dir --break-system-packages 'markitdown[all]'
+
 WORKDIR /app
 COPY --from=builder /app/generative-api-router .
 # Copy pre-existing docs directory (already generated)

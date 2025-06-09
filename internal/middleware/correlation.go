@@ -128,7 +128,7 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 			"content_length": wrapper.bytesWritten,
 			"headers":        map[string][]string(wrapper.Header()),
 		}
-		
+
 		// Only include response body for non-streaming responses
 		if wrapper.isStreaming {
 			responseData["body"] = "[STREAMING_RESPONSE]"
@@ -163,7 +163,7 @@ type responseWriterWrapper struct {
 
 func (w *responseWriterWrapper) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
-	
+
 	// Check if this is a streaming response
 	contentType := w.Header().Get("Content-Type")
 	if strings.Contains(contentType, "text/event-stream") {
@@ -171,7 +171,7 @@ func (w *responseWriterWrapper) WriteHeader(statusCode int) {
 		// Don't buffer streaming responses
 		w.responseData = nil
 	}
-	
+
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
