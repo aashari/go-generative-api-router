@@ -417,9 +417,8 @@ func (s *ResponseStandardizer) setCompliantHeaders(w http.ResponseWriter, vendor
 	// Set date header
 	w.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
 
-	// Generate and set request ID
-	requestID := "req_" + generateRandomString(16)
-	w.Header().Set("X-Request-ID", requestID)
+	// Note: Request ID is already set by the correlation middleware
+	// No need to generate a new one here
 
 	// Set content type for JSON responses
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -438,8 +437,7 @@ func (s *ResponseStandardizer) setCompliantHeaders(w http.ResponseWriter, vendor
 	logger.Debug("Set standardized headers",
 		"vendor", vendor,
 		"content_length", contentLength,
-		"compressed", isCompressed,
-		"request_id", requestID)
+		"compressed", isCompressed)
 }
 
 // processResponseBody handles response body processing

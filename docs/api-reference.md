@@ -27,10 +27,11 @@ Authorization: Bearer YOUR_API_KEY
 
 | Header | Required | Description |
 |--------|----------|-------------|
-| `Authorization` | Yes | Bearer token for authentication |
-| `Content-Type` | Yes | Must be `application/json` for POST requests |
+| `Authorization` | Yes | API key for authentication (format: `Bearer YOUR_API_KEY`) |
+| `Content-Type` | Yes | Must be `application/json` |
+| `X-Request-ID` | No | Custom request ID (uses CF-Ray if present, auto-generated if not provided) |
+| `Accept-Encoding` | No | Supports `gzip` compression |
 | `User-Agent` | No | Client identification (optional) |
-| `X-Request-ID` | No | Custom request ID (auto-generated if not provided) |
 
 ## Response Headers
 
@@ -38,8 +39,10 @@ All responses include:
 
 | Header | Description |
 |--------|-------------|
-| `X-Request-ID` | Unique request identifier for tracking |
-| `Content-Type` | Response content type |
+| `X-Request-ID` | Unique request identifier for tracking (CF-Ray header value if present) |
+| `X-Vendor-Source` | Indicates which vendor handled the request |
+| `Content-Type` | Always `application/json; charset=utf-8` |
+| `Content-Encoding` | `gzip` if compression is used |
 | `Content-Length` | Response body size |
 
 ## Endpoints
@@ -575,7 +578,11 @@ Version information is included in:
 3. **Rate Limiting**: Implement exponential backoff for rate limit errors
 4. **Streaming**: Use streaming for long responses to improve user experience
 5. **Tool Calling**: Validate tool function schemas carefully
-6. **Request IDs**: Use the X-Request-ID header for request tracking
+6. **Request IDs**: 
+   - The service prioritizes CF-Ray headers (from Cloudflare) for request tracking
+   - Falls back to X-Request-ID header if CF-Ray is not present
+   - Auto-generates an ID if neither header is provided
+   - Use the returned X-Request-ID header for tracking and debugging
 
 ## Limits and Quotas
 

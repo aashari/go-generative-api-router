@@ -113,12 +113,15 @@ environment:
 
 ## Request Correlation
 
-Every request receives a unique 16-character request ID that:
+Every request receives a unique request ID that:
 
-1. Is generated via middleware for each incoming request
-2. Is added as an `X-Request-ID` header to responses
-3. Is propagated through context to all components
-4. Appears in the `request.request_id` field of all log entries related to the request
+1. Is extracted from headers in priority order:
+   - `CF-Ray` header (from Cloudflare)
+   - `X-Request-ID` header (custom header)
+   - Auto-generated 16-character hex string if neither is present
+2. Is propagated through the entire request lifecycle
+3. Is added as an `X-Request-ID` header to responses
+4. Appears in all log entries for that request
 
 Example JSON log with request correlation:
 
@@ -235,7 +238,13 @@ logger.LogError(ctx, "proxy", err, map[string]any{
 
 ## Middleware Integration
 
-The correlation middleware automatically adds request IDs to the context and response headers:
+The correlation middleware automatically:
+
+1. Checks for existing request ID headers (CF-Ray takes priority)
+2. Generates a new request ID if none exists
+3. Adds the request ID to the context
+4. Sets the `X-Request-ID` response header
+5. Logs request ID source for debugging
 
 ```go
 // In routes.go

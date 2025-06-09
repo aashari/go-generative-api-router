@@ -731,30 +731,33 @@ echo "=== CIRCUIT BREAKER STATUS ===" && grep "CircuitBreaker" logs/server.log |
 The service is deployed on AWS with separate development and production environments:
 
 **AWS Account & Region:**
-- **AWS Account**: `${AWS_ACCOUNT_ID}`
+- **AWS Account**: `${AWS_ACCOUNT_ID}` (from .env)
 - **Region**: `ap-southeast-3` (Asia Pacific - Jakarta)
 
 **Development Environment:**
-- **ECS Cluster**: `dev-${SERVICE_NAME}`
-- **ECS Service**: `dev-${SERVICE_NAME}`
-- **Log Group**: `/aws/ecs/service/dev-${SERVICE_NAME}`
+- **ECS Cluster**: `dev-${SERVICE_NAME}` (from .env)
+- **ECS Service**: `dev-${SERVICE_NAME}` (from .env)
+- **Log Group**: `/aws/ecs/service/dev-${SERVICE_NAME}` (from .env)
 - **Health URL**: `https://dev-genapi.example.com/health`
 
 **Production Environment:**
-- **ECS Cluster**: `prod-${SERVICE_NAME}`
-- **ECS Service**: `prod-${SERVICE_NAME}`
-- **Log Group**: `/aws/ecs/service/prod-${SERVICE_NAME}`
+- **ECS Cluster**: `prod-${SERVICE_NAME}` (from .env)
+- **ECS Service**: `prod-${SERVICE_NAME}` (from .env)
+- **Log Group**: `/aws/ecs/service/prod-${SERVICE_NAME}` (from .env)
 - **Health URL**: `https://genapi.example.com/health`
 
 ### 🔧 **AWS Environment Setup**
 
-**Essential Environment Variables:**
+**CRITICAL: Load .env First, Then Configure AWS:**
 ```bash
-# Development environment
-export AWS_PROFILE=${AWS_ACCOUNT_ID} AWS_REGION=ap-southeast-3 AWS_CLUSTER_DEV=dev-${SERVICE_NAME} AWS_SERVICE_DEV=dev-${SERVICE_NAME} && echo "✅ Dev environment loaded" | cat
+# STEP 1: Load environment variables from .env file (MANDATORY)
+export $(cat .env | grep -v '^#' | xargs) && echo "✅ Environment loaded from .env" | cat
 
-# Production environment
-export AWS_PROFILE=${AWS_ACCOUNT_ID} AWS_REGION=ap-southeast-3 AWS_CLUSTER_PROD=prod-${SERVICE_NAME} AWS_SERVICE_PROD=prod-${SERVICE_NAME} && echo "✅ Prod environment loaded" | cat
+# STEP 2: Set up AWS cluster/service names based on SERVICE_NAME from .env
+export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ AWS environment configured" | cat
+
+# STEP 3: Verify configuration
+echo "Service Name: $SERVICE_NAME" && echo "AWS Account: $AWS_ACCOUNT_ID" && echo "AWS Region: $AWS_REGION" && echo "Dev Cluster: $AWS_CLUSTER_DEV" && echo "Prod Cluster: $AWS_CLUSTER_PROD" | cat
 ```
 
 **Time Range Helpers for Log Queries:**
@@ -840,23 +843,32 @@ START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-eve
 
 **Quick Status Check:**
 ```bash
+# PREREQUISITE: Load .env first
+export $(cat .env | grep -v '^#' | xargs) && export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ Environment loaded" | cat
+
 # Complete health check
-echo "=== PRODUCTION STATUS ===" && curl -f https://genapi.example.com/health && echo "✅ Production OK" || echo "❌ Production DOWN" && echo "=== DEVELOPMENT STATUS ===" && curl -f https://dev-genapi.example.com/health && echo "✅ Development OK" || echo "❌ Development DOWN" && echo "=== ECS STATUS ===" && aws --region ap-southeast-3 ecs describe-services --cluster prod-${SERVICE_NAME} --services prod-${SERVICE_NAME} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' | cat
+echo "=== PRODUCTION STATUS ===" && curl -f https://genapi.example.com/health && echo "✅ Production OK" || echo "❌ Production DOWN" && echo "=== DEVELOPMENT STATUS ===" && curl -f https://dev-genapi.example.com/health && echo "✅ Development OK" || echo "❌ Development DOWN" && echo "=== ECS STATUS ===" && aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_PROD --services $AWS_SERVICE_PROD --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' | cat
 ```
 
 **Recent Errors (Last 30 Minutes):**
 ```bash
+# PREREQUISITE: Load .env first
+export $(cat .env | grep -v '^#' | xargs) && export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ Environment loaded" | cat
+
 # Production errors
-START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[-3:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[-3:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
 ```
 
 **Service Recovery:**
 ```bash
+# PREREQUISITE: Load .env first
+export $(cat .env | grep -v '^#' | xargs) && export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ Environment loaded" | cat
+
 # Scale up if needed
-aws --region ap-southeast-3 ecs update-service --cluster prod-${SERVICE_NAME} --service prod-${SERVICE_NAME} --desired-count 2 | cat
+aws --region $AWS_REGION ecs update-service --cluster $AWS_CLUSTER_PROD --service $AWS_SERVICE_PROD --desired-count 2 | cat
 
 # Check task health
-aws --region ap-southeast-3 ecs list-tasks --cluster prod-${SERVICE_NAME} --service-name prod-${SERVICE_NAME} | jq -r '.taskArns[]' | head -1 | xargs -I {} aws --region ap-southeast-3 ecs describe-tasks --cluster prod-${SERVICE_NAME} --tasks {} --query 'tasks[0].{Status:lastStatus,Health:healthStatus}' | cat
+aws --region $AWS_REGION ecs list-tasks --cluster $AWS_CLUSTER_PROD --service-name $AWS_SERVICE_PROD | jq -r '.taskArns[]' | head -1 | xargs -I {} aws --region $AWS_REGION ecs describe-tasks --cluster $AWS_CLUSTER_PROD --tasks {} --query 'tasks[0].{Status:lastStatus,Health:healthStatus}' | cat
 ```
 
 ### **📊 AWS Monitoring Best Practices**

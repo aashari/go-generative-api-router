@@ -28,10 +28,25 @@ func generateRequestID() string {
 // RequestCorrelationMiddleware adds request correlation ID and enriches context
 func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Get or generate request ID
-		requestID := r.Header.Get(RequestIDHeader)
-		if requestID == "" {
+		// Priority order for request ID:
+		// 1. CF-Ray header (from Cloudflare)
+		// 2. X-Request-ID header (custom header)
+		// 3. Generate new ID
+		var requestID string
+		var requestIDSource string
+
+		// Check CF-Ray first (Cloudflare's ray ID)
+		if cfRay := r.Header.Get("CF-Ray"); cfRay != "" {
+			requestID = cfRay
+			requestIDSource = "cf-ray"
+		} else if xRequestID := r.Header.Get(RequestIDHeader); xRequestID != "" {
+			// Fall back to X-Request-ID
+			requestID = xRequestID
+			requestIDSource = "x-request-id"
+		} else {
+			// Generate new ID if neither header is present
 			requestID = generateRequestID()
+			requestIDSource = "generated"
 		}
 
 		// Set response header
@@ -71,17 +86,18 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 		// Log request start with new structured format including complete request body
 		start := time.Now()
 		requestData := map[string]interface{}{
-			"request_id":     requestID,
-			"method":         r.Method,
-			"path":           r.URL.Path,
-			"query_params":   r.URL.Query(),
-			"remote_addr":    r.RemoteAddr,
-			"user_agent":     r.Header.Get("User-Agent"),
-			"content_length": r.ContentLength,
-			"host":           r.Host,
-			"request_uri":    r.RequestURI,
-			"headers":        map[string][]string(r.Header),
-			"body":           string(requestBody), // Complete request body logging
+			"request_id":        requestID,
+			"request_id_source": requestIDSource,
+			"method":            r.Method,
+			"path":              r.URL.Path,
+			"query_params":      r.URL.Query(),
+			"remote_addr":       r.RemoteAddr,
+			"user_agent":        r.Header.Get("User-Agent"),
+			"content_length":    r.ContentLength,
+			"host":              r.Host,
+			"request_uri":       r.RequestURI,
+			"headers":           map[string][]string(r.Header),
+			"body":              string(requestBody), // Complete request body logging
 		}
 
 		attributes := map[string]interface{}{
