@@ -71,6 +71,8 @@ setup:
 	@go mod download
 	@go mod tidy
 	@cp ${CONFIG_DIR}/credentials.json.example ${CONFIG_DIR}/credentials.json 2>/dev/null || echo "$(RED)Warning: credentials.json already exists, skipping copy$(NC)"
+	@echo "$(GREEN)Installing Git security hooks...$(NC)"
+	@./scripts/install-git-hooks.sh
 	@echo "$(GREEN)Setup complete. Please edit ${CONFIG_DIR}/credentials.json with your API keys$(NC)"
 
 # Deploy to AWS
@@ -100,6 +102,20 @@ security-scan:
 	fi
 	@echo "$(GREEN)✅ Security scan completed$(NC)"
 
+# Check for sensitive data (AWS Account IDs, API keys, etc.)
+security-check:
+	@echo "$(GREEN)Running sensitive data security check...$(NC)"
+	@./scripts/security-check.sh
+
+# Comprehensive CI check (includes all security and quality checks)
+ci-check: format-check lint-check security-check security-scan build
+	@echo "$(GREEN)🎉 All CI checks passed!$(NC)"
+	@echo "$(GREEN)✅ Code formatting$(NC)"
+	@echo "$(GREEN)✅ Linting$(NC)"
+	@echo "$(GREEN)✅ Sensitive data check$(NC)"
+	@echo "$(GREEN)✅ Security scan$(NC)"
+	@echo "$(GREEN)✅ Build$(NC)"
+
 # Help
 help:
 	@echo "Available targets:"
@@ -114,6 +130,8 @@ help:
 	@echo "  $(GREEN)format$(NC)        - Format code"
 	@echo "  $(GREEN)format-check$(NC)  - Check code formatting without fixing"
 	@echo "  $(GREEN)security-scan$(NC) - Run security scanner"
+	@echo "  $(GREEN)security-check$(NC) - Check for sensitive data (AWS IDs, API keys)"
+	@echo "  $(GREEN)ci-check$(NC)      - Run all CI checks (format, lint, security, build)"
 	@echo "  $(GREEN)setup$(NC)         - Setup development environment"
 	@echo "  $(GREEN)deploy$(NC)        - Deploy to AWS"
 	@echo "  $(GREEN)swagger-generate$(NC) - Generate Swagger documentation"
