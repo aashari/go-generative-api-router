@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -98,7 +99,24 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 			"host":              r.Host,
 			"request_uri":       r.RequestURI,
 			"headers":           map[string][]string(r.Header),
-			"body":              string(requestBody), // Complete request body logging
+		}
+
+		// Parse body as JSON if it's JSON content type
+		// This allows the logger's base64 truncation to work on structured data
+		if strings.Contains(r.Header.Get("Content-Type"), "application/json") && len(requestBody) > 0 {
+			var bodyData interface{}
+			if err := json.Unmarshal(requestBody, &bodyData); err == nil {
+				// Successfully parsed as JSON - log the structured data
+				// The logger will automatically truncate base64 values
+				requestData["body"] = bodyData
+			} else {
+				// Failed to parse - log as string
+				requestData["body"] = string(requestBody)
+				requestData["body_parse_error"] = err.Error()
+			}
+		} else {
+			// Non-JSON body - log as string
+			requestData["body"] = string(requestBody)
 		}
 
 		attributes := map[string]interface{}{
@@ -133,8 +151,25 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 		if wrapper.isStreaming {
 			responseData["body"] = "[STREAMING_RESPONSE]"
 			responseData["streaming"] = true
-		} else if wrapper.responseData != nil {
-			responseData["body"] = wrapper.responseData.String()
+		} else if wrapper.responseData != nil && wrapper.responseData.Len() > 0 {
+			// Parse response body as JSON if it's JSON content type
+			// This allows the logger's base64 truncation to work on structured data
+			contentType := wrapper.Header().Get("Content-Type")
+			if strings.Contains(contentType, "application/json") {
+				var bodyData interface{}
+				if err := json.Unmarshal(wrapper.responseData.Bytes(), &bodyData); err == nil {
+					// Successfully parsed as JSON - log the structured data
+					// The logger will automatically truncate base64 values
+					responseData["body"] = bodyData
+				} else {
+					// Failed to parse - log as string
+					responseData["body"] = wrapper.responseData.String()
+					responseData["body_parse_error"] = err.Error()
+				}
+			} else {
+				// Non-JSON response - log as string
+				responseData["body"] = wrapper.responseData.String()
+			}
 			responseData["streaming"] = false
 		} else {
 			responseData["body"] = ""
