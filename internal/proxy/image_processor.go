@@ -614,6 +614,101 @@ func (p *ImageProcessor) detectImageFormat(data []byte) (string, bool) {
 	return "", false
 }
 
+// detectDocumentFormat detects document format from the first few bytes (magic numbers)
+func (p *ImageProcessor) detectDocumentFormat(data []byte) string {
+	if len(data) < 16 {
+		return "unknown"
+	}
+
+	// PDF: %PDF
+	if len(data) >= 4 && data[0] == 0x25 && data[1] == 0x50 && data[2] == 0x44 && data[3] == 0x46 {
+		return "application/pdf"
+	}
+
+	// ZIP-based formats (DOCX, XLSX, PPTX): PK (ZIP signature)
+	if len(data) >= 2 && data[0] == 0x50 && data[1] == 0x4B {
+		// Check for specific Office formats by looking deeper into the ZIP structure
+		if len(data) >= 30 {
+			content := string(data)
+			if strings.Contains(content, "word/") || strings.Contains(content, "document.xml") {
+				return "application/vnd.openxmlformats-officedocument.wordprocessingml.document" // DOCX
+			} else if strings.Contains(content, "xl/") || strings.Contains(content, "workbook.xml") {
+				return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" // XLSX
+			} else if strings.Contains(content, "ppt/") || strings.Contains(content, "presentation.xml") {
+				return "application/vnd.openxmlformats-officedocument.presentationml.presentation" // PPTX
+			}
+		}
+		return "application/zip"
+	}
+
+	// Legacy Office formats
+	// DOC, XLS, PPT: D0 CF 11 E0 A1 B1 1A E1 (OLE2 Compound Document)
+	if len(data) >= 8 && data[0] == 0xD0 && data[1] == 0xCF && data[2] == 0x11 && data[3] == 0xE0 &&
+		data[4] == 0xA1 && data[5] == 0xB1 && data[6] == 0x1A && data[7] == 0xE1 {
+		// Could be DOC, XLS, or PPT - markitdown will handle the specifics
+		return "application/msword" // Generic OLE2 document
+	}
+
+	// RTF: {\rtf
+	if len(data) >= 5 && data[0] == 0x7B && data[1] == 0x5C && data[2] == 0x72 && data[3] == 0x74 && data[4] == 0x66 {
+		return "application/rtf"
+	}
+
+	// Plain text files (check for common text patterns)
+	if p.isLikelyTextFile(data) {
+		return "text/plain"
+	}
+
+	// XML files: <?xml
+	if len(data) >= 5 && data[0] == 0x3C && data[1] == 0x3F && data[2] == 0x78 && data[3] == 0x6D && data[4] == 0x6C {
+		return "text/xml"
+	}
+
+	// HTML files: <!DOCTYPE html or <html
+	content := strings.ToLower(string(data[:min(len(data), 100)]))
+	if strings.Contains(content, "<!doctype html") || strings.Contains(content, "<html") {
+		return "text/html"
+	}
+
+	// JSON files: starts with { or [
+	trimmed := strings.TrimSpace(string(data[:min(len(data), 50)]))
+	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		return "application/json"
+	}
+
+	return "unknown"
+}
+
+// isLikelyTextFile checks if the data appears to be a text file
+func (p *ImageProcessor) isLikelyTextFile(data []byte) bool {
+	// Check first 512 bytes for text characteristics
+	checkLength := min(len(data), 512)
+	if checkLength == 0 {
+		return false
+	}
+
+	// Count printable characters
+	printableCount := 0
+	for i := 0; i < checkLength; i++ {
+		b := data[i]
+		// Printable ASCII + common whitespace
+		if (b >= 32 && b <= 126) || b == 9 || b == 10 || b == 13 {
+			printableCount++
+		}
+	}
+
+	// If more than 95% of characters are printable, it's likely text
+	return float64(printableCount)/float64(checkLength) > 0.95
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // ProcessRequestBody processes the entire request body to handle image URLs
 func (p *ImageProcessor) ProcessRequestBody(ctx context.Context, body []byte) ([]byte, error) {
 	// Parse the request body
@@ -745,6 +840,10 @@ func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, 
 	}
 	tempFile.Close()
 
+	// Detect actual file type for better logging
+	originalContentType := resp.Header.Get("Content-Type")
+	detectedFileType := p.detectDocumentFormat(fileData)
+	
 	// Convert file to text using markitdown
 	textContent, err := p.convertFileToText(ctx, tempFile.Name(), fileURL)
 	if err != nil {
@@ -752,11 +851,13 @@ func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, 
 	}
 
 	logger.LogWithStructure(ctx, logger.LevelDebug, "File downloaded and converted", map[string]interface{}{
-		"original_url": fileURL,
-		"content_type": resp.Header.Get("Content-Type"),
-		"size_bytes":   len(fileData),
-		"text_length":  len(textContent),
-		"temp_file":    tempFile.Name(),
+		"original_url":           fileURL,
+		"original_content_type":  originalContentType,
+		"detected_file_type":     detectedFileType,
+		"size_bytes":             len(fileData),
+		"text_length":            len(textContent),
+		"temp_file":              tempFile.Name(),
+		"content_type_detected":  originalContentType != detectedFileType && detectedFileType != "unknown",
 	}, nil, nil, nil)
 
 	return textContent, nil
