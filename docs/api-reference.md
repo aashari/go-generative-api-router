@@ -166,24 +166,57 @@ Authorization: Bearer YOUR_API_KEY
 
 #### Message Object
 
+Messages can contain either simple text content or multi-part content with images and files:
+
+**Simple Text Message:**
 ```json
 {
   "role": "user|assistant|system|tool",
-  "content": "Message content",
+  "content": "Simple text message",
   "name": "Optional name for user/tool messages",
-  "tool_calls": [
-    {
-      "id": "call_abc123",
-      "type": "function",
-      "function": {
-        "name": "function_name",
-        "arguments": "{\"param\": \"value\"}"
-      }
-    }
-  ],
+  "tool_calls": [...],
   "tool_call_id": "call_abc123"
 }
 ```
+
+**Multi-Part Content (Vision and File Processing):**
+```json
+{
+  "role": "user",
+  "content": [
+    {
+      "type": "text",
+      "text": "Please analyze this image and document:"
+    },
+    {
+      "type": "image_url",
+      "image_url": {
+        "url": "https://example.com/image.jpg",
+        "headers": {
+          "Authorization": "Bearer token"
+        }
+      }
+    },
+    {
+      "type": "file_url",
+      "file_url": {
+        "url": "https://example.com/document.pdf",
+        "headers": {
+          "Authorization": "Bearer token"
+        }
+      }
+    }
+  ]
+}
+```
+
+**Content Part Types:**
+
+| Type | Description | Required Fields | Optional Fields |
+|------|-------------|-----------------|-----------------|
+| `text` | Plain text content | `text` | - |
+| `image_url` | Image from URL (auto-converted to base64) | `image_url.url` | `image_url.headers` |
+| `file_url` | Document from URL (auto-converted to text) | `file_url.url` | `file_url.headers` |
 
 #### Non-Streaming Response
 ```http
@@ -235,6 +268,104 @@ data: [DONE]
 ```
 
 ## Advanced Features
+
+### File Processing
+
+The service supports automatic processing of documents and images from URLs. Files are downloaded and converted to text or base64 format automatically.
+
+#### Supported File Types
+
+**Documents (via markitdown):**
+- PDF files (.pdf)
+- Microsoft Word (.docx, .doc)
+- Microsoft Excel (.xlsx, .xls)
+- Microsoft PowerPoint (.pptx, .ppt)
+- Plain text files (.txt, .md)
+- ZIP archives (extracts and processes contents)
+- CSV files (.csv)
+- JSON files (.json)
+- XML files (.xml)
+- HTML files (.html, .htm)
+
+**Images (auto-converted to base64):**
+- PNG (.png)
+- JPEG (.jpg, .jpeg)
+- GIF (.gif)
+- WebP (.webp)
+- BMP (.bmp)
+- TIFF (.tiff, .tif)
+- SVG (.svg)
+
+#### File Processing Request
+
+```json
+{
+  "model": "your-model",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Please analyze this research paper:"
+        },
+        {
+          "type": "file_url",
+          "file_url": {
+            "url": "https://example.com/research-paper.pdf",
+            "headers": {
+              "Authorization": "Bearer token",
+              "User-Agent": "Custom-Agent"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### File Processing Features
+
+- **Automatic Format Detection**: Files are processed based on content and URL
+- **Custom Headers**: Support for authentication and custom headers
+- **Graceful Error Handling**: Failed downloads result in user-friendly error messages
+- **Size Limits**: 20MB maximum file size per file
+- **Concurrent Processing**: Multiple files processed simultaneously
+- **No Pre-validation**: Files are processed without URL validation
+- **Vendor Compatibility**: Error messages appear as regular user content
+
+#### File Processing Error Handling
+
+When file processing fails, the system generates user-friendly error messages instead of technical errors:
+
+```json
+{
+  "role": "user",
+  "content": [
+    {
+      "type": "text",
+      "text": "Please analyze this file:"
+    },
+    {
+      "type": "text",
+      "text": "I couldn't access the file at https://example.com/broken.pdf due to network connectivity issues. The file server appears to be unreachable or the domain doesn't exist. Please verify the URL or provide an alternative file."
+    }
+  ]
+}
+```
+
+#### Common Error Scenarios
+
+| Error Type | Generated Message |
+|------------|-------------------|
+| Network connectivity | "I couldn't access the file due to network connectivity issues..." |
+| Authentication required | "The file requires authentication or access permissions that weren't provided..." |
+| File not found (404) | "The file URL appears to be broken or the file has been moved/deleted..." |
+| File too large | "The file is too large to process (exceeds 20MB limit)..." |
+| Timeout | "The file took too long to download due to slow response from the file server..." |
+| Unsupported format | "The file couldn't be converted to text. The file format may not be supported..." |
+| Empty URL | "Error: No file URL provided. Please provide a valid file URL to process." |
 
 ### Vendor Selection
 
@@ -473,6 +604,98 @@ data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1677652
 data: [DONE]
 ```
 
+### File Processing Request
+
+**PDF Document Processing:**
+```bash
+curl -X POST https://genapi.example.com/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "document-analyzer",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Please summarize this research paper:"
+          },
+          {
+            "type": "file_url",
+            "file_url": {
+              "url": "https://ml-site.cdn-apple.com/papers/the-illusion-of-thinking.pdf"
+            }
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**ZIP Archive Processing:**
+```bash
+curl -X POST https://genapi.example.com/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "file-analyzer",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "What documents are in this ZIP file?"
+          },
+          {
+            "type": "file_url",
+            "file_url": {
+              "url": "https://example.com/documents.zip",
+              "headers": {
+                "Authorization": "Bearer file-server-token"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**Multiple Files Processing:**
+```bash
+curl -X POST https://genapi.example.com/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "multi-file-analyzer",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Compare these documents:"
+          },
+          {
+            "type": "file_url",
+            "file_url": {
+              "url": "https://example.com/report1.pdf"
+            }
+          },
+          {
+            "type": "file_url",
+            "file_url": {
+              "url": "https://example.com/report2.docx"
+            }
+          }
+        ]
+      }
+    ]
+  }'
+```
+
 ### Vendor-Specific Request
 
 **Request:**
@@ -586,8 +809,13 @@ Version information is included in:
 
 ## Limits and Quotas
 
-- **Request Size**: Maximum 10MB per request
+- **Request Size**: Maximum 10MB per request (JSON payload)
 - **Response Size**: No hard limit (vendor dependent)
+- **File Processing**: 
+  - Maximum 20MB per file
+  - 30-second download timeout per file
+  - Concurrent processing of multiple files
+  - No limit on number of files per request
 - **Rate Limits**: Depend on vendor and API key configuration
 - **Concurrent Requests**: No service-level limit (vendor dependent)
 

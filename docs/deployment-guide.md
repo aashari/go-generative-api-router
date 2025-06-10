@@ -49,10 +49,12 @@ Git Commit/Tag → CodeBuild → Docker Build → ECR Push → ECS Deploy
 | **Total** | ~2 minutes | ~2 minutes |
 
 ### Container Specifications
-- **Base Image**: Go Alpine-based container
-- **Size**: ~16.4 MB
+- **Base Image**: Go Alpine-based container with Python runtime
+- **Size**: ~16.4 MB (plus Python dependencies)
 - **Architecture**: ARM64 (Graviton2)
 - **Tag Strategy**: `latest` for both environments
+- **File Processing**: Python 3.8+ with markitdown for document processing
+- **Runtime Dependencies**: markitdown package for PDF, Word, Excel, ZIP processing
 
 ### Environment Variables
 The deployment pipeline automatically sets the following environment variables:

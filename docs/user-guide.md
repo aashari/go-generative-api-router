@@ -196,6 +196,112 @@ Enable streaming by setting `"stream": true` in your request:
 
 Streaming responses follow the Server-Sent Events format with `data:` prefixed JSON chunks.
 
+### File Processing
+
+The service supports automatic processing of documents and images from URLs. Files are downloaded and converted to text or base64 format automatically.
+
+#### Supported File Types
+
+**Documents** (converted to text using markitdown):
+- PDF files (.pdf)
+- Microsoft Word (.docx, .doc)
+- Microsoft Excel (.xlsx, .xls)
+- Microsoft PowerPoint (.pptx, .ppt)
+- Plain text files (.txt, .md)
+- ZIP archives (extracts and processes contents)
+- CSV, JSON, XML, HTML files
+
+**Images** (converted to base64):
+- PNG, JPEG, GIF, WebP, BMP, TIFF, SVG
+
+#### File Processing Examples
+
+**Basic File Processing:**
+```json
+{
+  "model": "document-analyzer",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Please summarize this PDF:"
+        },
+        {
+          "type": "file_url",
+          "file_url": {
+            "url": "https://example.com/document.pdf"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**File with Custom Headers:**
+```json
+{
+  "type": "file_url",
+  "file_url": {
+    "url": "https://private-server.com/report.docx",
+    "headers": {
+      "Authorization": "Bearer your-token",
+      "User-Agent": "Custom-Agent"
+    }
+  }
+}
+```
+
+**Multiple Files:**
+```json
+{
+  "model": "multi-file-analyzer",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Compare these reports:"
+        },
+        {
+          "type": "file_url",
+          "file_url": {
+            "url": "https://example.com/report1.pdf"
+          }
+        },
+        {
+          "type": "file_url",
+          "file_url": {
+            "url": "https://example.com/report2.xlsx"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### File Processing Features
+
+- **No Pre-validation**: Files are processed without URL validation
+- **Graceful Error Handling**: Failed downloads result in user-friendly error messages
+- **Custom Headers**: Support for authentication and custom headers
+- **Size Limits**: 20MB maximum per file
+- **Concurrent Processing**: Multiple files processed simultaneously
+- **Format Detection**: Automatic detection of file types
+- **Vendor Compatibility**: Error messages appear as regular user content
+
+#### Error Handling
+
+When file processing fails, the system generates user-friendly error messages:
+
+```
+"I couldn't access the file at https://example.com/broken.pdf due to network connectivity issues. The file server appears to be unreachable or the domain doesn't exist. Please verify the URL or provide an alternative file."
+```
+
 ### Tool Calling
 The service supports OpenAI-compatible tool calling:
 
@@ -234,6 +340,68 @@ See the [examples/curl/](../examples/curl/) directory for ready-to-use cURL scri
 - `basic.sh` - Basic chat completion
 - `streaming.sh` - Streaming responses
 - `tools.sh` - Tool calling examples
+
+#### File Processing with cURL
+
+**Process a PDF document:**
+```bash
+curl -X POST http://localhost:8082/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "document-analyzer",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Please summarize this research paper:"
+          },
+          {
+            "type": "file_url",
+            "file_url": {
+              "url": "https://ml-site.cdn-apple.com/papers/the-illusion-of-thinking.pdf"
+            }
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**Process multiple files:**
+```bash
+curl -X POST http://localhost:8082/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "multi-file-analyzer",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Compare these documents:"
+          },
+          {
+            "type": "file_url",
+            "file_url": {
+              "url": "https://example.com/report1.pdf"
+            }
+          },
+          {
+            "type": "file_url",
+            "file_url": {
+              "url": "https://example.com/report2.docx"
+            }
+          }
+        ]
+      }
+    ]
+  }'
+```
 
 ### SDK Integration
 

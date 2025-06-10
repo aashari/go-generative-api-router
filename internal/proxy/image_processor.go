@@ -20,18 +20,22 @@ import (
 
 // ImageProcessor handles image URL processing and conversion
 type ImageProcessor struct {
-	httpClient *http.Client
-	maxSize    int64
+	httpClient    *http.Client
+	maxSize       int64
+	fileProcessor *FileProcessor
 }
 
 // NewImageProcessor creates a new image processor with default settings
 func NewImageProcessor() *ImageProcessor {
-	return &ImageProcessor{
+	processor := &ImageProcessor{
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 		maxSize: 20 * 1024 * 1024, // 20MB limit
 	}
+	// Initialize file processor without circular dependency
+	processor.fileProcessor = &FileProcessor{imageProcessor: processor}
+	return processor
 }
 
 // ContentPart represents a part of the message content
@@ -197,7 +201,8 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 		if part.Type == "image_url" && part.ImageURL != nil && p.isPublicURL(part.ImageURL.URL) {
 			itemsToProcess[resultIndex] = i
 			resultIndex++
-		} else if part.Type == "file_url" && part.FileURL != nil && p.isPublicURL(part.FileURL.URL) {
+		} else if part.Type == "file_url" && part.FileURL != nil {
+			// Process all file_url types without pre-validation
 			itemsToProcess[resultIndex] = i
 			resultIndex++
 		}
@@ -218,17 +223,19 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 		}
 	}
 
-	// Log processing start
-	logger.LogWithStructure(ctx, logger.LevelInfo, "Processing image URLs and files concurrently",
-		map[string]interface{}{
-			"item_count":       len(itemsToProcess),
-			"total_parts":      len(parts),
-			"total_items":      totalItems,
-			"items_to_process": itemsToProcess,
-		},
-		nil, // request
-		nil, // response
-		nil) // error
+	// Log processing start (if logger is available)
+	if len(itemsToProcess) > 0 {
+		logger.LogWithStructure(ctx, logger.LevelInfo, "Processing image URLs and files concurrently",
+			map[string]interface{}{
+				"item_count":       len(itemsToProcess),
+				"total_parts":      len(parts),
+				"total_items":      totalItems,
+				"items_to_process": itemsToProcess,
+			},
+			nil, // request
+			nil, // response
+			nil) // error
+	}
 
 	// Process items concurrently
 	results := make(chan ProcessResult, len(itemsToProcess))
@@ -255,8 +262,8 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 					},
 				}
 			} else if part.Type == "file_url" {
-				// Process file
-				fileText, fileErr := p.downloadAndConvertFileWithHeaders(ctx, part.FileURL.URL, part.FileURL.Headers)
+				// Process file using modular file processor
+				fileText, fileErr := p.fileProcessor.ProcessFileURL(ctx, part.FileURL)
 				err = fileErr
 				processedContent = ContentPart{
 					Type: "text",
@@ -304,27 +311,27 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 				}
 			}
 
-			// Generate contextual system message for failed item
-			var systemMessage string
+			// Generate contextual failure message for failed item
+			var failureMessage string
 			if itemType == "file_url" {
-				systemMessage = p.generateFileFailureSystemMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)
+				failureMessage = p.generateFileFailureMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)
 			} else {
-				systemMessage = p.generateImageFailureSystemMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)
+				failureMessage = p.generateImageFailureMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)
 			}
 			processedParts[result.Index] = ContentPart{
 				Type: "text",
-				Text: systemMessage,
+				Text: failureMessage,
 			}
 
-			logger.LogWithStructure(ctx, logger.LevelWarn, "Item processing failed, replaced with system message",
+			logger.LogWithStructure(ctx, logger.LevelWarn, "Item processing failed, replaced with failure message",
 				map[string]interface{}{
-					"item_type":      itemType,
-					"item_index":     result.Index,
-					"item_position":  itemPosition,
-					"total_items":    totalItems,
-					"mixed_scenario": len(itemsToProcess) > 1,
-					"error":          result.Error.Error(),
-					"system_message": systemMessage,
+					"item_type":       itemType,
+					"item_index":      result.Index,
+					"item_position":   itemPosition,
+					"total_items":     totalItems,
+					"mixed_scenario":  len(itemsToProcess) > 1,
+					"error":           result.Error.Error(),
+					"failure_message": failureMessage,
 				},
 				nil, // request
 				nil, // response
@@ -354,8 +361,24 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 	return processedParts, nil
 }
 
-// generateImageFailureSystemMessage creates a contextual system message for failed image downloads
-func (p *ImageProcessor) generateImageFailureSystemMessage(err error, imagePosition, totalImages int, hasMixedScenario bool) string {
+// extractFileURL safely extracts URL from FileURL struct, handling nil cases
+func (p *ImageProcessor) extractFileURL(fileURL *FileURL) string {
+	if fileURL == nil {
+		return ""
+	}
+	return fileURL.URL
+}
+
+// extractFileHeaders safely extracts headers from FileURL struct, handling nil cases
+func (p *ImageProcessor) extractFileHeaders(fileURL *FileURL) map[string]string {
+	if fileURL == nil {
+		return nil
+	}
+	return fileURL.Headers
+}
+
+// generateImageFailureMessage creates a contextual user message for failed image downloads
+func (p *ImageProcessor) generateImageFailureMessage(err error, imagePosition, totalImages int, hasMixedScenario bool) string {
 	// Determine the type of error for more specific messaging
 	errorMsg := err.Error()
 	var baseMessage string
@@ -394,11 +417,11 @@ func (p *ImageProcessor) generateImageFailureSystemMessage(err error, imagePosit
 		mixedScenarioGuidance = " You can still analyze and respond to the other images that were successfully processed."
 	}
 
-	// Construct the complete system message
-	systemMessage := fmt.Sprintf("<system>\n%s%s%s The user cannot see this system message, so respond naturally as part of the ongoing conversation.\n</system>",
+	// Construct the complete user message (no system wrapper for vendor compatibility)
+	userMessage := fmt.Sprintf("%s%s%s",
 		contextPrefix, baseMessage, mixedScenarioGuidance)
 
-	return systemMessage
+	return userMessage
 }
 
 // isPublicURL checks if a URL is a public HTTP/HTTPS URL
@@ -764,33 +787,26 @@ func (p *ImageProcessor) convertFileToText(ctx context.Context, filePath, origin
 		"processed_by": "markitdown",
 	}
 
-	// Generate system message similar to generateImageFailureSystemMessage format
-	systemMessage := p.generateFileSystemMessage(fileInfo, textContent)
+	// Generate user message for successful file processing
+	userMessage := p.generateFileUserMessage(fileInfo, textContent)
 
-	return systemMessage, nil
+	return userMessage, nil
 }
 
-// generateFileSystemMessage creates a system message for successfully processed files
-func (p *ImageProcessor) generateFileSystemMessage(fileInfo map[string]interface{}, content string) string {
+// generateFileUserMessage creates a user message for successfully processed files
+func (p *ImageProcessor) generateFileUserMessage(fileInfo map[string]interface{}, content string) string {
 	// Create file information summary
 	sourceURL := fileInfo["source_url"].(string)
 	contentSize := fileInfo["content_size"].(int)
 
-	// Construct the system message
-	systemMessage := fmt.Sprintf(`<system>
-File successfully processed and converted to text from: %s (%d characters)
+	// Construct user message with file content (no system wrapper for vendor compatibility)
+	userMessage := fmt.Sprintf("File content from %s (%d characters):\n\n%s", sourceURL, contentSize, content)
 
-File content:
-%s
-
-The user cannot see this system message, so respond naturally based on the file content above as part of the ongoing conversation.
-</system>`, sourceURL, contentSize, content)
-
-	return systemMessage
+	return userMessage
 }
 
-// generateFileFailureSystemMessage creates a contextual system message for failed file downloads
-func (p *ImageProcessor) generateFileFailureSystemMessage(err error, filePosition, totalFiles int, hasMixedScenario bool) string {
+// generateFileFailureMessage creates a contextual user message for failed file downloads
+func (p *ImageProcessor) generateFileFailureMessage(err error, filePosition, totalFiles int, hasMixedScenario bool) string {
 	// Determine the type of error for more specific messaging
 	errorMsg := err.Error()
 	var baseMessage string
@@ -829,9 +845,9 @@ func (p *ImageProcessor) generateFileFailureSystemMessage(err error, filePositio
 		mixedScenarioGuidance = " You can still analyze and respond to the other files and images that were successfully processed."
 	}
 
-	// Construct the complete system message
-	systemMessage := fmt.Sprintf("<system>\n%s%s%s The user cannot see this system message, so respond naturally as part of the ongoing conversation.\n</system>",
+	// Construct the complete user message (no system wrapper for vendor compatibility)
+	userMessage := fmt.Sprintf("%s%s%s",
 		contextPrefix, baseMessage, mixedScenarioGuidance)
 
-	return systemMessage
+	return userMessage
 }

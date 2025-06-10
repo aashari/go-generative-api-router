@@ -9,6 +9,7 @@ Thank you for your interest in contributing! This guide will help you get starte
 - **Git** configured with your GitHub account
 - **Make** for build automation
 - **golangci-lint** for code quality checks
+- **Python 3.8+** with markitdown for file processing (automatically installed via setup)
 
 ### Initial Setup
 1. **Fork the repository** on GitHub

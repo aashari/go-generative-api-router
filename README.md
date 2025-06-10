@@ -48,7 +48,7 @@ Recent comprehensive improvements include:
 - **Health Check**: Built-in health check endpoint with service status monitoring
 - **Comprehensive Testing**: Full test coverage with unit tests for all components
 - **🌐 Public Image URL Support**: Automatic downloading and conversion of public image URLs to base64
-- **📄 File Processing Support**: Automatic downloading and text conversion of documents (PDF, Word, etc.) using markitdown
+- **📄 Advanced File Processing**: Comprehensive document processing supporting PDF, Word, Excel, PowerPoint, ZIP archives, and more via markitdown integration
 
 ## Quick Start
 
@@ -57,6 +57,7 @@ Recent comprehensive improvements include:
 - Go 1.21 or higher
 - API keys for OpenAI and/or Google Gemini
 - Make (for build automation)
+- Python 3.8+ with markitdown for file processing (automatically installed via setup)
 
 ### Installation
 
@@ -179,6 +180,30 @@ curl -X POST http://localhost:8082/v1/chat/completions \
   -d '{
     "model": "my-preferred-model",
     "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+
+# Process PDF documents
+curl -X POST http://localhost:8082/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "document-analyzer",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Please summarize this research paper:"
+          },
+          {
+            "type": "file_url",
+            "file_url": {
+              "url": "https://example.com/research-paper.pdf"
+            }
+          }
+        ]
+      }
+    ]
   }'
 
 # Force specific vendor

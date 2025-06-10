@@ -135,13 +135,7 @@ func validateContentArray(content []interface{}) error {
 				return fmt.Errorf("image_url content part at index %d missing 'url' field", i)
 			}
 		case "file_url":
-			fileURL, hasFileURL := partMap["file_url"].(map[string]interface{})
-			if !hasFileURL {
-				return fmt.Errorf("file_url content part at index %d missing 'file_url' field", i)
-			}
-			if _, hasURL := fileURL["url"].(string); !hasURL {
-				return fmt.Errorf("file_url content part at index %d missing 'url' field", i)
-			}
+			// No pre-validation for file_url - let markitdown handle all validation
 		default:
 			return fmt.Errorf("unknown content type '%s' at index %d", typeField, i)
 		}
