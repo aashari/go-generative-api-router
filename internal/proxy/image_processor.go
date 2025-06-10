@@ -39,10 +39,17 @@ type ContentPart struct {
 	Type     string    `json:"type"`
 	Text     string    `json:"text,omitempty"`
 	ImageURL *ImageURL `json:"image_url,omitempty"`
+	FileURL  *FileURL  `json:"file_url,omitempty"`
 }
 
 // ImageURL represents an image URL structure
 type ImageURL struct {
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// FileURL represents a file URL structure
+type FileURL struct {
 	URL     string            `json:"url"`
 	Headers map[string]string `json:"headers,omitempty"`
 }
@@ -115,6 +122,29 @@ func (p *ImageProcessor) processContentArray(ctx context.Context, arr []interfac
 				part.ImageURL = imageURL
 			}
 
+			// Extract file_url
+			if fileURLVal, ok := itemMap["file_url"].(map[string]interface{}); ok {
+				fileURL := &FileURL{}
+
+				// Extract URL
+				if urlStr, ok := fileURLVal["url"].(string); ok {
+					fileURL.URL = urlStr
+				}
+
+				// Extract headers if present
+				if headersVal, ok := fileURLVal["headers"].(map[string]interface{}); ok {
+					headers := make(map[string]string)
+					for key, value := range headersVal {
+						if strValue, ok := value.(string); ok {
+							headers[key] = strValue
+						}
+					}
+					fileURL.Headers = headers
+				}
+
+				part.FileURL = fileURL
+			}
+
 			parts = append(parts, part)
 		}
 	}
@@ -144,6 +174,14 @@ func (p *ImageProcessor) processContentArray(ctx context.Context, arr []interfac
 			partMap["image_url"] = imageURLMap
 		}
 
+		if part.Type == "file_url" && part.FileURL != nil {
+			// Create file_url object without headers (headers are removed for vendor compatibility)
+			fileURLMap := map[string]interface{}{
+				"url": part.FileURL.URL,
+			}
+			partMap["file_url"] = fileURLMap
+		}
+
 		result[i] = partMap
 	}
 
@@ -156,7 +194,10 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 	itemsToProcess := make(map[int]int) // maps result index to parts index
 	resultIndex := 0
 	for i, part := range parts {
-		if (part.Type == "image_url" || part.Type == "file") && part.ImageURL != nil && p.isPublicURL(part.ImageURL.URL) {
+		if part.Type == "image_url" && part.ImageURL != nil && p.isPublicURL(part.ImageURL.URL) {
+			itemsToProcess[resultIndex] = i
+			resultIndex++
+		} else if part.Type == "file_url" && part.FileURL != nil && p.isPublicURL(part.FileURL.URL) {
 			itemsToProcess[resultIndex] = i
 			resultIndex++
 		}
@@ -170,7 +211,9 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 	// Count total items in the request (including non-public URLs)
 	totalItems := 0
 	for _, part := range parts {
-		if (part.Type == "image_url" || part.Type == "file") && part.ImageURL != nil {
+		if part.Type == "image_url" && part.ImageURL != nil {
+			totalItems++
+		} else if part.Type == "file_url" && part.FileURL != nil {
 			totalItems++
 		}
 	}
@@ -211,9 +254,9 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 						// Note: Headers are intentionally omitted here to remove them from vendor request
 					},
 				}
-			} else if part.Type == "file" {
+			} else if part.Type == "file_url" {
 				// Process file
-				fileText, fileErr := p.downloadAndConvertFileWithHeaders(ctx, part.ImageURL.URL, part.ImageURL.Headers)
+				fileText, fileErr := p.downloadAndConvertFileWithHeaders(ctx, part.FileURL.URL, part.FileURL.Headers)
 				err = fileErr
 				processedContent = ContentPart{
 					Type: "text",
@@ -253,7 +296,7 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 			// Calculate item position for better context
 			itemPosition := 1
 			for i := 0; i <= result.Index; i++ {
-				if (parts[i].Type == "image_url" || parts[i].Type == "file") && parts[i].ImageURL != nil {
+				if (parts[i].Type == "image_url" && parts[i].ImageURL != nil) || (parts[i].Type == "file_url" && parts[i].FileURL != nil) {
 					if i == result.Index {
 						break
 					}
@@ -263,7 +306,7 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 
 			// Generate contextual system message for failed item
 			var systemMessage string
-			if itemType == "file" {
+			if itemType == "file_url" {
 				systemMessage = p.generateFileFailureSystemMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)
 			} else {
 				systemMessage = p.generateImageFailureSystemMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)

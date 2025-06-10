@@ -134,13 +134,13 @@ func validateContentArray(content []interface{}) error {
 			if _, hasURL := imageURL["url"].(string); !hasURL {
 				return fmt.Errorf("image_url content part at index %d missing 'url' field", i)
 			}
-		case "file":
-			imageURL, hasImageURL := partMap["image_url"].(map[string]interface{})
-			if !hasImageURL {
-				return fmt.Errorf("file content part at index %d missing 'image_url' field", i)
+		case "file_url":
+			fileURL, hasFileURL := partMap["file_url"].(map[string]interface{})
+			if !hasFileURL {
+				return fmt.Errorf("file_url content part at index %d missing 'file_url' field", i)
 			}
-			if _, hasURL := imageURL["url"].(string); !hasURL {
-				return fmt.Errorf("file content part at index %d missing 'url' field", i)
+			if _, hasURL := fileURL["url"].(string); !hasURL {
+				return fmt.Errorf("file_url content part at index %d missing 'url' field", i)
 			}
 		default:
 			return fmt.Errorf("unknown content type '%s' at index %d", typeField, i)

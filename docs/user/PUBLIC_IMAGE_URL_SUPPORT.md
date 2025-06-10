@@ -90,8 +90,8 @@ The request format supports both images and files with optional headers:
         "text": "Please analyze this document"
       },
       {
-        "type": "file",
-        "image_url": {
+        "type": "file_url",
+        "file_url": {
           "url": "https://example.com/document.pdf",
           "headers": {
             "Authorization": "Bearer your-token"
@@ -121,8 +121,8 @@ The request format supports both images and files with optional headers:
         }
       },
       {
-        "type": "file",
-        "image_url": {
+        "type": "file_url",
+        "file_url": {
           "url": "https://example.com/report.pdf"
         }
       }
@@ -289,8 +289,8 @@ curl -X POST http://localhost:8082/v1/chat/completions \
           "text": "Please summarize this research paper"
         },
         {
-          "type": "file",
-          "image_url": {
+          "type": "file_url",
+          "file_url": {
             "url": "https://ml-site.cdn-apple.com/papers/the-illusion-of-thinking.pdf"
           }
         }
@@ -314,8 +314,8 @@ curl -X POST http://localhost:8082/v1/chat/completions \
           "text": "Analyze this private document"
         },
         {
-          "type": "file",
-          "image_url": {
+          "type": "file_url",
+          "file_url": {
             "url": "https://secure-docs.example.com/report.pdf",
             "headers": {
               "Authorization": "Bearer your-access-token",
@@ -349,8 +349,8 @@ curl -X POST http://localhost:8082/v1/chat/completions \
           }
         },
         {
-          "type": "file",
-          "image_url": {
+          "type": "file_url",
+          "file_url": {
             "url": "https://example.com/quarterly-report.pdf"
           }
         }
