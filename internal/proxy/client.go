@@ -748,6 +748,23 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 			logger.ErrorCtx(r.Context(), "Vendor response validation failed",
 				"vendor", selection.Vendor,
 				"error", err)
+
+			// Wrap validation errors with vendor information for potential retry
+			if errors.Is(err, ErrInvalidResponse) {
+				// Check if it's specifically missing 'choices' field
+				if strings.Contains(err.Error(), "missing required field 'choices'") {
+					return &VendorValidationError{
+						Vendor:       selection.Vendor,
+						OriginalErr:  err,
+						MissingField: "choices",
+					}
+				}
+				// Other validation errors
+				return &VendorValidationError{
+					Vendor:      selection.Vendor,
+					OriginalErr: err,
+				}
+			}
 			return err
 		}
 	}
