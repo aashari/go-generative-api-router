@@ -49,7 +49,7 @@ func NewApp() (*App, error) {
 
 	// Initialize components
 	apiClient := proxy.NewAPIClient()
-	modelSelector := selector.NewEvenDistributionSelector()
+	modelSelector := selector.NewContextAwareSelector()
 	apiHandlers := handlers.NewAPIHandlers(creds, models, apiClient, modelSelector)
 
 	// Log configuration loaded with complete data

@@ -24,14 +24,6 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 		return
 	}
 
-	// Use the provided selector to determine which vendor and model to use
-	selection, err := modelSelector.Select(creds, models)
-	if err != nil {
-		logger.ErrorCtx(r.Context(), "Vendor selection failed", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	// Read the request body once and reuse it
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -42,8 +34,63 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 		logger.WarnCtx(r.Context(), "Failed to close request body", "error", err)
 	}
 
+	// Parse payload to extract original model and other context
+	payloadContext, err := AnalyzePayload(body)
+	var originalModel string
+	
+	if err != nil {
+		// If parsing fails, set default
+		originalModel = "any-model"
+		logger.WarnCtx(r.Context(), "Failed to parse request payload for routing", "error", err)
+	} else {
+		originalModel = payloadContext.OriginalModel
+		
+		// Log payload context for future routing decisions
+		logger.DebugCtx(r.Context(), "Payload analyzed for routing",
+			"original_model", payloadContext.OriginalModel,
+			"has_stream", payloadContext.HasStream,
+			"has_tools", payloadContext.HasTools,
+			"has_images", payloadContext.HasImages,
+			"has_videos", payloadContext.HasVideos,
+			"messages_count", payloadContext.MessagesCount,
+		)
+	}
+
+	// Use context-aware selection if available
+	var selection *selector.VendorSelection
+	
+	// Check if the selector supports context-aware selection
+	if contextSelector, ok := modelSelector.(*selector.ContextAwareSelector); ok && payloadContext != nil {
+		// Use context-aware selection
+		selection, err = contextSelector.SelectWithContext(creds, models, payloadContext)
+		if err != nil {
+			logger.ErrorCtx(r.Context(), "Context-aware vendor selection failed", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		logger.DebugCtx(r.Context(), "Context-aware selection used",
+			"selected_vendor", selection.Vendor,
+			"selected_model", selection.Model,
+			"context_filters", map[string]bool{
+				"images": payloadContext.HasImages,
+				"videos": payloadContext.HasVideos,
+				"tools": payloadContext.HasTools,
+				"stream": payloadContext.HasStream,
+			},
+		)
+	} else {
+		// Fall back to regular selection
+		selection, err = modelSelector.Select(creds, models)
+		if err != nil {
+			logger.ErrorCtx(r.Context(), "Vendor selection failed", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// Execute the proxy request with retry logic
-	err = executeProxyRequestWithRetry(w, r, selection, body, creds, models, apiClient, modelSelector, "")
+	// Pass the original model we extracted
+	err = executeProxyRequestWithRetry(w, r, selection, body, creds, models, apiClient, modelSelector, originalModel)
 	if err != nil {
 		// Error already handled in executeProxyRequestWithRetry
 		return
@@ -98,10 +145,9 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 		return err
 	}
 
-	// Use the detected original model if not already set (for retry scenarios)
-	if originalModel == "" {
-		originalModel = detectedOriginalModel
-	}
+	// Use the passed original model (already extracted in ProxyRequest)
+	// The detectedOriginalModel is kept for backward compatibility but not used
+	_ = detectedOriginalModel
 
 	// Log the complete proxy request with all data
 	logger.LogProxyRequest(ctx, originalModel, selection.Vendor, selection.Model, len(creds)*len(models), map[string]any{
@@ -159,7 +205,22 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 			}
 
 			// Select an OpenAI model for retry
-			openaiSelection, retryErr := modelSelector.Select(openaiCreds, openaiModels)
+			var openaiSelection *selector.VendorSelection
+			var retryErr error
+			
+			// Try context-aware selection for retry if available
+			if contextSelector, ok := modelSelector.(*selector.ContextAwareSelector); ok {
+				// Re-parse the payload to get context
+				payloadContext, _ := AnalyzePayload(body)
+				if payloadContext != nil {
+					openaiSelection, retryErr = contextSelector.SelectWithContext(openaiCreds, openaiModels, payloadContext)
+				} else {
+					openaiSelection, retryErr = modelSelector.Select(openaiCreds, openaiModels)
+				}
+			} else {
+				openaiSelection, retryErr = modelSelector.Select(openaiCreds, openaiModels)
+			}
+			
 			if retryErr != nil {
 				logger.ErrorCtx(ctx, "Failed to select OpenAI model for fallback", "error", retryErr)
 				http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)

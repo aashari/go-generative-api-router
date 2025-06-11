@@ -12,9 +12,17 @@ type Credential struct {
 	Value    string `json:"value"`
 }
 
+type ModelConfig struct {
+	SupportImage     bool `json:"support_image"`
+	SupportVideo     bool `json:"support_video"`
+	SupportTools     bool `json:"support_tools"`
+	SupportStreaming bool `json:"support_streaming"`
+}
+
 type VendorModel struct {
-	Vendor string `json:"vendor"`
-	Model  string `json:"model"`
+	Vendor string       `json:"vendor"`
+	Model  string       `json:"model"`
+	Config *ModelConfig `json:"config,omitempty"`
 }
 
 func LoadCredentials(filePath string) ([]Credential, error) {
