@@ -10,7 +10,7 @@ The service implements an enterprise-grade structured logging system based on Go
 - **Request Correlation**: Unique request IDs for tracking requests across components
 - **Context Propagation**: Request context flows through the entire request lifecycle
 - **Environment Configuration**: Runtime configurable logging options
-- **Complete Data Logging**: Comprehensive logging without redaction or truncation
+- **Smart Data Logging**: Comprehensive logging with intelligent base64 truncation
 - **Specialized Log Functions**: Purpose-built logging for proxy operations
 
 ## Log Structure
@@ -147,16 +147,34 @@ Example JSON log with request correlation:
 }
 ```
 
-## Complete Data Logging
+## Complete Data Logging with Smart Truncation
 
-The logging system logs complete data structures without any redaction, truncation, or selective filtering. This includes:
+The logging system logs complete data structures while intelligently truncating base64 data URLs to maintain log readability and manageability.
 
-- **Complete API Keys**: Full credentials are logged for debugging
-- **Complete Request/Response Bodies**: Entire payloads are captured
-- **Complete Headers**: All HTTP headers including sensitive ones
-- **Complete Error Details**: Full error messages and stack traces
+### Base64 Data URL Truncation
 
-**IMPORTANT**: External logging systems should handle redaction, size management, and sensitive data filtering.
+When logging data containing base64-encoded images or files (commonly in `data:image/png;base64,...` format), the system automatically truncates long base64 strings:
+
+- **Threshold**: Base64 strings longer than 100 characters are truncated
+- **Format**: Shows first 50 and last 50 characters with a truncation indicator
+- **Example**: `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYA...[1234 chars truncated]...AAElFTkSuQmCC`
+
+This ensures that:
+- Logs remain readable and searchable
+- Storage requirements are reasonable
+- Complete data context is preserved (you can identify the image type and verify start/end)
+- Performance is maintained when processing large payloads
+
+### What Gets Logged Completely
+
+Everything except base64 data URLs is logged in full:
+
+- **API Keys**: Full credentials for debugging (consider using external redaction in production)
+- **Request/Response Bodies**: Complete payloads (with base64 truncation)
+- **Headers**: All HTTP headers including sensitive ones
+- **Error Details**: Full error messages and context
+
+**IMPORTANT**: While the logger provides complete data (with smart base64 truncation), production deployments should use external logging systems to handle sensitive data redaction, size management, and retention policies.
 
 ## Usage in Code
 
