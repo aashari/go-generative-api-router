@@ -44,11 +44,27 @@ func ValidateAndModifyRequest(body []byte, model string) ([]byte, string, error)
 		originalModel = "any-model" // Default if no model provided
 	}
 
-	// Replace the model with our selected one
-	requestData["model"] = model
+	// Create a clean request with only essential fields
+	cleanRequest := map[string]interface{}{
+		"model":    model,
+		"messages": requestData["messages"],
+	}
 
-	// Re-encode the modified request
-	modifiedBody, err := json.Marshal(requestData)
+	// Only include tools and tool_choice if they exist in the original request
+	if tools, hasTools := requestData["tools"]; hasTools {
+		cleanRequest["tools"] = tools
+	}
+	if toolChoice, hasToolChoice := requestData["tool_choice"]; hasToolChoice {
+		cleanRequest["tool_choice"] = toolChoice
+	}
+	
+	// Only include stream if it exists in the original request
+	if stream, hasStream := requestData["stream"]; hasStream {
+		cleanRequest["stream"] = stream
+	}
+
+	// Re-encode the clean request (without max_tokens, temperature, top_p, etc.)
+	modifiedBody, err := json.Marshal(cleanRequest)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to encode modified request: %v", err)
 	}

@@ -494,6 +494,21 @@ func (s *ResponseStandardizer) validateVendorResponse(body []byte, vendor string
 		}
 	}
 
+	// Additional validation: check if choices is empty when we have non-zero completion tokens
+	if !hasZeroCompletionTokens {
+		if choices, ok := responseData["choices"].([]interface{}); ok && len(choices) == 0 {
+			// Log complete empty choices error
+			logger.LogError(context.Background(), "response_validation", fmt.Errorf("empty choices array"), map[string]any{
+				"vendor":                     vendor,
+				"complete_response_data":     responseData,
+				"response_body":              string(body),
+				"has_zero_completion_tokens": hasZeroCompletionTokens,
+				"choices_length":             0,
+			})
+			return fmt.Errorf("%w: empty choices array with non-zero completion tokens", ErrInvalidResponse)
+		}
+	}
+
 	// Log complete successful validation
 	logger.LogWithStructure(context.Background(), logger.LevelDebug, "Response validation successful with complete data",
 		map[string]interface{}{
@@ -757,6 +772,14 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 						Vendor:       selection.Vendor,
 						OriginalErr:  err,
 						MissingField: "choices",
+					}
+				}
+				// Check if it's empty choices array
+				if strings.Contains(err.Error(), "empty choices array") {
+					return &VendorValidationError{
+						Vendor:       selection.Vendor,
+						OriginalErr:  err,
+						MissingField: "choices", // Use same field name for both cases
 					}
 				}
 				// Other validation errors

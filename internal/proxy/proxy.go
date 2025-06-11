@@ -179,7 +179,7 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 			// Create a fresh request for the retry (important for proper context)
 			retryReq := r.Clone(r.Context())
 
-			// Execute retry with OpenAI (no further retries)
+			// Execute retry with OpenAI (no further retries) - parameters already cleaned by validator
 			return executeProxyRequestWithRetry(w, retryReq, openaiSelection, body, creds, models, apiClient, modelSelector, originalModel)
 		}
 

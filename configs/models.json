@@ -14,5 +14,9 @@
     {
         "vendor": "openai",
         "model": "gpt-4.1"
+    },
+    {
+        "vendor": "openai",
+        "model": "o3-mini"
     }
 ]
