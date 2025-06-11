@@ -136,6 +136,27 @@ func validateContentArray(content []interface{}) error {
 			}
 		case "file_url":
 			// No pre-validation for file_url - let markitdown handle all validation
+		case "audio_url":
+			// Validate audio_url structure
+			audioURL, hasAudioURL := partMap["audio_url"].(map[string]interface{})
+			if !hasAudioURL {
+				return fmt.Errorf("audio_url content part at index %d missing 'audio_url' field", i)
+			}
+			if _, hasURL := audioURL["url"].(string); !hasURL {
+				return fmt.Errorf("audio_url content part at index %d missing 'url' field", i)
+			}
+		case "input_audio":
+			// Validate input_audio structure
+			inputAudio, hasInputAudio := partMap["input_audio"].(map[string]interface{})
+			if !hasInputAudio {
+				return fmt.Errorf("input_audio content part at index %d missing 'input_audio' field", i)
+			}
+			if _, hasData := inputAudio["data"].(string); !hasData {
+				return fmt.Errorf("input_audio content part at index %d missing 'data' field", i)
+			}
+			if _, hasFormat := inputAudio["format"].(string); !hasFormat {
+				return fmt.Errorf("input_audio content part at index %d missing 'format' field", i)
+			}
 		default:
 			return fmt.Errorf("unknown content type '%s' at index %d", typeField, i)
 		}

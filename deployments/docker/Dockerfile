@@ -19,8 +19,8 @@ RUN GOOS=linux go build -ldflags "-X main.version=${VERSION}" -o generative-api-
 
 FROM alpine:latest
 
-# Install Python 3 and pip
-RUN apk add --no-cache python3 py3-pip
+# Install Python 3, pip, and FFmpeg for audio conversion
+RUN apk add --no-cache python3 py3-pip ffmpeg
 
 # Install MarkItDown for document conversion to Markdown
 RUN pip3 install --no-cache-dir --break-system-packages 'markitdown[all]'

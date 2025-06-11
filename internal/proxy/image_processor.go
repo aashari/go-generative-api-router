@@ -23,6 +23,7 @@ type ImageProcessor struct {
 	httpClient    *http.Client
 	maxSize       int64
 	fileProcessor *FileProcessor
+	audioProcessor *AudioProcessor
 }
 
 // NewImageProcessor creates a new image processor with default settings
@@ -33,17 +34,30 @@ func NewImageProcessor() *ImageProcessor {
 		},
 		maxSize: 20 * 1024 * 1024, // 20MB limit
 	}
-	// Initialize file processor without circular dependency
-	processor.fileProcessor = &FileProcessor{imageProcessor: processor}
+	// Initialize file processor with all required fields
+	processor.fileProcessor = &FileProcessor{
+		imageProcessor: processor,
+		audioProcessor: nil, // Will be set after audio processor is created
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		maxSize: 20 * 1024 * 1024, // 20MB limit
+	}
+	// Initialize audio processor
+	processor.audioProcessor = NewAudioProcessor()
+	// Now set the audio processor in file processor
+	processor.fileProcessor.audioProcessor = processor.audioProcessor
 	return processor
 }
 
 // ContentPart represents a part of the message content
 type ContentPart struct {
-	Type     string    `json:"type"`
-	Text     string    `json:"text,omitempty"`
-	ImageURL *ImageURL `json:"image_url,omitempty"`
-	FileURL  *FileURL  `json:"file_url,omitempty"`
+	Type       string      `json:"type"`
+	Text       string      `json:"text,omitempty"`
+	ImageURL   *ImageURL   `json:"image_url,omitempty"`
+	FileURL    *FileURL    `json:"file_url,omitempty"`
+	AudioURL   *AudioURL   `json:"audio_url,omitempty"`
+	InputAudio *InputAudio `json:"input_audio,omitempty"`
 }
 
 // ImageURL represents an image URL structure
@@ -56,6 +70,18 @@ type ImageURL struct {
 type FileURL struct {
 	URL     string            `json:"url"`
 	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// AudioURL represents an audio URL structure for downloading
+type AudioURL struct {
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// InputAudio represents an audio input structure
+type InputAudio struct {
+	Data   string `json:"data"`   // Base64 encoded audio data
+	Format string `json:"format"` // Format: "wav" or "mp3"
 }
 
 // ProcessResult holds the result of processing a content part
@@ -149,6 +175,46 @@ func (p *ImageProcessor) processContentArray(ctx context.Context, arr []interfac
 				part.FileURL = fileURL
 			}
 
+			// Extract audio_url
+			if audioURLVal, ok := itemMap["audio_url"].(map[string]interface{}); ok {
+				audioURL := &AudioURL{}
+
+				// Extract URL
+				if urlStr, ok := audioURLVal["url"].(string); ok {
+					audioURL.URL = urlStr
+				}
+
+				// Extract headers if present
+				if headersVal, ok := audioURLVal["headers"].(map[string]interface{}); ok {
+					headers := make(map[string]string)
+					for key, value := range headersVal {
+						if strValue, ok := value.(string); ok {
+							headers[key] = strValue
+						}
+					}
+					audioURL.Headers = headers
+				}
+
+				part.AudioURL = audioURL
+			}
+
+			// Extract input_audio
+			if inputAudioVal, ok := itemMap["input_audio"].(map[string]interface{}); ok {
+				inputAudio := &InputAudio{}
+
+				// Extract data
+				if dataStr, ok := inputAudioVal["data"].(string); ok {
+					inputAudio.Data = dataStr
+				}
+
+				// Extract format
+				if formatStr, ok := inputAudioVal["format"].(string); ok {
+					inputAudio.Format = formatStr
+				}
+
+				part.InputAudio = inputAudio
+			}
+
 			parts = append(parts, part)
 		}
 	}
@@ -186,6 +252,23 @@ func (p *ImageProcessor) processContentArray(ctx context.Context, arr []interfac
 			partMap["file_url"] = fileURLMap
 		}
 
+		if part.Type == "audio_url" && part.AudioURL != nil {
+			// Create audio_url object without headers (headers are removed for vendor compatibility)
+			audioURLMap := map[string]interface{}{
+				"url": part.AudioURL.URL,
+			}
+			partMap["audio_url"] = audioURLMap
+		}
+
+		if part.Type == "input_audio" && part.InputAudio != nil {
+			// Create input_audio object
+			inputAudioMap := map[string]interface{}{
+				"data":   part.InputAudio.Data,
+				"format": part.InputAudio.Format,
+			}
+			partMap["input_audio"] = inputAudioMap
+		}
+
 		result[i] = partMap
 	}
 
@@ -194,7 +277,7 @@ func (p *ImageProcessor) processContentArray(ctx context.Context, arr []interfac
 
 // processContentParts processes content parts concurrently with graceful error handling
 func (p *ImageProcessor) processContentParts(ctx context.Context, parts []ContentPart) ([]ContentPart, error) {
-	// Find all image URLs and files that need processing
+	// Find all image URLs, files, and audio URLs that need processing
 	itemsToProcess := make(map[int]int) // maps result index to parts index
 	resultIndex := 0
 	for i, part := range parts {
@@ -203,6 +286,10 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 			resultIndex++
 		} else if part.Type == "file_url" && part.FileURL != nil {
 			// Process all file_url types without pre-validation
+			itemsToProcess[resultIndex] = i
+			resultIndex++
+		} else if part.Type == "audio_url" && part.AudioURL != nil && p.isPublicURL(part.AudioURL.URL) {
+			// Process all audio_url types
 			itemsToProcess[resultIndex] = i
 			resultIndex++
 		}
@@ -220,12 +307,14 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 			totalItems++
 		} else if part.Type == "file_url" && part.FileURL != nil {
 			totalItems++
+		} else if part.Type == "audio_url" && part.AudioURL != nil {
+			totalItems++
 		}
 	}
 
 	// Log processing start (if logger is available)
 	if len(itemsToProcess) > 0 {
-		logger.LogWithStructure(ctx, logger.LevelInfo, "Processing image URLs and files concurrently",
+		logger.LogWithStructure(ctx, logger.LevelInfo, "Processing image URLs, files, and audio URLs concurrently",
 			map[string]interface{}{
 				"item_count":       len(itemsToProcess),
 				"total_parts":      len(parts),
@@ -262,12 +351,30 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 					},
 				}
 			} else if part.Type == "file_url" {
-				// Process file using modular file processor
-				fileText, fileErr := p.fileProcessor.ProcessFileURL(ctx, part.FileURL)
+				// Process file using intelligent file processor
+				fileContent, fileErr := p.fileProcessor.ProcessFileURLIntelligent(ctx, part.FileURL)
 				err = fileErr
-				processedContent = ContentPart{
-					Type: "text",
-					Text: fileText,
+				if err == nil {
+					processedContent = fileContent
+				} else {
+					// Error will be handled below
+					processedContent = ContentPart{}
+				}
+			} else if part.Type == "audio_url" {
+				// Process audio using modular audio processor
+				audioData, audioErr := p.audioProcessor.ProcessAudioURL(ctx, part.AudioURL.URL, part.AudioURL.Headers)
+				err = audioErr
+				if err == nil {
+					processedContent = ContentPart{
+						Type: "input_audio",
+						InputAudio: &InputAudio{
+							Data:   audioData.Data,
+							Format: audioData.Format,
+						},
+					}
+				} else {
+					// Error will be handled below
+					processedContent = ContentPart{}
 				}
 			}
 
@@ -303,7 +410,7 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 			// Calculate item position for better context
 			itemPosition := 1
 			for i := 0; i <= result.Index; i++ {
-				if (parts[i].Type == "image_url" && parts[i].ImageURL != nil) || (parts[i].Type == "file_url" && parts[i].FileURL != nil) {
+				if (parts[i].Type == "image_url" && parts[i].ImageURL != nil) || (parts[i].Type == "file_url" && parts[i].FileURL != nil) || (parts[i].Type == "audio_url" && parts[i].AudioURL != nil) {
 					if i == result.Index {
 						break
 					}
@@ -315,6 +422,8 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 			var failureMessage string
 			if itemType == "file_url" {
 				failureMessage = p.generateFileFailureMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)
+			} else if itemType == "audio_url" {
+				failureMessage = p.generateAudioFailureMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)
 			} else {
 				failureMessage = p.generateImageFailureMessage(result.Error, itemPosition, totalItems, len(itemsToProcess) > 1)
 			}
@@ -944,6 +1053,53 @@ func (p *ImageProcessor) generateFileFailureMessage(err error, filePosition, tot
 	var mixedScenarioGuidance string
 	if hasMixedScenario && totalFiles > 1 {
 		mixedScenarioGuidance = " You can still analyze and respond to the other files and images that were successfully processed."
+	}
+
+	// Construct the complete user message (no system wrapper for vendor compatibility)
+	userMessage := fmt.Sprintf("%s%s%s",
+		contextPrefix, baseMessage, mixedScenarioGuidance)
+
+	return userMessage
+}
+
+// generateAudioFailureMessage creates a contextual user message for failed audio downloads
+func (p *ImageProcessor) generateAudioFailureMessage(err error, audioPosition, totalAudios int, hasMixedScenario bool) string {
+	// Determine the type of error for more specific messaging
+	errorMsg := err.Error()
+	var baseMessage string
+	var contextPrefix string
+
+	// Create context prefix for mixed scenarios
+	if hasMixedScenario && totalAudios > 1 {
+		contextPrefix = fmt.Sprintf("Audio %d of %d could not be processed. ", audioPosition, totalAudios)
+	} else if totalAudios > 1 {
+		contextPrefix = fmt.Sprintf("One of the %d audios provided could not be processed. ", totalAudios)
+	} else {
+		contextPrefix = "The audio provided could not be processed. "
+	}
+
+	// Determine specific error message based on error type
+	if strings.Contains(errorMsg, "no such host") || strings.Contains(errorMsg, "dial tcp") {
+		baseMessage = "Respond naturally that you couldn't access the audio due to network connectivity issues. The audio server appears to be unreachable or the domain doesn't exist. Ask the user to verify the URL or provide an alternative audio."
+	} else if strings.Contains(errorMsg, "status 401") || strings.Contains(errorMsg, "status 403") {
+		baseMessage = "Respond naturally that the audio requires authentication or access permissions that weren't provided. The audio couldn't be accessed due to authorization issues. Suggest they provide proper authentication headers or use a publicly accessible audio."
+	} else if strings.Contains(errorMsg, "status 404") {
+		baseMessage = "Respond naturally that the audio URL appears to be broken or the audio has been moved/deleted (404 Not Found). Ask them to provide a valid audio URL."
+	} else if strings.Contains(errorMsg, "invalid content type") {
+		baseMessage = "Respond naturally that the URL doesn't point to a valid audio file. The content isn't an audio format that can be processed. Ask them to provide a direct link to an audio file (MP3, WAV, etc.)."
+	} else if strings.Contains(errorMsg, "size exceeds limit") {
+		baseMessage = "Respond naturally that the audio file is too large to process (exceeds 20MB limit). Ask them to provide a smaller audio file or compress it before sharing."
+	} else if strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "deadline exceeded") {
+		baseMessage = "Respond naturally that the audio took too long to download due to slow response from the audio server. Suggest they try again later or provide an alternative audio."
+	} else {
+		// Generic error message for unknown error types
+		baseMessage = "Respond naturally that there was a technical issue processing this audio. Ask them to try providing the audio again or use an alternative audio."
+	}
+
+	// Add guidance for mixed scenarios
+	var mixedScenarioGuidance string
+	if hasMixedScenario && totalAudios > 1 {
+		mixedScenarioGuidance = " You can still analyze and respond to the other audios that were successfully processed."
 	}
 
 	// Construct the complete user message (no system wrapper for vendor compatibility)
