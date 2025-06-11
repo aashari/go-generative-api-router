@@ -146,7 +146,7 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 
 		// Handle logging based on request type and response status
 		duration := time.Since(start)
-		
+
 		// For health checks, only log if there's an error or at debug level
 		if isHealthCheck {
 			if wrapper.statusCode >= 400 {

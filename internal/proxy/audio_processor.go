@@ -68,12 +68,12 @@ func (p *AudioProcessor) ProcessAudioURL(ctx context.Context, audioURL string, h
 
 	logger.LogWithStructure(ctx, logger.LevelDebug, "Audio processed successfully",
 		map[string]interface{}{
-			"original_url":    audioURL,
-			"content_type":    contentType,
-			"output_format":   outputFormat,
-			"original_size":   len(audioData),
-			"converted_size":  len(convertedData),
-			"base64_length":   len(base64Data),
+			"original_url":   audioURL,
+			"content_type":   contentType,
+			"output_format":  outputFormat,
+			"original_size":  len(audioData),
+			"converted_size": len(convertedData),
+			"base64_length":  len(base64Data),
 		},
 		nil, // request
 		nil, // response
@@ -142,7 +142,7 @@ func (p *AudioProcessor) determineOutputFormat(contentType string) string {
 	if strings.Contains(contentType, "audio/wav") || strings.Contains(contentType, "audio/wave") {
 		return "wav"
 	}
-	
+
 	// Default to MP3 for smaller file size
 	return "mp3"
 }
@@ -151,7 +151,7 @@ func (p *AudioProcessor) determineOutputFormat(contentType string) string {
 func (p *AudioProcessor) convertAudio(ctx context.Context, audioData []byte, inputContentType, outputFormat string) ([]byte, error) {
 	// If already in the desired format, return as-is
 	if (outputFormat == "mp3" && (strings.Contains(inputContentType, "audio/mp3") || strings.Contains(inputContentType, "audio/mpeg"))) ||
-	   (outputFormat == "wav" && (strings.Contains(inputContentType, "audio/wav") || strings.Contains(inputContentType, "audio/wave"))) {
+		(outputFormat == "wav" && (strings.Contains(inputContentType, "audio/wav") || strings.Contains(inputContentType, "audio/wave"))) {
 		return audioData, nil
 	}
 
@@ -187,9 +187,9 @@ func (p *AudioProcessor) convertAudio(ctx context.Context, audioData []byte, inp
 	// Set quality parameters based on output format
 	switch outputFormat {
 	case "mp3":
-		args = append(args, "-acodec", "mp3")      // MP3 codec
-		args = append(args, "-b:a", "128k")        // Bitrate 128kbps
-		args = append(args, "-ar", "44100")        // Sample rate 44.1kHz
+		args = append(args, "-acodec", "mp3") // MP3 codec
+		args = append(args, "-b:a", "128k")   // Bitrate 128kbps
+		args = append(args, "-ar", "44100")   // Sample rate 44.1kHz
 	case "wav":
 		args = append(args, "-acodec", "pcm_s16le") // PCM 16-bit little-endian
 		args = append(args, "-ar", "44100")         // Sample rate 44.1kHz
@@ -220,7 +220,7 @@ func (p *AudioProcessor) convertAudio(ctx context.Context, audioData []byte, inp
 // isValidAudioType checks if the content type is a supported audio format
 func (p *AudioProcessor) isValidAudioType(contentType string) bool {
 	validTypes := []string{
-		"audio/",      // Any audio type
+		"audio/",                   // Any audio type
 		"application/octet-stream", // Generic binary that might be audio
 	}
 
@@ -314,4 +314,4 @@ func (p *AudioProcessor) generateAudioFailureMessage(err error, audioPosition, t
 	}
 
 	return fmt.Sprintf("%s%s%s", contextPrefix, baseMessage, mixedScenarioGuidance)
-} 
+}

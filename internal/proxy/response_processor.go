@@ -292,9 +292,62 @@ func processErrorResponse(responseData map[string]interface{}) {
 
 // processNormalResponse handles normal (non-error) response processing
 func processNormalResponse(responseData map[string]interface{}, vendor string) {
+	// Check if choices field exists
 	if choices, ok := responseData["choices"].([]interface{}); ok && len(choices) > 0 {
 		processChoices(choices, vendor)
 		responseData["choices"] = choices
+	} else {
+		// Check if this is a response with zero completion tokens
+		hasZeroCompletionTokens := false
+		if usage, ok := responseData["usage"].(map[string]interface{}); ok {
+			if completionTokens, ok := usage["completion_tokens"]; ok {
+				if tokens, ok := completionTokens.(float64); ok && tokens == 0 {
+					hasZeroCompletionTokens = true
+				}
+			}
+		}
+
+		// If choices field is missing and we have zero completion tokens, add an empty choices array
+		if hasZeroCompletionTokens && !ok {
+			// Log complete empty choices array addition
+			logger.LogWithStructure(context.Background(), logger.LevelInfo, "Adding empty choices array for zero completion tokens response",
+				map[string]interface{}{
+					"vendor":                     vendor,
+					"has_zero_completion_tokens": hasZeroCompletionTokens,
+					"complete_response_data":     responseData,
+					"reason":                     "missing_choices_with_zero_tokens",
+				},
+				nil, // request
+				nil, // response
+				nil) // error
+
+			// Add empty choices array with a single choice indicating no content was generated
+			responseData["choices"] = []interface{}{
+				map[string]interface{}{
+					"index": 0,
+					"message": map[string]interface{}{
+						"role":        "assistant",
+						"content":     "",
+						"annotations": []interface{}{},
+						"refusal":     nil,
+					},
+					"logprobs":      nil,
+					"finish_reason": "stop",
+				},
+			}
+		} else if !ok {
+			// Log complete missing choices warning for non-zero token responses
+			logger.LogWithStructure(context.Background(), logger.LevelWarn, "Missing choices field in non-zero completion tokens response",
+				map[string]interface{}{
+					"vendor":                     vendor,
+					"has_zero_completion_tokens": hasZeroCompletionTokens,
+					"complete_response_data":     responseData,
+					"reason":                     "missing_choices_with_tokens",
+				},
+				nil, // request
+				nil, // response
+				nil) // error
+		}
 	}
 }
 

@@ -23,7 +23,7 @@ type FileProcessor struct {
 func NewFileProcessor() *FileProcessor {
 	return &FileProcessor{
 		imageProcessor: NewImageProcessor(),
-		audioProcessor: NewAudioProcessor(), 
+		audioProcessor: NewAudioProcessor(),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},

@@ -20,9 +20,9 @@ import (
 
 // ImageProcessor handles image URL processing and conversion
 type ImageProcessor struct {
-	httpClient    *http.Client
-	maxSize       int64
-	fileProcessor *FileProcessor
+	httpClient     *http.Client
+	maxSize        int64
+	fileProcessor  *FileProcessor
 	audioProcessor *AudioProcessor
 }
 
@@ -952,7 +952,7 @@ func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, 
 	// Detect actual file type for better logging
 	originalContentType := resp.Header.Get("Content-Type")
 	detectedFileType := p.detectDocumentFormat(fileData)
-	
+
 	// Convert file to text using markitdown
 	textContent, err := p.convertFileToText(ctx, tempFile.Name(), fileURL)
 	if err != nil {
@@ -960,13 +960,13 @@ func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, 
 	}
 
 	logger.LogWithStructure(ctx, logger.LevelDebug, "File downloaded and converted", map[string]interface{}{
-		"original_url":           fileURL,
-		"original_content_type":  originalContentType,
-		"detected_file_type":     detectedFileType,
-		"size_bytes":             len(fileData),
-		"text_length":            len(textContent),
-		"temp_file":              tempFile.Name(),
-		"content_type_detected":  originalContentType != detectedFileType && detectedFileType != "unknown",
+		"original_url":          fileURL,
+		"original_content_type": originalContentType,
+		"detected_file_type":    detectedFileType,
+		"size_bytes":            len(fileData),
+		"text_length":           len(textContent),
+		"temp_file":             tempFile.Name(),
+		"content_type_detected": originalContentType != detectedFileType && detectedFileType != "unknown",
 	}, nil, nil, nil)
 
 	return textContent, nil

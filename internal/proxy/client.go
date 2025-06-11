@@ -378,29 +378,117 @@ func (s *ResponseStandardizer) validateVendorResponse(body []byte, vendor string
 		return ErrInvalidResponse
 	}
 
-	// Try to parse the JSON
+	// Handle both object and array responses
 	var responseData map[string]interface{}
-	if err := json.Unmarshal(body, &responseData); err != nil {
-		// Log complete JSON parsing error
+	var err error
+
+	// Check if response starts with array bracket
+	if bytes.HasPrefix(bytes.TrimSpace(body), []byte("[")) {
+		// Handle array response (common for error responses from some vendors)
+		var arrayResponse []interface{}
+		if err := json.Unmarshal(body, &arrayResponse); err != nil {
+			// Log complete JSON parsing error for array
+			logger.LogError(context.Background(), "response_validation", err, map[string]any{
+				"vendor":        vendor,
+				"response_body": string(body),
+				"response_size": len(body),
+				"response_type": "array",
+			})
+			return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
+		}
+
+		// Check if array contains error objects
+		if len(arrayResponse) > 0 {
+			if firstItem, ok := arrayResponse[0].(map[string]interface{}); ok {
+				if _, hasError := firstItem["error"]; hasError {
+					// This is an error response in array format - treat as valid error response
+					logger.LogWithStructure(context.Background(), logger.LevelDebug, "Array error response validation successful",
+						map[string]interface{}{
+							"vendor":                 vendor,
+							"complete_response_data": arrayResponse,
+							"response_size":          len(body),
+							"response_type":          "array_error",
+						},
+						nil, // request
+						map[string]interface{}{
+							"response_body": string(body),
+						},
+						nil) // error
+					return nil
+				}
+			}
+		}
+
+		// Array response but not an error - this is unexpected for OpenAI-compatible APIs
+		logger.LogError(context.Background(), "response_validation", fmt.Errorf("unexpected array response format"), map[string]any{
+			"vendor":                 vendor,
+			"complete_response_data": arrayResponse,
+			"response_body":          string(body),
+			"response_size":          len(body),
+			"response_type":          "unexpected_array",
+		})
+		return fmt.Errorf("%w: unexpected array response format", ErrInvalidResponse)
+	}
+
+	// Handle object response (normal case)
+	if err = json.Unmarshal(body, &responseData); err != nil {
+		// Log complete JSON parsing error for object
 		logger.LogError(context.Background(), "response_validation", err, map[string]any{
 			"vendor":        vendor,
 			"response_body": string(body),
 			"response_size": len(body),
+			"response_type": "object",
 		})
 		return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
 
-	// Basic validation: check for required fields in non-error responses
-	requiredFields := []string{"id", "object", "choices"}
-	for _, field := range requiredFields {
-		if _, ok := responseData[field]; !ok && !isErrorResponse(responseData) {
-			// Log complete missing field error
-			logger.LogError(context.Background(), "response_validation", fmt.Errorf("missing required field"), map[string]any{
-				"missing_field":          field,
+	// Check if this is an error response first
+	if isErrorResponse(responseData) {
+		// Log complete successful error response validation
+		logger.LogWithStructure(context.Background(), logger.LevelDebug, "Error response validation successful with complete data",
+			map[string]interface{}{
 				"vendor":                 vendor,
 				"complete_response_data": responseData,
-				"response_body":          string(body),
-				"required_fields":        requiredFields,
+				"response_size":          len(body),
+				"response_type":          "error",
+			},
+			nil, // request
+			map[string]interface{}{
+				"response_body": string(body),
+			},
+			nil) // error
+		return nil
+	}
+
+	// Check if this is a response with zero completion tokens
+	hasZeroCompletionTokens := false
+	if usage, ok := responseData["usage"].(map[string]interface{}); ok {
+		if completionTokens, ok := usage["completion_tokens"]; ok {
+			if tokens, ok := completionTokens.(float64); ok && tokens == 0 {
+				hasZeroCompletionTokens = true
+			}
+		}
+	}
+
+	// Basic validation: check for required fields in non-error responses
+	requiredFields := []string{"id", "object"}
+
+	// Only require "choices" field if the response has completion tokens
+	// For responses with zero completion tokens, the choices field may be missing or empty
+	if !hasZeroCompletionTokens {
+		requiredFields = append(requiredFields, "choices")
+	}
+
+	for _, field := range requiredFields {
+		if _, ok := responseData[field]; !ok {
+			// Log complete missing field error
+			logger.LogError(context.Background(), "response_validation", fmt.Errorf("missing required field"), map[string]any{
+				"missing_field":              field,
+				"vendor":                     vendor,
+				"complete_response_data":     responseData,
+				"response_body":              string(body),
+				"required_fields":            requiredFields,
+				"has_zero_completion_tokens": hasZeroCompletionTokens,
 			})
 			return fmt.Errorf("%w: missing required field '%s'", ErrInvalidResponse, field)
 		}
@@ -409,10 +497,11 @@ func (s *ResponseStandardizer) validateVendorResponse(body []byte, vendor string
 	// Log complete successful validation
 	logger.LogWithStructure(context.Background(), logger.LevelDebug, "Response validation successful with complete data",
 		map[string]interface{}{
-			"vendor":                 vendor,
-			"complete_response_data": responseData,
-			"response_size":          len(body),
-			"validated_fields":       requiredFields,
+			"vendor":                     vendor,
+			"complete_response_data":     responseData,
+			"response_size":              len(body),
+			"validated_fields":           requiredFields,
+			"has_zero_completion_tokens": hasZeroCompletionTokens,
 		},
 		nil, // request
 		map[string]interface{}{
@@ -543,27 +632,6 @@ func (s *ResponseStandardizer) compressResponseMandatory(body []byte) ([]byte, e
 		"original_bytes", len(body),
 		"compressed_bytes", buf.Len(),
 		"reduction_percent", float64(len(body)-buf.Len())*100/float64(len(body)))
-	return buf.Bytes(), nil
-}
-
-// compressStreamingChunk compresses a streaming chunk
-func (s *ResponseStandardizer) compressStreamingChunk(body []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	gzipWriter := gzip.NewWriter(&buf)
-
-	_, err := gzipWriter.Write(body)
-	if err != nil {
-		logger.Error("Streaming gzip compression error", "error", err)
-		return body, err
-	}
-
-	err = gzipWriter.Close()
-	if err != nil {
-		logger.Error("Streaming gzip compression close error", "error", err)
-		return body, err
-	}
-
-	logger.Debug("Compressed streaming chunk", "original_bytes", len(body), "compressed_bytes", buf.Len())
 	return buf.Bytes(), nil
 }
 
