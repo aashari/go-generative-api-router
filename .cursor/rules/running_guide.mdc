@@ -955,3 +955,72 @@ START_TS=$(( $(date -u -d '24 hours ago' +%s) * 1000 )) && aws logs filter-log-e
 - **NEW**: Check `docs/logging-guide.md` for detailed logging documentation
 - **NEW**: Review `docs/production-monitoring-guide.md` for production monitoring procedures
 - **AWS**: See [Development Guide AWS Section](mdc:development_guide.mdc#aws-deployment--monitoring) for complete AWS debugging guide
+- **CloudWatch Logs**: See [Development Guide CloudWatch Section](mdc:development_guide.mdc#cloudwatch-logs-debugging-guide-critical) for systematic CloudWatch debugging approach
+
+## 🔍 CloudWatch Logs Quick Reference
+
+**CRITICAL**: For systematic CloudWatch debugging, see the comprehensive guide in [Development Guide](mdc:development_guide.mdc#cloudwatch-logs-debugging-guide-critical).
+
+### **Emergency CloudWatch Commands**
+
+```bash
+# PREREQUISITE: Load .env first
+export $(cat .env | grep -v '^#' | xargs) && export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ Environment loaded" | cat
+
+# Quick health check of logging system
+aws logs describe-log-groups --profile $AWS_PROFILE --region $AWS_REGION --log-group-name-prefix "/aws/ecs/service/$AWS_SERVICE_PROD" | jq -r '.logGroups[].logGroupName' && echo "✅ Log group exists" | cat
+
+# Get recent activity (last 30 minutes, no filters)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 10 | jq -r '.events | length' && echo "recent events" | cat
+
+# Check log structure quickly
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 1 | jq -r '.events[0].message | try (fromjson | keys) catch "NOT_JSON"' | cat
+```
+
+### **CloudWatch Debugging Workflow (Quick)**
+
+**Phase 1: Basic Setup & Connectivity**
+```bash
+# 1. Environment check
+echo "AWS Profile: $AWS_PROFILE, Region: $AWS_REGION, Service: $AWS_SERVICE_PROD" | cat
+
+# 2. Log group verification
+aws logs describe-log-groups --profile $AWS_PROFILE --region $AWS_REGION --log-group-name-prefix "/aws/ecs/service/$AWS_SERVICE_PROD" | jq -r '.logGroups[].logGroupName' | cat
+
+# 3. Set broad time window (start with 60+ minutes)
+START_TS=$(( $(date -u -d '60 minutes ago' +%s) * 1000 )) && echo "Time window: $(date -u -d '60 minutes ago') to $(date -u)" | cat
+```
+
+**Phase 2: Basic Analysis**
+```bash
+# 4. Total event count
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS | jq -r '.events | length' && echo "total events" | cat
+
+# 5. Log structure check
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 1 | jq -r '.events[0].message | try (fromjson | keys) catch "NOT_JSON"' | cat
+
+# 6. Basic categorization
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "completed requests" | cat
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events | length' && echo "error events" | cat
+```
+
+### **Common CloudWatch Mistakes to Avoid**
+
+❌ **WRONG**: Starting with narrow time windows or complex filters
+❌ **WRONG**: Assuming field names without verification  
+❌ **WRONG**: Not handling JSON parsing errors with `try-catch`
+❌ **WRONG**: Giving up on empty results without investigation
+
+✅ **CORRECT**: Start broad (60+ minutes) → narrow down
+✅ **CORRECT**: Examine log structure first with `| jq -r '.events[0].message | try (fromjson | keys)'`
+✅ **CORRECT**: Use `try (fromjson) catch null | select(. != null)` for robust parsing
+✅ **CORRECT**: Investigate empty results: expand time window, verify log group, remove filters
+
+### **CloudWatch Performance Tips**
+
+- Use `--max-items 10` for quick checks, `--max-items 50` for detailed analysis
+- Use `--filter-pattern` for server-side filtering, `jq` for client-side transformations
+- For known events, use precise time windows: `±5-10 minutes` around exact timestamps
+- Handle missing fields with defaults: `.field // "unknown"`
+
+**For complete CloudWatch debugging methodology, see [Development Guide CloudWatch Section](mdc:development_guide.mdc#cloudwatch-logs-debugging-guide-critical).**

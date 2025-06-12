@@ -793,6 +793,214 @@ START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-eve
 START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
 ```
 
+### **🔍 CloudWatch Logs Debugging Guide (CRITICAL)**
+
+**IMPORTANT**: Based on recent debugging experience, follow this systematic approach to avoid common pitfalls.
+
+### **CloudWatch Debugging Strategy**
+
+**1. Start Broad → Narrow Approach**
+```bash
+# ❌ WRONG: Starting with narrow time windows or complex filters
+START_TS=$(( $(date -u -d '5 minutes ago' +%s) * 1000 ))  # Too narrow
+
+# ✅ CORRECT: Start with broad time windows (30-60 minutes)
+START_TS=$(( $(date -u -d '60 minutes ago' +%s) * 1000 ))
+END_TS=$(( $(date -u +%s) * 1000 ))
+```
+
+**2. Understand Log Structure First**
+```bash
+# ALWAYS examine log structure before complex queries
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" \
+  --start-time $START_TS --max-items 3 | jq -r '.events[0:2][].message' | head -2 | cat
+```
+
+**3. Use Proper Filter Patterns**
+```bash
+# ❌ WRONG: Using complex jq filters in --filter-pattern
+--filter-pattern "?ERROR ?error ?Error ?failed ?Failed ?panic ?timeout"
+
+# ✅ CORRECT: Use simple string matching in --filter-pattern, complex logic in jq
+--filter-pattern "ERROR"  # Simple string match
+--filter-pattern "\"Request completed\""  # Exact phrase match
+--filter-pattern "\"level\":\"error\""  # JSON field match
+```
+
+### **Common CloudWatch Debugging Mistakes & Solutions**
+
+**❌ MISTAKE 1: Incorrect Field Names in jq**
+```bash
+# DON'T assume field names - they may be different than expected
+jq -r '.events[].message | fromjson | .severity'  # Wrong field name
+```
+
+**✅ SOLUTION: Verify actual log structure**
+```bash
+# DO examine actual log structure first
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" \
+  --start-time $START_TS --max-items 1 | jq -r '.events[0].message | fromjson | keys' | cat
+
+# Then use correct field names
+jq -r '.events[].message | fromjson | .level'  # Correct field name
+```
+
+**❌ MISTAKE 2: Starting with Complex Filters**
+```bash
+# DON'T start with complex jq transformations
+jq -r '.events[].message | fromjson | select(.attributes.vendor == "openai") | .error.message'
+```
+
+**✅ SOLUTION: Build complexity gradually**
+```bash
+# Step 1: Get raw events
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS | jq -r '.events | length' | cat
+
+# Step 2: Parse JSON messages
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS | jq -r '.events[0].message | fromjson' | cat
+
+# Step 3: Add specific filters
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS | jq -r '.events[].message | try (fromjson) catch null | select(. != null) | .level' | cat
+```
+
+**❌ MISTAKE 3: Not Handling JSON Parsing Errors**
+```bash
+# DON'T assume all log entries are valid JSON
+jq -r '.events[].message | fromjson | .level'  # Will fail on non-JSON entries
+```
+
+**✅ SOLUTION: Use try-catch for robust parsing**
+```bash
+# DO handle JSON parsing errors gracefully
+jq -r '.events[].message | try (fromjson) catch null | select(. != null) | .level // "unknown"' | cat
+```
+
+**❌ MISTAKE 4: Ignoring Empty Results**
+```bash
+# DON'T assume no results means no activity
+aws logs filter-log-events ... | jq -r '.events | length'  # Returns 0
+# Then giving up or assuming service is down
+```
+
+**✅ SOLUTION: Systematic investigation of empty results**
+```bash
+# Step 1: Verify log group exists
+aws logs describe-log-groups --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name-prefix "/aws/ecs/service/$AWS_SERVICE_PROD" | jq -r '.logGroups[].logGroupName' | cat
+
+# Step 2: Expand time window
+START_TS=$(( $(date -u -d '3 hours ago' +%s) * 1000 ))  # Expand to 3 hours
+
+# Step 3: Remove all filters
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 10 | jq -r '.events | length' | cat
+
+# Step 4: Check different log streams
+aws logs describe-log-streams --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --order-by LastEventTime --descending | jq -r '.logStreams[0:3][].logStreamName' | cat
+```
+
+### **Systematic CloudWatch Debugging Workflow**
+
+**Phase 1: Environment & Basic Connectivity**
+```bash
+# 1. Verify environment setup
+echo "AWS Profile: $AWS_PROFILE, Region: $AWS_REGION, Service: $AWS_SERVICE_PROD" | cat
+
+# 2. Check log group exists
+aws logs describe-log-groups --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name-prefix "/aws/ecs/service/$AWS_SERVICE_PROD" | jq -r '.logGroups[].logGroupName' | cat
+
+# 3. Set broad time window
+START_TS=$(( $(date -u -d '60 minutes ago' +%s) * 1000 ))
+echo "Time window: $(date -u -d '60 minutes ago') to $(date -u)" | cat
+```
+
+**Phase 2: Basic Log Analysis**
+```bash
+# 4. Get total event count
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS | jq -r '.events | length' && echo "total events" | cat
+
+# 5. Examine log structure (first few entries)
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 2 | jq -r '.events[0:2][].message' | head -2 | cat
+
+# 6. Check if logs are JSON structured
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 1 | jq -r '.events[0].message | try (fromjson) catch "NOT_JSON"' | cat
+```
+
+**Phase 3: Targeted Analysis**
+```bash
+# 7. Count different log types
+echo "=== LOG TYPE ANALYSIS ===" | cat
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS \
+  --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "completed requests" | cat
+
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS \
+  --filter-pattern "ERROR" | jq -r '.events | length' && echo "error events" | cat
+
+# 8. Analyze specific patterns (only if logs are JSON)
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS \
+  --filter-pattern "\"Request completed\"" | jq -r '.events[].message | try (fromjson) catch null | select(. != null) | .level // "unknown"' | sort | uniq -c | cat
+```
+
+**Phase 4: Deep Dive (if needed)**
+```bash
+# 9. Extract specific error messages
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS \
+  --filter-pattern "ERROR" | jq -r '.events[].message | try (fromjson) catch null | select(. != null) | "\(.timestamp // "unknown") - \(.message // .error.message // "no message")"' | head -5 | cat
+
+# 10. Trace specific request IDs (if found)
+REQUEST_ID="found-request-id"
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS \
+  --filter-pattern "\"$REQUEST_ID\"" | jq -r '.events[].message | try (fromjson) catch null | select(. != null) | "\(.timestamp) - \(.component // "unknown"): \(.message)"' | cat
+```
+
+### **CloudWatch Performance Optimization**
+
+**1. Use --max-items for Large Queries**
+```bash
+# For quick checks
+--max-items 10
+
+# For detailed analysis
+--max-items 50
+
+# For comprehensive investigation
+--max-items 100
+```
+
+**2. Use Precise Time Windows When Possible**
+```bash
+# If you know the exact time of an event
+EVENT_TIME="2025-06-12T07:30:00Z"
+EVENT_TS=$(( $(date -u -d "$EVENT_TIME" +%s) * 1000 ))
+START_TS=$(( $EVENT_TS - 300000 ))  # ±5 minutes
+END_TS=$(( $EVENT_TS + 300000 ))
+```
+
+**3. Combine --filter-pattern with jq for Efficiency**
+```bash
+# Use --filter-pattern for initial filtering (server-side)
+# Use jq for complex transformations (client-side)
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION \
+  --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS \
+  --filter-pattern "\"Request completed\"" --max-items 50 | \
+  jq -r '.events[].message | try (fromjson) catch null | select(. != null and .attributes.duration_ms > 5000) | "\(.timestamp) - \(.attributes.duration_ms)ms"' | cat
+```
+
 ### **CloudWatch Integration**
 
 **Log Analysis:**
@@ -805,6 +1013,48 @@ aws --profile $AWS_PROFILE --region $AWS_REGION logs filter-log-events --log-gro
 
 # Export logs for analysis
 aws --profile $AWS_PROFILE --region $AWS_REGION logs create-export-task --log-group-name /aws/ecs/service/$AWS_SERVICE_PROD --from $(date -d '1 day ago' +%s)000 --to $(date +%s)000 --destination your-s3-bucket | cat
+```
+
+### **CloudWatch Debugging Checklist**
+
+**Before starting any CloudWatch investigation:**
+
+✅ **Environment Setup**
+- [ ] Environment variables loaded (`$AWS_PROFILE`, `$AWS_REGION`, `$AWS_SERVICE_PROD`)
+- [ ] Log group name verified
+- [ ] Time window set appropriately (start broad: 60+ minutes)
+
+✅ **Basic Connectivity**
+- [ ] Log group exists (`describe-log-groups`)
+- [ ] Recent log activity (`filter-log-events` with no filters)
+- [ ] Log structure understood (JSON vs plain text)
+
+✅ **Systematic Analysis**
+- [ ] Total event count obtained
+- [ ] Log types categorized (errors, requests, health checks)
+- [ ] Sample log entries examined
+- [ ] Field names verified before complex jq queries
+
+✅ **Error Handling**
+- [ ] JSON parsing errors handled with `try-catch`
+- [ ] Empty results investigated (expand time, remove filters)
+- [ ] Default values provided for missing fields (`// "unknown"`)
+
+✅ **Performance Optimization**
+- [ ] `--max-items` used appropriately
+- [ ] `--filter-pattern` used for server-side filtering
+- [ ] Complex logic moved to jq (client-side)
+
+**Emergency CloudWatch Commands:**
+```bash
+# Quick health check of logging system
+aws logs describe-log-groups --profile $AWS_PROFILE --region $AWS_REGION --log-group-name-prefix "/aws/ecs/service/$AWS_SERVICE_PROD" | jq -r '.logGroups[].logGroupName' && echo "✅ Log group exists" | cat
+
+# Get recent activity (last 30 minutes, no filters)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 10 | jq -r '.events | length' && echo "recent events" | cat
+
+# Check log structure quickly
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 1 | jq -r '.events[0].message | try (fromjson | keys) catch "NOT_JSON"' | cat
 ```
 
 ## Maintenance
