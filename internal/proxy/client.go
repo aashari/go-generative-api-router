@@ -89,6 +89,11 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	}
 
 	// Log complete vendor request data before sending
+	var vendorBodyForLog interface{}
+	if err := json.Unmarshal(modifiedBody, &vendorBodyForLog); err != nil {
+		vendorBodyForLog = string(modifiedBody)
+	}
+
 	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete vendor request about to be sent",
 		map[string]interface{}{
 			"vendor":         selection.Vendor,
@@ -100,7 +105,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 			"vendor_method":  req.Method,
 			"vendor_url":     req.URL.String(),
 			"vendor_headers": map[string][]string(req.Header),
-			"vendor_body":    string(modifiedBody),
+			"vendor_body":    vendorBodyForLog,
 			"client_method":  r.Method,
 			"client_path":    r.URL.Path,
 			"client_headers": map[string][]string(r.Header),
@@ -738,6 +743,11 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	}
 
 	// Log complete vendor response body immediately after processing
+	var vendorResponseBodyForLog interface{}
+	if err := json.Unmarshal(responseBody, &vendorResponseBodyForLog); err != nil {
+		vendorResponseBodyForLog = string(responseBody)
+	}
+
 	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete vendor response body received",
 		map[string]interface{}{
 			"vendor":         selection.Vendor,
@@ -751,7 +761,7 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 			"status":           resp.Status,
 			"headers":          map[string][]string(resp.Header),
 			"content_length":   resp.ContentLength,
-			"body":             string(responseBody),
+			"body":             vendorResponseBodyForLog,
 			"body_size_bytes":  len(responseBody),
 			"content_encoding": resp.Header.Get("Content-Encoding"),
 		},
@@ -836,6 +846,11 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	}
 
 	// Log complete final response sent to client
+	var finalResponseForLog interface{}
+	if err := json.Unmarshal(finalResponse, &finalResponseForLog); err != nil {
+		finalResponseForLog = string(finalResponse)
+	}
+
 	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete final response sent to client",
 		map[string]interface{}{
 			"vendor":                 selection.Vendor,
@@ -849,7 +864,7 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 		},
 		nil, // request
 		map[string]interface{}{
-			"body":             string(finalResponse),
+			"body":             finalResponseForLog,
 			"body_size_bytes":  len(finalResponse),
 			"headers":          map[string][]string(w.Header()),
 			"compressed":       shouldCompress,
