@@ -30,7 +30,7 @@ func (s *ContextAwareSelector) SelectWithContext(creds []config.Credential, mode
 
 	// Filter models based on payload context
 	filteredModels := filterModelsByCapabilities(models, context)
-	
+
 	if len(filteredModels) == 0 {
 		return nil, fmt.Errorf("no models available that support the required capabilities")
 	}
@@ -47,7 +47,7 @@ func filterModelsByCapabilities(models []config.VendorModel, context *types.Payl
 	}
 
 	var filteredModels []config.VendorModel
-	
+
 	for _, model := range models {
 		// If model has no config, assume it supports everything
 		if model.Config == nil {

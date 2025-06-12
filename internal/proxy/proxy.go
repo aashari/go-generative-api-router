@@ -37,14 +37,14 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 	// Parse payload to extract original model and other context
 	payloadContext, err := AnalyzePayload(body)
 	var originalModel string
-	
+
 	if err != nil {
 		// If parsing fails, set default
 		originalModel = "any-model"
 		logger.WarnCtx(r.Context(), "Failed to parse request payload for routing", "error", err)
 	} else {
 		originalModel = payloadContext.OriginalModel
-		
+
 		// Log payload context for future routing decisions
 		logger.DebugCtx(r.Context(), "Payload analyzed for routing",
 			"original_model", payloadContext.OriginalModel,
@@ -58,7 +58,7 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 
 	// Use context-aware selection if available
 	var selection *selector.VendorSelection
-	
+
 	// Check if the selector supports context-aware selection
 	if contextSelector, ok := modelSelector.(*selector.ContextAwareSelector); ok && payloadContext != nil {
 		// Use context-aware selection
@@ -74,7 +74,7 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 			"context_filters", map[string]bool{
 				"images": payloadContext.HasImages,
 				"videos": payloadContext.HasVideos,
-				"tools": payloadContext.HasTools,
+				"tools":  payloadContext.HasTools,
 				"stream": payloadContext.HasStream,
 			},
 		)
@@ -207,7 +207,7 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 			// Select an OpenAI model for retry
 			var openaiSelection *selector.VendorSelection
 			var retryErr error
-			
+
 			// Try context-aware selection for retry if available
 			if contextSelector, ok := modelSelector.(*selector.ContextAwareSelector); ok {
 				// Re-parse the payload to get context
@@ -220,7 +220,7 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 			} else {
 				openaiSelection, retryErr = modelSelector.Select(openaiCreds, openaiModels)
 			}
-			
+
 			if retryErr != nil {
 				logger.ErrorCtx(ctx, "Failed to select OpenAI model for fallback", "error", retryErr)
 				http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)

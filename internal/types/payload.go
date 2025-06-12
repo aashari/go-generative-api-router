@@ -9,4 +9,4 @@ type PayloadContext struct {
 	HasImages     bool
 	HasVideos     bool
 	MessagesCount int
-} 
+}

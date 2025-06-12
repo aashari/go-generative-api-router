@@ -35,7 +35,7 @@ func AnalyzePayload(body []byte) (*types.PayloadContext, error) {
 	// Analyze messages
 	if messages, ok := requestData["messages"].([]interface{}); ok {
 		context.MessagesCount = len(messages)
-		
+
 		// Check for images and videos in message content
 		for _, msg := range messages {
 			if msgMap, ok := msg.(map[string]interface{}); ok {
@@ -74,4 +74,4 @@ func ShouldExcludeModel(context *types.PayloadContext, modelConfig map[string]in
 	//     return true
 	// }
 	return false
-} 
+}

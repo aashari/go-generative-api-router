@@ -57,7 +57,7 @@ func ValidateAndModifyRequest(body []byte, model string) ([]byte, string, error)
 	if toolChoice, hasToolChoice := requestData["tool_choice"]; hasToolChoice {
 		cleanRequest["tool_choice"] = toolChoice
 	}
-	
+
 	// Only include stream if it exists in the original request
 	if stream, hasStream := requestData["stream"]; hasStream {
 		cleanRequest["stream"] = stream

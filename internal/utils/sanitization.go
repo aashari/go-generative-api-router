@@ -357,18 +357,18 @@ func truncateBase64String(s string) string {
 	// 3. Are properly padded (ending with 0-2 '=' characters)
 	// 4. Are within JSON string values (between quotes)
 	base64Regex := regexp.MustCompile(`"([A-Za-z0-9+/]{100,}={0,2})"`)
-	
+
 	return base64Regex.ReplaceAllStringFunc(s, func(match string) string {
 		// Remove the surrounding quotes to get just the base64 string
 		base64Data := match[1 : len(match)-1]
-		
+
 		// Only truncate if it's longer than 100 characters
 		if len(base64Data) > 100 {
 			// Truncate to first 50 and last 50 characters with indicator
 			truncated := base64Data[:50] + "...[" + fmt.Sprintf("%d chars truncated", len(base64Data)-100) + "]..." + base64Data[len(base64Data)-50:]
 			return `"` + truncated + `"`
 		}
-		
+
 		return match
 	})
 }
