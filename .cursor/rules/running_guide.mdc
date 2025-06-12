@@ -724,6 +724,50 @@ echo "=== VALIDATION ERROR TEST ===" && curl -X POST http://localhost:8082/v1/ch
 echo "=== CIRCUIT BREAKER STATUS ===" && grep "CircuitBreaker" logs/server.log | tail -3 && echo "=== RETRY ATTEMPTS ===" && grep "RetryAttempt" logs/server.log | tail -3 && echo "=== HEALTH CHECKS ===" && grep "HealthCheck" logs/server.log | tail -3 | cat
 ```
 
+### 📏 **Output Truncation Methods**
+
+When dealing with long output that may overwhelm the terminal, use these truncation methods:
+
+## Summary of Character Truncation Methods:
+
+✅ **`cut -c1-N`** - Truncate to N characters per line
+✅ **`fold -w N | head -1`** - Wrap at N chars, take first line only  
+✅ **`awk '{print substr($0,1,N)}'`** - More flexible truncation
+✅ **`limit_output [lines] [chars]`** - Custom function for both limits
+
+**Common Usage Examples:**
+```bash
+# Limit directory listing to 80 chars per line
+ls -la | cut -c1-80 | cat
+
+# Show max 100 lines, 80 chars each
+cat file.txt | limit_output 100 80 | cat
+
+# Process list with line and char limits
+ps aux | head -20 | cut -c1-120 | cat
+
+# Docker containers truncated
+docker ps | awk '{print substr($0,1,100)}' | cat
+
+# AWS CloudWatch logs with character limits
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[].message' | cut -c1-120 | cat
+
+# Local log analysis with truncation
+tail -50 logs/server.log | grep -E "(error|Error)" | cut -c1-100 | cat
+
+# Multi-vendor configuration with limits
+cat configs/credentials.json | jq length | limit_output 10 50 && echo "credentials configured" | cat
+
+# Health check with truncated output
+curl -s http://localhost:8082/health | jq | cut -c1-80 | cat
+```
+
+**Default Settings Now Active:**
+- ✅ History: 100 lines (`HISTSIZE=100`)
+- ✅ Function: `limit_output [lines] [chars]` available for any command
+
+The `limit_output` function defaults to 100 lines and 80 characters if no parameters are provided!
+
 ## AWS Environment Debugging
 
 ### 🌍 **AWS Infrastructure Overview**

@@ -321,6 +321,47 @@ command_without_pipe             # Missing | cat can cause issues
 curl http://example.com          # Should be: curl http://example.com | cat
 ```
 
+### 📏 Character Truncation Methods
+
+When dealing with long output that may overwhelm the terminal or logs, use these truncation methods:
+
+## Summary of Character Truncation Methods:
+
+✅ **`cut -c1-N`** - Truncate to N characters per line
+✅ **`fold -w N | head -1`** - Wrap at N chars, take first line only  
+✅ **`awk '{print substr($0,1,N)}'`** - More flexible truncation
+✅ **`limit_output [lines] [chars]`** - Custom function for both limits
+
+**Common Usage Examples:**
+```bash
+# Limit directory listing to 80 chars per line
+ls -la | cut -c1-80 | cat
+
+# Show max 100 lines, 80 chars each
+cat file.txt | limit_output 100 80 | cat
+
+# Process list with line and char limits
+ps aux | head -20 | cut -c1-120 | cat
+
+# Docker containers truncated
+docker ps | awk '{print substr($0,1,100)}' | cat
+
+# AWS commands with character limits
+aws --profile $AWS_PROFILE --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER --services $AWS_SERVICE | cut -c1-120 | cat
+
+# Log analysis with truncation
+tail -50 logs/server.log | grep -E "(error|Error)" | cut -c1-100 | cat
+
+# Multi-vendor configuration with limits
+cat configs/credentials.json | jq length | limit_output 10 50 && echo "credentials configured" | cat
+```
+
+**Default Settings Now Active:**
+- ✅ History: 100 lines (`HISTSIZE=100`)
+- ✅ Function: `limit_output [lines] [chars]` available for any command
+
+The `limit_output` function defaults to 100 lines and 80 characters if no parameters are provided!
+
 ## Comprehensive Logging
 
 ### 🎯 Core Logging Principles
