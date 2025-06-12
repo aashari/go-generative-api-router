@@ -2,10 +2,12 @@ package middleware
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -183,15 +185,49 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 				// This allows the logger's base64 truncation to work on structured data
 				contentType := wrapper.Header().Get("Content-Type")
 				if strings.Contains(contentType, "application/json") {
-					var bodyData interface{}
-					if err := json.Unmarshal(wrapper.responseData.Bytes(), &bodyData); err == nil {
-						// Successfully parsed as JSON - log the structured data
-						// The logger will automatically truncate base64 values
-						responseData["body"] = bodyData
+					// Check if response is gzipped and decompress if needed
+					responseBytes := wrapper.responseData.Bytes()
+					contentEncoding := wrapper.Header().Get("Content-Encoding")
+					
+					if contentEncoding == "gzip" {
+						// Decompress gzipped response before JSON parsing
+						gzipReader, err := gzip.NewReader(bytes.NewReader(responseBytes))
+						if err != nil {
+							// Failed to create gzip reader - log as string with error
+							responseData["body"] = string(responseBytes)
+							responseData["body_parse_error"] = fmt.Sprintf("gzip decompression failed: %v", err)
+						} else {
+							defer gzipReader.Close()
+							decompressedBytes, err := io.ReadAll(gzipReader)
+							if err != nil {
+								// Failed to decompress - log as string with error
+								responseData["body"] = string(responseBytes)
+								responseData["body_parse_error"] = fmt.Sprintf("gzip read failed: %v", err)
+							} else {
+								// Successfully decompressed - try JSON parsing
+								var bodyData interface{}
+								if err := json.Unmarshal(decompressedBytes, &bodyData); err == nil {
+									// Successfully parsed as JSON - log the structured data
+									responseData["body"] = bodyData
+								} else {
+									// Failed to parse JSON - log decompressed string
+									responseData["body"] = string(decompressedBytes)
+									responseData["body_parse_error"] = err.Error()
+								}
+							}
+						}
 					} else {
-						// Failed to parse - log as string
-						responseData["body"] = wrapper.responseData.String()
-						responseData["body_parse_error"] = err.Error()
+						// Not gzipped - parse directly as JSON
+						var bodyData interface{}
+						if err := json.Unmarshal(responseBytes, &bodyData); err == nil {
+							// Successfully parsed as JSON - log the structured data
+							// The logger will automatically truncate base64 values
+							responseData["body"] = bodyData
+						} else {
+							// Failed to parse - log as string
+							responseData["body"] = wrapper.responseData.String()
+							responseData["body_parse_error"] = err.Error()
+						}
 					}
 				} else {
 					// Non-JSON response - log as string
