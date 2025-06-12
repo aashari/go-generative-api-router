@@ -321,13 +321,29 @@ func truncateBase64Value(v reflect.Value) reflect.Value {
 
 // truncateBase64String truncates base64 data in data URLs and JSON content
 func truncateBase64String(s string) string {
-	// Check if it's a data URL with base64
+	// First, handle embedded data URLs anywhere inside the string (even if string doesn't start with "data:")
+	// This regex captures the prefix (e.g., "data:image/png;base64,") and the base64 payload separately so we can truncate only the payload.
+	dataURLRegex := regexp.MustCompile(`(?i)(data:[^;]+;base64,)([A-Za-z0-9+/]{100,}={0,2})`)
+	s = dataURLRegex.ReplaceAllStringFunc(s, func(match string) string {
+		submatches := dataURLRegex.FindStringSubmatch(match)
+		if len(submatches) != 3 {
+			return match // should not happen, but safeguard
+		}
+		prefix := submatches[1]
+		payload := submatches[2]
+		if len(payload) <= 100 {
+			return match
+		}
+		truncated := payload[:50] + "...[" + fmt.Sprintf("%d chars truncated", len(payload)-100) + "]..." + payload[len(payload)-50:]
+		return prefix + truncated
+	})
+
+	// Handle plain data URL if the entire string is itself a data URL (backwards compatibility)
 	if strings.HasPrefix(s, "data:") && strings.Contains(s, ";base64,") {
 		parts := strings.SplitN(s, ";base64,", 2)
 		if len(parts) == 2 {
 			base64Data := parts[1]
 			if len(base64Data) > 100 {
-				// Truncate to first 50 and last 50 characters with indicator
 				truncated := base64Data[:50] + "...[" + fmt.Sprintf("%d chars truncated", len(base64Data)-100) + "]..." + base64Data[len(base64Data)-50:]
 				return parts[0] + ";base64," + truncated
 			}
