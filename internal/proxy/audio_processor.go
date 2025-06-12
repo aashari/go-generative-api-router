@@ -25,7 +25,7 @@ type AudioProcessor struct {
 func NewAudioProcessor() *AudioProcessor {
 	return &AudioProcessor{
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second, // Longer timeout for audio files
+			Timeout: 180 * time.Second, // Longer timeout for audio files
 		},
 		maxSize: 25 * 1024 * 1024, // 25MB limit for audio files
 	}

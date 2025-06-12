@@ -57,8 +57,9 @@ type APIClient struct {
 // NewAPIClient creates a new API client with configured base URLs
 func NewAPIClient() *APIClient {
 	// Configure client timeout from environment variable
-	// Default to 300 seconds (5 minutes) to allow for longer AI model responses
-	clientTimeout := utils.GetEnvDuration("CLIENT_TIMEOUT", 300*time.Second)
+	// Default to 1200 seconds (20 minutes) to allow for longer AI model responses
+	// This prevents 120-second timeouts that can occur with complex requests
+	clientTimeout := utils.GetEnvDuration("CLIENT_TIMEOUT", 1200*time.Second)
 
 	httpClient := &http.Client{
 		Timeout: clientTimeout,

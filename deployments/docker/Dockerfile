@@ -47,10 +47,11 @@ ENV LOG_OUTPUT=stdout
 
 # Configure timeout settings for production AI workloads
 # Server timeouts should be longer than client timeout to prevent premature connection closure
-ENV READ_TIMEOUT=600
-ENV WRITE_TIMEOUT=600
-ENV IDLE_TIMEOUT=900
-ENV CLIENT_TIMEOUT=300
+# Increased timeouts to prevent 120-second client timeouts
+ENV READ_TIMEOUT=1500
+ENV WRITE_TIMEOUT=1500
+ENV IDLE_TIMEOUT=1800
+ENV CLIENT_TIMEOUT=1200
 
 # Ensure logs are sent to stdout/stderr for CloudWatch collection
 ENV GLOG_logtostderr=1

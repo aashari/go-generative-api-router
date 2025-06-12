@@ -30,7 +30,7 @@ type ImageProcessor struct {
 func NewImageProcessor() *ImageProcessor {
 	processor := &ImageProcessor{
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second, // Increased timeout for image downloads
 		},
 		maxSize: 20 * 1024 * 1024, // 20MB limit
 	}
@@ -39,7 +39,7 @@ func NewImageProcessor() *ImageProcessor {
 		imageProcessor: processor,
 		audioProcessor: nil, // Will be set after audio processor is created
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second, // Increased timeout for file downloads
 		},
 		maxSize: 20 * 1024 * 1024, // 20MB limit
 	}

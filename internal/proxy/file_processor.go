@@ -25,7 +25,7 @@ func NewFileProcessor() *FileProcessor {
 		imageProcessor: NewImageProcessor(),
 		audioProcessor: NewAudioProcessor(),
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second, // Increased timeout for file downloads
 		},
 		maxSize: 20 * 1024 * 1024, // 20MB limit
 	}

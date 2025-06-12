@@ -94,9 +94,10 @@ func main() {
 
 	// Configure timeouts with generous defaults for AI workloads
 	// Server timeouts should be longer than client timeout to prevent premature connection closure
-	readTimeout := utils.GetEnvDuration("READ_TIMEOUT", 600*time.Second)   // 10 minutes default
-	writeTimeout := utils.GetEnvDuration("WRITE_TIMEOUT", 600*time.Second) // 10 minutes default
-	idleTimeout := utils.GetEnvDuration("IDLE_TIMEOUT", 900*time.Second)   // 15 minutes default
+	// Increased timeouts to prevent 120-second client timeouts
+	readTimeout := utils.GetEnvDuration("READ_TIMEOUT", 1500*time.Second)   // 25 minutes default
+	writeTimeout := utils.GetEnvDuration("WRITE_TIMEOUT", 1500*time.Second) // 25 minutes default
+	idleTimeout := utils.GetEnvDuration("IDLE_TIMEOUT", 1800*time.Second)   // 30 minutes default
 
 	logger.Info("Server starting",
 		"address", serverAddr,
