@@ -53,7 +53,7 @@ func TestRequestCorrelationMiddleware_GzippedResponse(t *testing.T) {
 	// Create test request
 	req := httptest.NewRequest("POST", "/test", strings.NewReader(`{"test": "data"}`))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Create response recorder
 	rr := httptest.NewRecorder()
 
@@ -130,7 +130,7 @@ func TestRequestCorrelationMiddleware_NonGzippedResponse(t *testing.T) {
 	// Create test request
 	req := httptest.NewRequest("POST", "/test", strings.NewReader(`{"test": "data"}`))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Create response recorder
 	rr := httptest.NewRecorder()
 
@@ -153,4 +153,4 @@ func TestRequestCorrelationMiddleware_NonGzippedResponse(t *testing.T) {
 	if responseData["message"] != "Hello, World!" {
 		t.Errorf("Expected message 'Hello, World!', got %v", responseData["message"])
 	}
-} 
+}

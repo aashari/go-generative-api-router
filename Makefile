@@ -1,4 +1,4 @@
-.PHONY: build run clean docker-build docker-run lint format setup deploy
+.PHONY: build run clean docker-build docker-run lint format setup deploy test test-coverage test-integration test-all
 
 # Variables
 BINARY_NAME=server
@@ -116,6 +116,38 @@ ci-check: format-check lint-check security-check security-scan build
 	@echo "$(GREEN)✅ Security scan$(NC)"
 	@echo "$(GREEN)✅ Build$(NC)"
 
+# Testing
+test:
+	@echo "$(GREEN)Running unit tests...$(NC)"
+	@go test -v ./internal/...
+	@echo "$(GREEN)✅ Unit tests completed$(NC)"
+
+test-coverage:
+	@echo "$(GREEN)Running tests with coverage...$(NC)"
+	@go test -v -coverprofile=coverage.out ./internal/...
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "$(GREEN)✅ Coverage report generated: coverage.html$(NC)"
+
+test-integration:
+	@echo "$(GREEN)Running integration tests...$(NC)"
+	@echo "$(GREEN)Checking for required configuration files...$(NC)"
+	@if [ ! -f configs/credentials.json ]; then \
+		echo "$(RED)ERROR: configs/credentials.json not found$(NC)"; \
+		echo "$(RED)Integration tests require real credentials to test actual API calls$(NC)"; \
+		echo "$(RED)Please ensure your credentials are configured in configs/credentials.json$(NC)"; \
+		exit 1; \
+	fi
+	@if [ ! -f configs/models.json ]; then \
+		echo "$(RED)ERROR: configs/models.json not found$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Configuration files found, running integration tests...$(NC)"
+	@go test -v -timeout=5m ./integration_test.go
+	@echo "$(GREEN)✅ Integration tests completed$(NC)"
+
+test-all: test test-integration
+	@echo "$(GREEN)✅ All tests completed$(NC)"
+
 # Help
 help:
 	@echo "Available targets:"
@@ -131,6 +163,10 @@ help:
 	@echo "  $(GREEN)format-check$(NC)  - Check code formatting without fixing"
 	@echo "  $(GREEN)security-scan$(NC) - Run security scanner"
 	@echo "  $(GREEN)security-check$(NC) - Check for sensitive data (AWS IDs, API keys)"
+	@echo "  $(GREEN)test$(NC)          - Run unit tests"
+	@echo "  $(GREEN)test-coverage$(NC) - Run tests with coverage report"
+	@echo "  $(GREEN)test-integration$(NC) - Run integration tests with real API calls"
+	@echo "  $(GREEN)test-all$(NC)      - Run all tests (unit + integration)"
 	@echo "  $(GREEN)ci-check$(NC)      - Run all CI checks (format, lint, security, build)"
 	@echo "  $(GREEN)setup$(NC)         - Setup development environment"
 	@echo "  $(GREEN)deploy$(NC)        - Deploy to AWS"

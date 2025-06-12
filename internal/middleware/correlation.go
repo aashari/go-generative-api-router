@@ -188,7 +188,7 @@ func RequestCorrelationMiddleware(next http.Handler) http.Handler {
 					// Check if response is gzipped and decompress if needed
 					responseBytes := wrapper.responseData.Bytes()
 					contentEncoding := wrapper.Header().Get("Content-Encoding")
-					
+
 					if contentEncoding == "gzip" {
 						// Decompress gzipped response before JSON parsing
 						gzipReader, err := gzip.NewReader(bytes.NewReader(responseBytes))
