@@ -319,7 +319,7 @@ func truncateBase64Value(v reflect.Value) reflect.Value {
 	}
 }
 
-// truncateBase64String truncates base64 data in data URLs
+// truncateBase64String truncates base64 data in data URLs and JSON content
 func truncateBase64String(s string) string {
 	// Check if it's a data URL with base64
 	if strings.HasPrefix(s, "data:") && strings.Contains(s, ";base64,") {
@@ -333,7 +333,28 @@ func truncateBase64String(s string) string {
 			}
 		}
 	}
-	return s
+
+	// Handle base64 strings in JSON content using regex
+	// This regex matches base64 strings that are:
+	// 1. At least 100 characters long
+	// 2. Contain only valid base64 characters (A-Z, a-z, 0-9, +, /, =)
+	// 3. Are properly padded (ending with 0-2 '=' characters)
+	// 4. Are within JSON string values (between quotes)
+	base64Regex := regexp.MustCompile(`"([A-Za-z0-9+/]{100,}={0,2})"`)
+	
+	return base64Regex.ReplaceAllStringFunc(s, func(match string) string {
+		// Remove the surrounding quotes to get just the base64 string
+		base64Data := match[1 : len(match)-1]
+		
+		// Only truncate if it's longer than 100 characters
+		if len(base64Data) > 100 {
+			// Truncate to first 50 and last 50 characters with indicator
+			truncated := base64Data[:50] + "...[" + fmt.Sprintf("%d chars truncated", len(base64Data)-100) + "]..." + base64Data[len(base64Data)-50:]
+			return `"` + truncated + `"`
+		}
+		
+		return match
+	})
 }
 
 // truncateBase64Map truncates base64 data in maps
