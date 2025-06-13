@@ -1,0 +1,22 @@
+[
+    {
+        "vendor": "gemini",
+        "model": "gemini-2.5-flash-preview-04-17",
+        "config": {
+            "support_image": true,
+            "support_video": true,
+            "support_tools": true,
+            "support_streaming": true
+        }
+    },
+    {
+        "vendor": "gemini",
+        "model": "gemini-2.5-flash-preview-05-20",
+        "config": {
+            "support_image": true,
+            "support_video": true,
+            "support_tools": true,
+            "support_streaming": true
+        }
+    }
+]

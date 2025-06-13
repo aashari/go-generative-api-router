@@ -1,0 +1,1101 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Running and Testing Guide for Generative API Router
+
+This guide provides step-by-step instructions for setting up, running, and testing the Generative API Router service.
+
+> **Development Workflow**: For development best practices and Git workflow, see [Development Guide](mdc:development_guide.mdc)
+
+## 🏗️ **Service Overview**
+
+### **Multi-Vendor OpenAI-Compatible Router**
+
+This service is a **transparent proxy** that provides a unified OpenAI-compatible API interface while routing requests to multiple LLM vendors (OpenAI, Gemini) behind the scenes. Key testing considerations:
+
+- **19 credentials** (18 Gemini + 1 OpenAI) with **4 models** (2 Gemini + 2 OpenAI)
+- **Even distribution** across 114 vendor-credential-model combinations
+- **Transparent model handling** - preserves original model names in responses
+- **Enterprise-grade features** - retry logic, circuit breakers, health monitoring
+
+### **Recent Major Improvements (2024)**
+
+The service includes comprehensive enterprise-grade improvements that affect testing:
+
+- ✅ **Security**: AES-GCM encryption, sensitive data masking
+- ✅ **Reliability**: Exponential backoff, circuit breaker patterns
+- ✅ **Monitoring**: Health checks with vendor connectivity
+- ✅ **Performance**: Production-optimized logging
+
+## 📚 **Documentation Quick Reference**
+
+### **Core Development Guides** (.cursor/rules/)
+- **[Development Guide](mdc:development_guide.mdc)** - Complete workflow, Git practices, architecture principles
+- **[Running & Testing Guide](mdc:running_and_testing.mdc)** - Setup, testing procedures, debugging techniques (this document)
+
+### **User & API Documentation** (docs/)
+- **[User Guide](mdc:../docs/user-guide.md)** - *When integrating with the service* - API usage, configuration, client examples
+- **[API Reference](mdc:../docs/api-reference.md)** - *When implementing API calls* - Complete API documentation with examples
+- **[Examples](mdc:../examples)** - *When writing client code* - Ready-to-use examples in Python, Node.js, Go
+
+### **Development Documentation** (docs/)
+- **[Development Guide](mdc:../docs/development-guide.md)** - *When setting up locally* - Quick start, project structure, daily commands
+- **[Contributing Guide](mdc:../docs/contributing-guide.md)** - *When contributing code* - PR process, coding standards, review guidelines
+- **[Testing Guide](mdc:../docs/testing-guide.md)** - *When writing/running tests* - Test strategies, coverage, debugging
+- **[Deployment Guide](mdc:../docs/deployment-guide.md)** - *When managing AWS infrastructure* - Production deployment, monitoring, troubleshooting
+- **[Logging Guide](mdc:../docs/logging-guide.md)** - *When debugging issues* - Comprehensive logging system documentation
+- **[Production Monitoring Guide](mdc:../docs/production-monitoring-guide.md)** - *When monitoring production* - Log querying, monitoring procedures
+
+### **Project Overview**
+- **[Main README](mdc:../README.md)** - *When getting project overview* - Features, quick start, architecture summary
+- **[Documentation Index](mdc:../docs/README.md)** - *When navigating docs* - Complete documentation roadmap
+
+---
+
+## Table of Contents
+
+- [Setup and Configuration](mdc:#setup-and-configuration) - Initial project setup
+- [Running the Service](mdc:#running-the-service) - All methods to run the service
+- [Running Tests](mdc:#running-tests) - Unit tests and test coverage
+- [Log Monitoring & Debugging](mdc:#log-monitoring--debugging) - Essential debugging skills
+- [Testing the Service](mdc:#testing-the-service) - Manual API testing
+- [Multi-Vendor Testing](mdc:#multi-vendor-testing) - Testing both OpenAI and Gemini vendors
+- [Troubleshooting](mdc:#troubleshooting) - Common issues and solutions
+- [Quick Commands Reference](mdc:#quick-commands-reference) - Daily development commands
+
+## Setup and Configuration
+
+1. **Clone and Navigate**:
+   ```bash
+   git clone https://github.com/aashari/go-generative-api-router.git
+   cd go-generative-api-router
+   ```
+
+2. **Initial Setup**:
+   ```bash
+   # Run the setup script to install dependencies and create config files
+   make setup
+   ```
+
+3. **Configure Environment Variables**:
+   - Copy `.env.example` to `.env` and configure your environment variables
+   - The application automatically loads environment variables from `.env` file (Node.js dotenv equivalent)
+   
+4. **Configure MongoDB (NEW)**:
+   - Add MongoDB configuration to your `.env` file:
+     ```bash
+     MONGODB_URI=mongodb://localhost:27017
+     MONGODB_USER=
+     MONGODB_PASSWORD=<your-password>
+     DB_LOGGING_ENABLED=true
+     ```
+   - For local development, you can use Docker:
+     ```bash
+     docker compose up -d mongodb | cat
+     sleep 5 && docker compose ps | cat
+     ```
+   
+5. **Configure Credentials**:
+   - The setup script creates `configs/credentials.json` from the example file
+   - **IMPORTANT**: The service likely already has 19 working credentials configured
+   - Check existing configuration before making changes:
+     ```bash
+     cat configs/credentials.json | jq length && echo "credentials configured" | cat
+     ```
+   - Only edit if you need to add/modify credentials:
+     ```json
+     [
+       {
+         "platform": "openai",
+         "type": "api-key",
+         "value": "sk-your-openai-key"
+       },
+       {
+         "platform": "gemini",
+         "type": "api-key",
+         "value": "your-gemini-key"
+       }
+     ]
+     ```
+
+6. **Configure Models**:
+   - Check existing model configuration:
+     ```bash
+     cat configs/models.json | jq length && echo "models configured" | cat
+     ```
+   - The service likely already has 4 models configured (2 Gemini + 2 OpenAI)
+   - Only edit if you need to add/modify models:
+     ```json
+     [
+       {
+         "vendor": "gemini",
+         "model": "gemini-2.0-flash"
+       },
+       {
+         "vendor": "openai",
+         "model": "gpt-4o"
+       }
+     ]
+     ```
+
+7. **Verify Configuration**:
+   ```bash
+   # Check total configuration
+   echo "=== CONFIGURATION SUMMARY ===" && cat configs/credentials.json | jq length && echo "total credentials" && cat configs/models.json | jq length && echo "total models" | cat
+   ```
+
+8. **Verify Database Setup (NEW)**:
+   ```bash
+   # Set database name based on environment
+   DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" \
+            || ([ "$ENVIRONMENT" = "production" ] && echo "prod-$SERVICE_NAME" \
+            || ([ "$ENVIRONMENT" = "test" ] && echo "test-$SERVICE_NAME" \
+            || echo "dev-$SERVICE_NAME")))
+   echo "Target database: $DB_NAME" | cat
+   
+   # Test MongoDB connection (local)
+   MONGO_URI="mongodb://localhost:27017"
+   mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); print('Connected to DB: ' + db.getName()); db.runCommand({ping:1})" | cat
+   ```
+
+## Running the Service
+
+### Using Makefile (Recommended)
+
+1. **Build and Run**:
+   ```bash
+   # Build and run the service
+   make run
+   
+   # Run without building (using go run)
+   make run-dev
+   
+   # Run with logging to file
+   make run-with-logs
+   ```
+
+2. **Build Only**:
+   ```bash
+   make build
+   # Binary will be in build/server
+   ```
+
+### Manual Execution
+
+1. **Run the Built Binary**:
+   ```bash
+   ./build/server
+   # OR for background execution:
+   ./build/server > logs/server.log 2>&1 &
+   ```
+   - The server will start on port `:8082` by default.
+   - Check logs in `logs/` directory or console output.
+   - **Important**: Wait a few seconds (e.g., `sleep 3`) after starting the server before sending requests to avoid "Connection refused" errors.
+
+### Using Docker
+
+1. **Pre-deployment Checks**:
+   ```bash
+   # Check if port is already in use
+   lsof -i :8082 | cat
+   
+   # Stop any existing containers
+   make docker-stop
+   ```
+
+2. **Build and Run with Docker Compose**:
+   ```bash
+   # Using Makefile
+   make docker-build
+   make docker-run
+   
+   # OR manually
+   docker-compose -f deployments/docker/docker-compose.yml up --build
+   ```
+
+3. **Run as a Background Service**:
+   ```bash
+   docker-compose -f deployments/docker/docker-compose.yml up -d
+   
+   # Stop the service
+   make docker-stop
+   ```
+
+## Production Deployment
+
+> **Deployment Guide**: For complete deployment instructions including AWS ECS setup, see [Development Guide - Deployment Section](mdc:development_guide.mdc#deployment)
+
+## Running Tests
+
+The project includes comprehensive test coverage with enterprise-grade improvements:
+
+### Unit Tests
+
+1. **Run All Tests**:
+   ```bash
+   make test
+   # OR
+   go test ./...
+   ```
+
+2. **Run Tests with Coverage**:
+   ```bash
+   make test-coverage
+   # OR
+   go test -cover ./...
+   ```
+
+3. **Run Specific Package Tests**:
+   ```bash
+   # Test handlers
+   go test ./internal/handlers
+   
+   # Test new reliability features
+   go test ./internal/reliability
+   go test ./internal/health
+   
+   # Test with verbose output
+   go test -v ./internal/errors
+   ```
+
+4. **Run Tests with Race Detection**:
+   ```bash
+   go test -race ./...
+   ```
+
+### Test Dependencies
+
+The project uses:
+- `github.com/stretchr/testify` v1.10.0 - For assertions and test suites
+- `github.com/go-playground/validator/v10` v10.26.0 - For struct validation
+- `github.com/joho/godotenv` v1.5.1 - For environment variable loading from .env files
+- `github.com/google/uuid` v1.6.0 - **NEW** - For cryptographically secure UUID generation
+
+Note: Some tests may skip if `configs/credentials.json` is not present, which is expected behavior.
+
+## Log Monitoring & Debugging
+
+### 📋 Essential Log Monitoring (CRITICAL SKILL)
+
+**Log Structure:**
+The service generates structured JSON logs in the `logs/` directory with enterprise-grade improvements:
+
+```json
+{
+  "level": "info",
+  "timestamp": "2025-01-27T10:30:45.123Z",
+  "message": "Processing chat completion request",
+  "request_id": "req_abc123",
+  "component": "ProxyHandler",
+  "vendor": "openai",
+  "model": "gpt-4o",
+  "data": {
+    "complete_request": "...",
+    "vendor_selection": "...",
+    "circuit_breaker_status": "CLOSED"
+  }
+}
+```
+
+**🔍 Essential Log Commands:**
+
+```bash
+# Monitor in real-time (ALWAYS do this during testing)
+tail -f logs/server.log
+
+# Check recent activity
+tail -50 logs/server.log | cat
+
+# Find specific errors
+grep -i "error" logs/server.log | tail -10 | cat
+
+# Track specific request flow
+grep "request_id.*abc123" logs/server.log | cat
+
+# Component-specific logs
+grep "ProxyHandler" logs/server.log | tail -5 | cat
+grep "VendorSelector" logs/server.log | tail -5 | cat
+
+# NEW - Monitor reliability features
+grep "CircuitBreaker" logs/server.log | tail -5 | cat
+grep "RetryAttempt" logs/server.log | tail -5 | cat
+grep "HealthCheck" logs/server.log | tail -5 | cat
+
+# Monitor vendor distribution
+grep "Even distribution selected combination" logs/server.log | tail -10 | cat
+```
+
+**🕵️ Log Debugging Workflow:**
+
+1. **Before Testing**: Clear understanding with `tail -10 logs/server.log | cat`
+2. **During Testing**: Monitor with `tail -f logs/server.log` in separate terminal
+3. **After Testing**: Review with `tail -20 logs/server.log | cat`
+4. **Error Investigation**: Use `grep` to find error patterns
+5. **Multi-Vendor Analysis**: Check vendor selection and routing patterns
+
+### 🚨 Emergency Commands
+
+**Quick Recovery Commands:**
+
+```bash
+# Server crashed - quick recovery
+pgrep -f "build/server$" | xargs -r kill -9 && make run && sleep 3 && curl http://localhost:8082/health | cat
+
+# Check if API is responding
+curl http://localhost:8082/health && echo "✅ Local OK" | cat
+
+# Check recent logs for errors
+grep -i "error" logs/server.log | tail -5 | cat
+
+# Process health check
+ps aux | grep -E "(server|generative)" | grep -v grep | cat
+
+# Memory usage check
+free -h | cat
+
+# NEW - Check circuit breaker status
+grep "CircuitBreaker.*state" logs/server.log | tail -3 | cat
+```
+
+**🔧 Process Management:**
+
+```bash
+# Check running processes
+ps aux | grep -E "(server|go)" | grep -v grep | cat
+
+# Find and kill server processes
+pgrep -f "build/server$" | xargs -r kill -9 && echo "Server stopped" | cat
+
+# Check port usage
+lsof -i :8082 | cat
+
+# Start server in background with logging
+./build/server > logs/server.log 2>&1 & echo "Server started with PID $!" | cat
+```
+
+### 🔍 Debugging Checklist
+
+**🚨 When something is broken:**
+
+1. **Server Health**: `curl -v http://localhost:8082/health | cat`
+2. **Check Logs**: `tail -20 logs/server.log | cat`
+3. **Process Status**: `ps aux | grep server | grep -v grep | cat`
+4. **Port Conflicts**: `lsof -i :8082 | cat`
+5. **Recent Errors**: `grep -i "error" logs/server.log | tail -10 | cat`
+6. **Configuration**: `cat configs/credentials.json | jq length && cat configs/models.json | jq length | cat`
+7. **NEW - Circuit Breaker Status**: `grep "CircuitBreaker.*state" logs/server.log | tail -3 | cat`
+8. **NEW - Health Check Status**: `grep "HealthCheck" logs/server.log | tail -3 | cat`
+
+**🔧 Common Issues & Solutions:**
+
+| Issue | Symptoms | Solution |
+|----|----|----|
+| Server Crash | `curl` connection refused | `pgrep -f "build/server$" \| xargs -r kill -9 && make run` |
+| Port Conflict | "address already in use" | `lsof -i :8082 \| grep LISTEN \| awk '{print $2}' \| xargs -r kill -9` |
+| Config Error | Server won't start | `cat configs/credentials.json \| jq && cat configs/models.json \| jq` |
+| Memory Issues | Slow responses | `free -h && ps aux --sort=-%mem \| head -10` |
+| Circuit Breaker Open | Requests failing | `grep "CircuitBreaker.*OPEN" logs/server.log \| tail -3` |
+| Vendor Timeout | Slow responses | `grep "RetryAttempt" logs/server.log \| tail -5` |
+
+## Testing the Service
+
+### Testing Best Practices
+
+1. **Always Clean Environment First**:
+   ```bash
+   # Kill any process on port 8082
+   sudo lsof -i :8082 | grep LISTEN | awk '{print $2}' | xargs -r sudo kill -9
+   
+   # Or safer for specific server
+   pgrep -f "build/server$" | xargs -r kill -9
+   ```
+
+2. **Wait for Service Readiness**:
+   ```bash
+   # Start service
+   make run &
+   
+   # ALWAYS wait before testing
+   sleep 3
+   
+   # Verify it's ready
+   curl -s http://localhost:8082/health | cat || echo "Service not ready yet"
+   ```
+
+3. **Verify Multi-Vendor Configuration**:
+   ```bash
+   # Check configuration before testing
+   echo "=== CONFIGURATION CHECK ===" && cat configs/credentials.json | jq length && echo "credentials" && cat configs/models.json | jq length && echo "models" | cat
+   ```
+
+### Using Example Scripts
+
+Example scripts are provided in the `examples/` directory:
+
+```bash
+# Basic usage examples
+./examples/curl/basic.sh
+
+# Streaming examples
+./examples/curl/streaming.sh
+
+# Tool calling examples
+./examples/curl/tools.sh
+```
+
+### Basic Tests
+
+1. **Health Check**:
+   ```bash
+   curl -X GET http://localhost:8082/health | jq | cat
+   ```
+   - Expected: Structured health response with service status
+   - **Response Structure**:
+     ```json
+     {
+       "status": "healthy",
+       "timestamp": "2025-06-07T05:56:39Z",
+       "services": {
+         "api": "up",
+         "credentials": "up",
+         "models": "up",
+         "selector": "up",
+         "database": "up"
+       },
+       "details": {
+         "uptime": 196,
+         "version": "unknown"
+       }
+     }
+     ```
+   - NEW: Should include database status and circuit breaker status
+
+2. **List Available Models**:
+   ```bash
+   curl -X GET http://localhost:8082/v1/models | jq | cat
+   ```
+   - Lists all configured models in OpenAI-compatible format
+   - Should show 4 models (2 Gemini + 2 OpenAI)
+
+3. **Basic Chat Completion**:
+   ```bash
+   curl -X POST http://localhost:8082/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{"model": "any-model-name-you-like", "messages": [{"role": "user", "content": "Hello"}]}' | jq | cat
+   ```
+   - Verify that the response includes:
+     - A proper `"id"` field with `"chatcmpl-"` prefix
+     - Content in the expected format
+     - The `"model"` field in the response should match the `"model"` field sent in the request (e.g., `"any-model-name-you-like"`).
+   - **Log Check**: Verify server logs show the requested model and the actual model selected by the router:
+     ```bash
+     grep "Even distribution selected combination" logs/server.log | tail -1 | cat
+     ```
+
+4. **Database Integration Test (NEW)**:
+   ```bash
+   # Verify database logging is working
+   DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" \
+            || ([ "$ENVIRONMENT" = "production" ] && echo "prod-$SERVICE_NAME" \
+            || ([ "$ENVIRONMENT" = "test" ] && echo "test-$SERVICE_NAME" \
+            || echo "dev-$SERVICE_NAME")))
+   
+   # Check if request was logged to database
+   MONGO_URI="mongodb://localhost:27017"
+   mongosh "$MONGO_URI" --quiet --eval \
+     "use('$DB_NAME'); db.request_logs.find({path: '/v1/chat/completions'}, {_id: 1, method: 1, path: 1, status_code: 1, created_at: 1}).sort({created_at: -1}).limit(1)" | cat
+   
+   # Check if vendor interaction was logged
+   mongosh "$MONGO_URI" --quiet --eval \
+     "use('$DB_NAME'); db.generative_vendor_logs.find({}, {_id: 1, vendor: 1, model: 1, created_at: 1}).sort({created_at: -1}).limit(1)" | cat
+   
+   # Verify database document counts
+   mongosh "$MONGO_URI" --quiet --eval \
+     "use('$DB_NAME'); printjson({request_logs: db.request_logs.countDocuments(), generative_vendor_logs: db.generative_vendor_logs.countDocuments()})" | cat
+   ```
+
+## Multi-Vendor Testing
+
+### 🔄 **CRITICAL: Multi-Vendor Test Suite**
+
+**IMPORTANT**: This is a multi-vendor service. Always test both vendors to ensure proper functionality.
+
+### **Vendor-Specific Testing**
+
+1. **OpenAI Vendor Test**:
+   ```bash
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "specific-vendor-openai-model", "messages": [{"role": "user", "content": "Hello from OpenAI test"}]}' | jq | cat
+   ```
+
+2. **Gemini Vendor Test**:
+   ```bash
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "specific-vendor-gemini-model", "messages": [{"role": "user", "content": "Hello from Gemini test"}]}' | jq | cat
+   ```
+
+3. **Verify Model Name Preservation**:
+   ```bash
+   # Test that original model names are preserved in responses
+   RESPONSE=$(curl -s -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model": "my-custom-model-name", "messages": [{"role": "user", "content": "Test"}]}')
+   echo $RESPONSE | jq '.model' | cat
+   # Should return: "my-custom-model-name"
+   ```
+
+4. **Monitor Vendor Distribution**:
+   ```bash
+   # Send multiple requests and monitor vendor selection
+   for i in {1..5}; do
+     curl -s -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model": "test-'$i'", "messages": [{"role": "user", "content": "Test '$i'"}]}' > /dev/null
+     sleep 1
+   done
+   
+   # Check vendor distribution in logs
+   grep "Even distribution selected combination" logs/server.log | tail -5 | cat
+   ```
+
+### **Advanced Multi-Vendor Testing**
+
+1. **Streaming Response Test**:
+   ```bash
+   # Test streaming with vendor selection
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "my-streaming-test-model", "messages": [{"role": "user", "content": "Count from 1 to 3"}], "stream": true}' | cat
+   ```
+   - Verify that responses come as Server-Sent Events with `data:` prefix.
+   - Check each chunk has a consistent `"id"` field.
+   - **Crucially, verify each data chunk's `"model"` field matches the requested model (e.g., `"my-streaming-test-model"`).**
+   - Confirm the stream ends with `data: [DONE]`.
+
+2. **Tool Calling Test**:
+   ```bash
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "tool-test-model", "messages": [{"role": "user", "content": "What is the weather in Boston?"}], "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Get weather information for a location", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "City name"}}, "required": ["location"]}}}], "tool_choice": "auto"}' | jq | cat
+   ```
+   - Verify that tool calls include a proper `"id"` field with `"call_"` prefix.
+   - Check tool call arguments and function name are correctly formatted.
+   - Ensure the `"model"` field in the response matches `"tool-test-model"`.
+
+3. **Error Response Testing**:
+   ```bash
+   # Test missing messages field (validation error)
+   curl -X POST http://localhost:8082/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{"model": "test-model"}' | jq | cat
+   ```
+   - Expected: Standardized error response with:
+     - `error.type` - Error category (e.g., "invalid_request_error")
+     - `error.message` - Human-readable error message
+     - HTTP status code 400
+
+   ```bash
+   # Test with invalid JSON
+   curl -X POST http://localhost:8082/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d 'invalid json' | jq | cat
+   ```
+   - Expected: JSON parsing error with proper error structure
+
+### **Vision API Testing**
+
+1. **Basic Vision API Test**:
+   ```bash
+   # Test with public image URL (automatic download and conversion)
+   curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"vision-test","messages":[{"role":"user","content":[{"type":"text","text":"What do you see?"},{"type":"image_url","image_url":{"url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/400px-Cat03.jpg"}}]}],"max_tokens":100}' | jq '.choices[0].message.content' | cat
+   ```
+
+2. **Vision API with Custom Headers**:
+   ```bash
+   # Test with authentication headers (will fail with invalid token, but shows functionality)
+   curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"vision-auth-test","messages":[{"role":"user","content":[{"type":"text","text":"Analyze this protected image"},{"type":"image_url","image_url":{"url":"https://api.example.com/protected/image.jpg","headers":{"Authorization":"Bearer test-token","User-Agent":"CustomBot/1.0"}}}]}],"max_tokens":50}' | cat
+   ```
+
+3. **Monitor Image Processing**:
+   ```bash
+   # Check image processing logs
+   grep "image" logs/server.log | tail -5 | cat
+   
+   # Monitor concurrent processing
+   grep "Processing image URLs concurrently" logs/server.log | tail -3 | cat
+   ```
+
+### **Reliability Feature Testing**
+
+1. **Circuit Breaker Testing**:
+   ```bash
+   # Monitor circuit breaker status during testing
+   grep "CircuitBreaker" logs/server.log | tail -5 | cat
+   ```
+
+2. **Retry Logic Testing**:
+   ```bash
+   # Monitor retry attempts in logs
+   grep "RetryAttempt" logs/server.log | tail -5 | cat
+   ```
+
+3. **Health Check Testing**:
+   ```bash
+   # Test enhanced health endpoint
+curl -X GET http://localhost:8082/health | jq '.services' | cat
+# Should show status for: api, credentials, models, selector
+# Also includes details.version from VERSION environment variable
+   ```
+   - Should show status for: api, credentials, models, selector
+   - **Version Field**: Shows value from `VERSION` environment variable (defaults to "unknown")
+
+## Troubleshooting
+
+1. **Port Conflicts**:
+   - Check if port 8082 is already in use:
+     ```bash
+     lsof -i :8082 | cat
+     ```
+   - Kill conflicting processes:
+     ```bash
+     kill -9 <PID> # Use with caution
+     ```
+
+2. **Connection Refused Errors**:
+   - Ensure the server has fully started before sending requests.
+   - **Wait a few seconds** (e.g., `sleep 3`) after starting the server.
+
+3. **Invalid API Key Errors**:
+   - Verify your API keys in `configs/credentials.json` are valid and current.
+   - Check vendor-specific error messages in the response.
+   - **NEW**: Check if credentials are properly encrypted/decrypted
+
+4. **Request Validation Errors**:
+   - Ensure your request has the required `"messages"` field.
+   - Check that tools and tool_choice are properly formatted.
+   - The service now provides detailed validation error messages in a standardized format.
+
+5. **Server Crashes**:
+   - Check the server logs for error messages (e.g., `tail logs/server.log`).
+   - Ensure `configs/credentials.json` and `configs/models.json` are valid JSON files.
+   - **NEW**: Check circuit breaker status and retry logic in logs
+
+6. **Multi-Vendor Issues**:
+   - **Configuration Mismatch**: Verify both vendors have working credentials
+   - **Model Selection**: Check logs for vendor selection patterns
+   - **Response Inconsistency**: Verify model name preservation across vendors
+
+7. **Deployment Issues**:
+   - **ECR Login Failed**: Ensure AWS CLI is configured with correct profile
+   - **Docker Build Failed**: Check if Dockerfile exists in expected location
+   - **ECS Task Failed to Start**: Check CloudWatch logs for the task
+   - **Load Balancer Not Responding**: Wait a few minutes for tasks to become healthy
+
+8. **NEW - Reliability Issues**:
+   - **Circuit Breaker Open**: Check `grep "CircuitBreaker.*OPEN" logs/server.log`
+   - **Retry Exhausted**: Check `grep "RetryExhausted" logs/server.log`
+   - **Health Check Failed**: Check `grep "HealthCheck.*failed" logs/server.log`
+
+9. **NEW - Database Issues**:
+   - **Database Connection Failed**: Check MongoDB connectivity and credentials
+   - **Database Logging Disabled**: Verify `DB_LOGGING_ENABLED=true` in environment
+   - **Missing Collections**: Check if database initialization completed successfully
+   - **Slow Database Queries**: Monitor database performance and indexes
+   
+   **Database Debugging Commands**:
+   ```bash
+   # Check database connection
+   DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" \
+            || ([ "$ENVIRONMENT" = "production" ] && echo "prod-$SERVICE_NAME" \
+            || ([ "$ENVIRONMENT" = "test" ] && echo "test-$SERVICE_NAME" \
+            || echo "dev-$SERVICE_NAME")))
+   MONGO_URI="mongodb://localhost:27017"
+   mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); db.runCommand({ping:1})" | cat
+   
+   # Check collection status
+   mongosh "$MONGO_URI" --quiet --eval \
+     "use('$DB_NAME'); db.runCommand({listCollections: 1}).cursor.firstBatch.forEach(function(c) { print(c.name + ': ' + db[c.name].countDocuments()); })" | cat
+   
+   # Check recent database errors
+   grep -i "database\|mongo" logs/server.log | tail -5 | cat
+   ```
+
+## Stopping the Service
+
+### Using Makefile:
+```bash
+# Stop Docker containers
+make docker-stop
+
+# Clean build artifacts and logs
+make clean
+make clean-logs
+```
+
+### Manually:
+```bash
+# If running in foreground, press Ctrl+C
+# If running in background (more specific to avoid killing other 'server' processes):
+pgrep -f "build/server$" | xargs kill -9 || echo "Server not found or already stopped"
+# Alternatively:
+# pkill -f "build/server$"
+```
+
+### Docker:
+```bash
+docker-compose -f deployments/docker/docker-compose.yml down
+```
+
+## Quick Commands Reference
+
+### 🚀 Daily Development Commands
+
+```bash
+# Complete development session startup with database verification
+make build && ./build/server > logs/server.log 2>&1 & sleep 3 && curl http://localhost:8082/health | jq '.services.database' && echo "✅ Database status checked" | cat
+
+# Full multi-vendor API test cycle with database logging verification
+curl http://localhost:8082/health && echo "✅ Health OK" && curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test-openai","messages":[{"role":"user","content":"Hello"}]}' | jq '.model' && curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test-gemini","messages":[{"role":"user","content":"Hello"}]}' | jq '.model' && echo "✅ Multi-vendor OK" | cat
+
+# Quick health check all endpoints including database
+echo "Health:" && curl -s http://localhost:8082/health | jq '.status' && echo "Database:" && curl -s http://localhost:8082/health | jq '.services.database' && echo "Models:" && curl -s http://localhost:8082/v1/models | jq '.data | length' && echo "models available" | cat
+
+# Log monitoring with error filtering, vendor tracking, image processing, and database operations
+tail -f logs/server.log | grep -E "(error|Error|failed|Failed|Even distribution|CircuitBreaker|image|database|mongo)" --color=always
+
+# Process and memory status with configuration and database check
+echo "=== PROCESS STATUS ===" && ps aux | grep -E "(server|go)" | grep -v grep && echo "=== MEMORY USAGE ===" && free -h && echo "=== CONFIG STATUS ===" && cat configs/credentials.json | jq length && echo "credentials" && cat configs/models.json | jq length && echo "models" && echo "=== DATABASE STATUS ===" && DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" || echo "dev-$SERVICE_NAME") && MONGO_URI="mongodb://localhost:27017" && mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); printjson({collections: db.runCommand({listCollections: 1}).cursor.firstBatch.length, request_logs: db.request_logs.countDocuments()})" | cat
+```
+
+### 🔧 Maintenance Commands
+
+```bash
+# Clean restart with configuration and database verification
+pgrep -f "build/server$" | xargs -r kill -9 && make clean && make build && echo "=== CONFIG CHECK ===" && cat configs/credentials.json | jq length && cat configs/models.json | jq length && echo "=== DATABASE CHECK ===" && DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" || echo "dev-$SERVICE_NAME") && MONGO_URI="mongodb://localhost:27017" && mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); db.runCommand({ping:1})" && ./build/server > logs/server.log 2>&1 & sleep 3 && curl http://localhost:8082/health | jq '.services' | cat
+
+# Log file management with vendor analysis and database monitoring
+ls -lh logs/ && echo "=== Recent Errors ===" && grep -i "error" logs/server.log | tail -3 && echo "=== Vendor Distribution ===" && grep "Even distribution selected combination" logs/server.log | tail -3 && echo "=== Database Operations ===" && grep -i "database\|mongo" logs/server.log | tail -3 | cat
+
+# Configuration validation with multi-vendor and database check
+echo "=== Credentials Check ===" && cat configs/credentials.json | jq length && echo "credentials configured" && echo "=== Models Check ===" && cat configs/models.json | jq length && echo "models configured" && echo "=== Vendor Distribution ===" && cat configs/credentials.json | jq 'group_by(.platform) | map({vendor: .[0].platform, count: length})' && echo "=== Database Collections ===" && DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" || echo "dev-$SERVICE_NAME") && MONGO_URI="mongodb://localhost:27017" && mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); db.runCommand({listCollections: 1}).cursor.firstBatch.forEach(function(c) { print(c.name + ': ' + db[c.name].countDocuments()); })" | cat
+
+# Performance check with reliability and database monitoring
+echo "=== Response Time Test ===" && time curl -s http://localhost:8082/health > /dev/null && echo "=== Memory Usage ===" && ps aux --sort=-%mem | head -5 && echo "=== Circuit Breaker Status ===" && grep "CircuitBreaker.*state" logs/server.log | tail -3 && echo "=== Database Performance ===" && DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" || echo "dev-$SERVICE_NAME") && MONGO_URI="mongodb://localhost:27017" && mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); db.request_logs.find({response_time_ms: {\$gt: 5000}}, {_id: 1, response_time_ms: 1}).sort({response_time_ms: -1}).limit(3)" | cat
+```
+
+### 🧪 Testing Commands
+
+```bash
+# Comprehensive multi-vendor API test with database verification
+echo "=== HEALTH TEST ===" && curl http://localhost:8082/health | jq '.status' && echo "=== DATABASE TEST ===" && curl http://localhost:8082/health | jq '.services.database' && echo "=== MODELS TEST ===" && curl -s http://localhost:8082/v1/models | jq '.data | length' && echo "models available" && echo "=== OPENAI VENDOR TEST ===" && curl -s -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test-openai","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' | jq '.model' && echo "=== GEMINI VENDOR TEST ===" && curl -s -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test-gemini","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' | jq '.model' && echo "=== VISION API TEST ===" && curl -s -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"vision-test","messages":[{"role":"user","content":[{"type":"text","text":"What do you see?"},{"type":"image_url","image_url":{"url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/400px-Cat03.jpg"}}]}],"max_tokens":20}' | jq '.choices[0].finish_reason' | cat
+
+# Streaming test with vendor selection and database logging
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"stream-test","messages":[{"role":"user","content":"Count 1 to 3"}],"stream":true,"max_tokens":20}' | head -10 | cat
+
+# Error handling test with validation and database verification
+echo "=== VALIDATION ERROR TEST ===" && curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test"}' | jq '.error.message' && echo "=== VENDOR DISTRIBUTION TEST ===" && for i in {1..3}; do curl -s -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test-'$i'","messages":[{"role":"user","content":"Test"}],"max_tokens":5}' > /dev/null; done && grep "Even distribution selected combination" logs/server.log | tail -3 && echo "=== DATABASE LOGGING TEST ===" && DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" || echo "dev-$SERVICE_NAME") && MONGO_URI="mongodb://localhost:27017" && mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); print('Recent requests: ' + db.request_logs.countDocuments()); print('Recent vendor logs: ' + db.generative_vendor_logs.countDocuments())" | cat
+
+# Reliability features test with database monitoring
+echo "=== CIRCUIT BREAKER STATUS ===" && grep "CircuitBreaker" logs/server.log | tail -3 && echo "=== RETRY ATTEMPTS ===" && grep "RetryAttempt" logs/server.log | tail -3 && echo "=== HEALTH CHECKS ===" && grep "HealthCheck" logs/server.log | tail -3 && echo "=== DATABASE HEALTH ===" && DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" || echo "dev-$SERVICE_NAME") && MONGO_URI="mongodb://localhost:27017" && mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); db.system_health.find({}, {status: 1, database_status: 1, created_at: 1}).sort({created_at: -1}).limit(3)" | cat
+```
+
+### 📏 **Output Truncation Methods**
+
+When dealing with long output that may overwhelm the terminal, use these truncation methods:
+
+## Summary of Character Truncation Methods:
+
+✅ **`cut -c1-N`** - Truncate to N characters per line
+✅ **`fold -w N | head -1`** - Wrap at N chars, take first line only  
+✅ **`awk '{print substr($0,1,N)}'`** - More flexible truncation
+✅ **`limit_output [lines] [chars]`** - Custom function for both limits
+
+**Common Usage Examples:**
+```bash
+# Limit directory listing to 80 chars per line
+ls -la | cut -c1-80 | cat
+
+# Show max 100 lines, 80 chars each
+cat file.txt | limit_output 100 80 | cat
+
+# Process list with line and char limits
+ps aux | head -20 | cut -c1-120 | cat
+
+# Docker containers truncated
+docker ps | awk '{print substr($0,1,100)}' | cat
+
+# AWS CloudWatch logs with character limits
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[].message' | cut -c1-120 | cat
+
+# Local log analysis with truncation
+tail -50 logs/server.log | grep -E "(error|Error)" | cut -c1-100 | cat
+
+# Multi-vendor configuration with limits
+cat configs/credentials.json | jq length | limit_output 10 50 && echo "credentials configured" | cat
+
+# Health check with truncated output
+curl -s http://localhost:8082/health | jq | cut -c1-80 | cat
+```
+
+**Default Settings Now Active:**
+- ✅ History: 100 lines (`HISTSIZE=100`)
+- ✅ Function: `limit_output [lines] [chars]` available for any command
+
+The `limit_output` function defaults to 100 lines and 80 characters if no parameters are provided!
+
+## AWS Environment Debugging
+
+### 🌍 **AWS Infrastructure Overview**
+
+The service is deployed on AWS with separate development and production environments:
+
+**AWS Account & Region:**
+- **AWS Account**: `${AWS_ACCOUNT_ID}` (from .env)
+- **Region**: `ap-southeast-3` (Asia Pacific - Jakarta)
+
+**Development Environment:**
+- **ECS Cluster**: `dev-${SERVICE_NAME}` (from .env)
+- **ECS Service**: `dev-${SERVICE_NAME}` (from .env)
+- **Log Group**: `/aws/ecs/service/dev-${SERVICE_NAME}` (from .env)
+- **Health URL**: `https://dev-genapi.example.com/health`
+
+**Production Environment:**
+- **ECS Cluster**: `prod-${SERVICE_NAME}` (from .env)
+- **ECS Service**: `prod-${SERVICE_NAME}` (from .env)
+- **Log Group**: `/aws/ecs/service/prod-${SERVICE_NAME}` (from .env)
+- **Health URL**: `https://genapi.example.com/health`
+
+### 🔧 **AWS Environment Setup**
+
+**CRITICAL: Load .env First, Then Configure AWS:**
+```bash
+# STEP 1: Load environment variables from .env file (MANDATORY)
+export $(cat .env | grep -v '^#' | xargs) && echo "✅ Environment loaded from .env" | cat
+
+# STEP 2: Set up AWS cluster/service names based on SERVICE_NAME from .env
+export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ AWS environment configured" | cat
+
+# STEP 3: Verify configuration
+echo "Service Name: $SERVICE_NAME" && echo "AWS Account: $AWS_ACCOUNT_ID" && echo "AWS Region: $AWS_REGION" && echo "Dev Cluster: $AWS_CLUSTER_DEV" && echo "Prod Cluster: $AWS_CLUSTER_PROD" | cat
+```
+
+**Time Range Helpers for Log Queries:**
+```bash
+# Past 30 minutes (most common for debugging)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 ))
+
+# Past 1 hour
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 ))
+
+# Past 3 hours
+START_TS=$(( $(date -u -d '3 hours ago' +%s) * 1000 ))
+```
+
+### 🔍 **Essential AWS Debugging Commands**
+
+### **1. Quick Health Checks**
+
+```bash
+# Check both environments
+curl -f https://genapi.example.com/health && echo "✅ Production OK" || echo "❌ Production DOWN" | cat
+curl -f https://dev-genapi.example.com/health && echo "✅ Development OK" || echo "❌ Development DOWN" | cat
+
+# ECS service status
+aws --region ap-southeast-3 ecs describe-services --cluster prod-${SERVICE_NAME} --services prod-${SERVICE_NAME} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' | cat
+```
+
+### **2. Find Recent Errors**
+
+```bash
+# Production errors (last 30 minutes)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "?ERROR ?error ?Error ?failed ?Failed ?panic ?timeout" | jq -r '.events[-5:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
+
+# Development errors (last 30 minutes)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/dev-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "?ERROR ?error ?Error ?failed ?Failed ?panic ?timeout" | jq -r '.events[-5:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
+```
+
+### **3. Search for Specific Messages**
+
+```bash
+# Find specific user message (like "halo apa kabar?")
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/dev-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "halo apa kabar" | jq -r '.events[].message' | cat
+
+# Find specific request ID
+REQUEST_ID="your-request-id-here"
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"$REQUEST_ID\"" | jq -r '.events[].message | fromjson | "\(.timestamp) - \(.message)"' | cat
+```
+
+### **4. Monitor API Usage Patterns**
+
+```bash
+# Request volume (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "requests in last hour" | cat
+
+# Vendor distribution (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | .attributes.selected_vendor' | sort | uniq -c | sort -nr | cat
+
+# Model usage patterns
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | "\(.attributes.original_model) -> \(.attributes.selected_vendor):\(.attributes.selected_model)"' | sort | uniq -c | sort -nr | cat
+```
+
+### **5. Performance Analysis**
+
+```bash
+# Average response time (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
+
+# Slow requests (>5 seconds)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | select(.attributes.duration_ms > 5000) | "\(.timestamp) - \(.attributes.duration_ms)ms - \(.request.path)"' | cat
+```
+
+### **6. User Agent Analysis**
+
+```bash
+# Client distribution (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .request.headers["User-Agent"][0] // "unknown"' | sort | uniq -c | sort -nr | head -10 | cat
+
+# High-traffic IPs (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .request.headers["X-Forwarded-For"][0] // .request.headers["X-Real-IP"][0] // "unknown"' | sort | uniq -c | sort -nr | head -10 | cat
+```
+
+### **🚨 Emergency AWS Debugging Commands**
+
+**Quick Status Check:**
+```bash
+# PREREQUISITE: Load .env first
+export $(cat .env | grep -v '^#' | xargs) && export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ Environment loaded" | cat
+
+# Complete health check
+echo "=== PRODUCTION STATUS ===" && curl -f https://genapi.example.com/health && echo "✅ Production OK" || echo "❌ Production DOWN" && echo "=== DEVELOPMENT STATUS ===" && curl -f https://dev-genapi.example.com/health && echo "✅ Development OK" || echo "❌ Development DOWN" && echo "=== ECS STATUS ===" && aws --region $AWS_REGION ecs describe-services --cluster $AWS_CLUSTER_PROD --services $AWS_SERVICE_PROD --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' | cat
+```
+
+**Recent Errors (Last 30 Minutes):**
+```bash
+# PREREQUISITE: Load .env first
+export $(cat .env | grep -v '^#' | xargs) && export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ Environment loaded" | cat
+
+# Production errors
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[-3:][].message | fromjson | "\(.timestamp) - \(.error.message // .message)"' | cat
+```
+
+**Service Recovery:**
+```bash
+# PREREQUISITE: Load .env first
+export $(cat .env | grep -v '^#' | xargs) && export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ Environment loaded" | cat
+
+# Scale up if needed
+aws --region $AWS_REGION ecs update-service --cluster $AWS_CLUSTER_PROD --service $AWS_SERVICE_PROD --desired-count 2 | cat
+
+# Check task health
+aws --region $AWS_REGION ecs list-tasks --cluster $AWS_CLUSTER_PROD --service-name $AWS_SERVICE_PROD | jq -r '.taskArns[]' | head -1 | xargs -I {} aws --region $AWS_REGION ecs describe-tasks --cluster $AWS_CLUSTER_PROD --tasks {} --query 'tasks[0].{Status:lastStatus,Health:healthStatus}' | cat
+```
+
+### **📊 AWS Monitoring Best Practices**
+
+**Daily Monitoring Routine:**
+```bash
+# 1. Check service health
+curl -f https://genapi.example.com/health && echo "✅ Production healthy" | cat
+
+# 2. Check request volume (last hour)
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "requests in last hour" | cat
+
+# 3. Check for errors
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events | length' && echo "errors in last hour" | cat
+
+# 4. Check vendor distribution
+START_TS=$(( $(date -u -d '1 hour ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Proxy request initiated\"" | jq -r '.events[].message | fromjson | .attributes.selected_vendor' | sort | uniq -c | sort -nr | cat
+```
+
+**Weekly Monitoring Routine:**
+```bash
+# 1. Check average response time (last 24 hours)
+START_TS=$(( $(date -u -d '24 hours ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .attributes.duration_ms' | awk '{sum+=$1; count++} END {if(count>0) print "Average:", sum/count "ms"; else print "No data"}' | cat
+
+# 2. Check top user agents (last 24 hours)
+START_TS=$(( $(date -u -d '24 hours ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events[].message | fromjson | .request.headers["User-Agent"][0] // "unknown"' | sort | uniq -c | sort -nr | head -5 | cat
+
+# 3. Check error patterns (last 24 hours)
+START_TS=$(( $(date -u -d '24 hours ago' +%s) * 1000 )) && aws logs filter-log-events --profile ${AWS_ACCOUNT_ID} --region ap-southeast-3 --log-group-name "/aws/ecs/service/prod-${SERVICE_NAME}" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events[].message | fromjson | .error.type // "unknown"' | sort | uniq -c | sort -nr | cat
+```
+
+> **Complete AWS Guide**: For comprehensive AWS deployment and monitoring instructions, see [Development Guide - AWS Deployment & Monitoring Section](mdc:development_guide.mdc#aws-deployment--monitoring)
+
+## Additional Resources
+
+- See `docs/` for comprehensive documentation
+- Check `examples/clients/` for client library examples in Go, Node.js, and Python
+- Run `make help` to see all available Makefile targets
+- Review `scripts/verify-structure.sh` to validate project structure
+- **NEW**: Check `docs/logging-guide.md` for detailed logging documentation
+- **NEW**: Review `docs/production-monitoring-guide.md` for production monitoring procedures
+- **AWS**: See [Development Guide AWS Section](mdc:development_guide.mdc#aws-deployment--monitoring) for complete AWS debugging guide
+- **CloudWatch Logs**: See [Development Guide CloudWatch Section](mdc:development_guide.mdc#cloudwatch-logs-debugging-guide-critical) for systematic CloudWatch debugging approach
+
+## 🔍 CloudWatch Logs Quick Reference
+
+**CRITICAL**: For systematic CloudWatch debugging, see the comprehensive guide in [Development Guide](mdc:development_guide.mdc#cloudwatch-logs-debugging-guide-critical).
+
+### **Emergency CloudWatch Commands**
+
+```bash
+# PREREQUISITE: Load .env first
+export $(cat .env | grep -v '^#' | xargs) && export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ Environment loaded" | cat
+
+# Quick health check of logging system
+aws logs describe-log-groups --profile $AWS_PROFILE --region $AWS_REGION --log-group-name-prefix "/aws/ecs/service/$AWS_SERVICE_PROD" | jq -r '.logGroups[].logGroupName' && echo "✅ Log group exists" | cat
+
+# Get recent activity (last 30 minutes, no filters)
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 10 | jq -r '.events | length' && echo "recent events" | cat
+
+# Check log structure quickly
+START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 1 | jq -r '.events[0].message | try (fromjson | keys) catch "NOT_JSON"' | cat
+```
+
+### **CloudWatch Debugging Workflow (Quick)**
+
+**Phase 1: Basic Setup & Connectivity**
+```bash
+# 1. Environment check
+echo "AWS Profile: $AWS_PROFILE, Region: $AWS_REGION, Service: $AWS_SERVICE_PROD" | cat
+
+# 2. Log group verification
+aws logs describe-log-groups --profile $AWS_PROFILE --region $AWS_REGION --log-group-name-prefix "/aws/ecs/service/$AWS_SERVICE_PROD" | jq -r '.logGroups[].logGroupName' | cat
+
+# 3. Set broad time window (start with 60+ minutes)
+START_TS=$(( $(date -u -d '60 minutes ago' +%s) * 1000 )) && echo "Time window: $(date -u -d '60 minutes ago') to $(date -u)" | cat
+```
+
+**Phase 2: Basic Analysis**
+```bash
+# 4. Total event count
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS | jq -r '.events | length' && echo "total events" | cat
+
+# 5. Log structure check
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --max-items 1 | jq -r '.events[0].message | try (fromjson | keys) catch "NOT_JSON"' | cat
+
+# 6. Basic categorization
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "\"Request completed\"" | jq -r '.events | length' && echo "completed requests" | cat
+aws logs filter-log-events --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_PROD" --start-time $START_TS --filter-pattern "ERROR" | jq -r '.events | length' && echo "error events" | cat
+```
+
+### **Common CloudWatch Mistakes to Avoid**
+
+❌ **WRONG**: Starting with narrow time windows or complex filters
+❌ **WRONG**: Assuming field names without verification  
+❌ **WRONG**: Not handling JSON parsing errors with `try-catch`
+❌ **WRONG**: Giving up on empty results without investigation
+
+✅ **CORRECT**: Start broad (60+ minutes) → narrow down
+✅ **CORRECT**: Examine log structure first with `| jq -r '.events[0].message | try (fromjson | keys)'`
+✅ **CORRECT**: Use `try (fromjson) catch null | select(. != null)` for robust parsing
+✅ **CORRECT**: Investigate empty results: expand time window, verify log group, remove filters
+
+### **CloudWatch Performance Tips**
+
+- Use `--max-items 10` for quick checks, `--max-items 50` for detailed analysis
+- Use `--filter-pattern` for server-side filtering, `jq` for client-side transformations
+- For known events, use precise time windows: `±5-10 minutes` around exact timestamps
+- Handle missing fields with defaults: `.field // "unknown"`
+
+**For complete CloudWatch debugging methodology, see [Development Guide CloudWatch Section](mdc:development_guide.mdc#cloudwatch-logs-debugging-guide-critical).**

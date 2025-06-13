@@ -1,0 +1,68 @@
+# Binaries and executables
+/generative-api-router
+/server
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment and config files
+.env
+.env.*
+!.env.example
+
+# Credentials (to avoid accidental commit of API keys)
+configs/credentials.json
+!configs/credentials.json.example
+
+# Logs
+*.log
+logs/
+
+# Build related
+bin/
+dist/
+tmp/
+
+# OS specific
+.DS_Store
+Thumbs.db 
+
+# Project specific
+repomix-output.xml
+deploy.log
+
+# Test data and responses (except fixtures)
+/test_responses/
+testdata/fixtures/*.json
+!testdata/fixtures/.gitkeep
+
+# Logs in any location
+server.log
+deploy.log
+
+# Deployment scripts with sensitive information
+scripts/deploy.sh
+test_*.json

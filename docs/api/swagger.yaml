@@ -1,0 +1,268 @@
+basePath: /
+definitions:
+  internal_handlers.ChatCompletionRequest:
+    type: object
+  internal_handlers.ChatCompletionResponse:
+    properties:
+      choices:
+        items:
+          $ref: '#/definitions/internal_handlers.Choice'
+        type: array
+      created:
+        example: 1677652288
+        type: integer
+      id:
+        example: chatcmpl-abc123
+        type: string
+      model:
+        example: gpt-4o
+        type: string
+      object:
+        example: chat.completion
+        type: string
+      service_tier:
+        example: default
+        type: string
+      system_fingerprint:
+        example: fp_abc123
+        type: string
+      usage:
+        $ref: '#/definitions/internal_handlers.Usage'
+    type: object
+  internal_handlers.Choice:
+    properties:
+      finish_reason:
+        example: stop
+        type: string
+      index:
+        example: 0
+        type: integer
+      logprobs:
+        example: "null"
+        type: string
+      message:
+        $ref: '#/definitions/internal_handlers.Message'
+    type: object
+  internal_handlers.ErrorInfo:
+    properties:
+      code:
+        example: invalid_model
+        type: string
+      message:
+        example: Invalid model specified
+        type: string
+      param:
+        example: model
+        type: string
+      type:
+        example: invalid_request_error
+        type: string
+    type: object
+  internal_handlers.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/internal_handlers.ErrorInfo'
+    type: object
+  internal_handlers.HealthResponse:
+    properties:
+      details:
+        additionalProperties: true
+        type: object
+      services:
+        additionalProperties:
+          type: string
+        type: object
+      status:
+        type: string
+      timestamp:
+        type: string
+    type: object
+  internal_handlers.Message:
+    properties:
+      content:
+        example: Hello, how are you?
+        type: string
+      name:
+        example: John
+        type: string
+      role:
+        example: user
+        type: string
+      tool_call_id:
+        type: string
+      tool_calls:
+        items:
+          $ref: '#/definitions/internal_handlers.ToolCall'
+        type: array
+    type: object
+  internal_handlers.Model:
+    properties:
+      created:
+        example: 1677610602
+        type: integer
+      id:
+        example: gpt-4o
+        type: string
+      object:
+        example: model
+        type: string
+      owned_by:
+        example: openai
+        type: string
+    type: object
+  internal_handlers.ModelsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/internal_handlers.Model'
+        type: array
+      object:
+        example: list
+        type: string
+    type: object
+  internal_handlers.TokenDetails:
+    properties:
+      accepted_prediction_tokens:
+        example: 0
+        type: integer
+      audio_tokens:
+        example: 0
+        type: integer
+      cached_tokens:
+        example: 0
+        type: integer
+      reasoning_tokens:
+        example: 0
+        type: integer
+      rejected_prediction_tokens:
+        example: 0
+        type: integer
+    type: object
+  internal_handlers.ToolCall:
+    properties:
+      function:
+        additionalProperties: true
+        type: object
+      id:
+        example: call_8qty38
+        type: string
+      type:
+        example: function
+        type: string
+    type: object
+  internal_handlers.Usage:
+    properties:
+      completion_tokens:
+        example: 20
+        type: integer
+      completion_tokens_details:
+        $ref: '#/definitions/internal_handlers.TokenDetails'
+      prompt_tokens:
+        example: 10
+        type: integer
+      prompt_tokens_details:
+        allOf:
+        - $ref: '#/definitions/internal_handlers.TokenDetails'
+        description: Added additional usage details for OpenAI compatibility
+      total_tokens:
+        example: 30
+        type: integer
+    type: object
+host: genapi.example.com
+info:
+  contact:
+    email: support@yourcompany.com
+    name: API Support
+    url: https://github.com/aashari/go-generative-api-router
+  description: A router for generative AI models with OpenAI-compatible API.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Generative API Router
+  version: "1.0"
+paths:
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: Returns structured health information including status, services,
+        and version details
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Structured health response
+          schema:
+            $ref: '#/definitions/internal_handlers.HealthResponse'
+      summary: Health check endpoint
+      tags:
+      - health
+  /v1/chat/completions:
+    post:
+      consumes:
+      - application/json
+      description: Routes chat completion requests to different language model providers
+      parameters:
+      - description: Optional vendor to target (e.g., 'openai', 'gemini')
+        in: query
+        name: vendor
+        type: string
+      - description: Chat completion request in OpenAI-compatible format
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.ChatCompletionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OpenAI-compatible chat completion response
+          schema:
+            $ref: '#/definitions/internal_handlers.ChatCompletionResponse'
+        "400":
+          description: Bad request error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "401":
+          description: Unauthorized error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Chat completions API
+      tags:
+      - chat
+  /v1/models:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of available language models in OpenAI-compatible
+        format
+      parameters:
+      - description: Optional vendor to filter models (e.g., 'openai', 'gemini')
+        in: query
+        name: vendor
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of available models
+          schema:
+            $ref: '#/definitions/internal_handlers.ModelsResponse'
+      summary: List available models
+      tags:
+      - models
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and the API key value.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
