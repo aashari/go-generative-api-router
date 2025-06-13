@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/config"
+	"github.com/aashari/go-generative-api-router/internal/database"
 	"github.com/aashari/go-generative-api-router/internal/errors"
 	"github.com/aashari/go-generative-api-router/internal/filter"
 	"github.com/aashari/go-generative-api-router/internal/logger"
@@ -99,6 +100,22 @@ func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		services["selector"] = "down"
 		overallStatus = "unhealthy"
+	}
+
+	// Check database connectivity (MongoDB)
+	dbConn, err := database.GetConnection()
+	if err != nil {
+		services["database"] = "down"
+		if overallStatus == "healthy" {
+			overallStatus = "degraded" // Database is optional for basic functionality
+		}
+	} else if err := dbConn.HealthCheck(); err != nil {
+		services["database"] = "unhealthy"
+		if overallStatus == "healthy" {
+			overallStatus = "degraded"
+		}
+	} else {
+		services["database"] = "up"
 	}
 
 	// Create structured health response

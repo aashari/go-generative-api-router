@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aashari/go-generative-api-router/internal/database"
 	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/selector"
 	"github.com/aashari/go-generative-api-router/internal/utils"
@@ -116,7 +117,10 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		nil) // error
 
 	// 2. Send request to vendor
+	startTime := time.Now()
 	resp, err := c.httpClient.Do(req)
+	duration := time.Since(startTime)
+	
 	if err != nil {
 		logger.LogError(r.Context(), "vendor_communication", err, map[string]any{
 			"vendor":          selection.Vendor,
@@ -185,10 +189,10 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	if isStreaming {
 		// Setup headers for streaming and handle streaming response
 		c.setupResponseHeadersWithVendor(w, resp, isStreaming, selection.Vendor)
-		return c.handleStreaming(w, r, resp, selection, originalModel)
+		return c.handleStreaming(w, r, resp, selection, originalModel, duration, modifiedBody)
 	} else {
 		// For non-streaming, we need to process the response first to determine compression
-		return c.handleNonStreamingWithHeaders(w, r, resp, selection, originalModel)
+		return c.handleNonStreamingWithHeaders(w, r, resp, selection, originalModel, duration, modifiedBody)
 	}
 }
 
@@ -293,7 +297,7 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 }
 
 // handleStreaming processes streaming responses
-func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string) error {
+func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string, duration time.Duration, modifiedBody []byte) error {
 	// Log complete streaming request processing start
 	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Processing streaming request with complete data",
 		map[string]interface{}{
@@ -767,7 +771,7 @@ func (c *APIClient) processStreamingResponse(w http.ResponseWriter, reader *bufi
 }
 
 // handleNonStreamingWithHeaders processes non-streaming responses
-func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string) error {
+func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string, duration time.Duration, modifiedBody []byte) error {
 	logger.InfoCtx(r.Context(), "Processing non-streaming request", "vendor", selection.Vendor)
 
 	// 1. Process response body
@@ -908,6 +912,25 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 			"content_encoding": w.Header().Get("Content-Encoding"),
 		},
 		nil) // error
+
+	// Log complete vendor request/response to database (no obfuscation/truncation)
+	requestID := "unknown"
+	if reqID := r.Context().Value(logger.RequestIDKey); reqID != nil {
+		if reqIDStr, ok := reqID.(string); ok {
+			requestID = reqIDStr
+		}
+	}
+	
+	database.LogGenerativeVendorRequest(r.Context(), database.GenerativeVendorLog{
+		Model:           selection.Model,
+		Credential:      selection.Credential.Value, // Full credential value
+		RequestPayload:  string(modifiedBody),       // Complete request sent to vendor
+		ResponsePayload: string(responseBody),       // Complete response from vendor (before modification)
+		Vendor:          selection.Vendor,
+		RequestID:       requestID,
+		StatusCode:      resp.StatusCode,
+		DurationMs:      duration.Milliseconds(),
+	})
 
 	return nil
 }
