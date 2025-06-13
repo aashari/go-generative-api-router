@@ -562,7 +562,6 @@ func TestChatCompletionsEndpoint(t *testing.T) {
 		t.Logf("Tool usage test completed successfully")
 	})
 
-
 }
 
 func TestErrorHandling(t *testing.T) {
