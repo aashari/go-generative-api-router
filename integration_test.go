@@ -147,8 +147,8 @@ type Message struct {
 
 // ContentPart represents a part of the message content for vision/file requests
 type ContentPart struct {
-	Type     string   `json:"type"`
-	Text     string   `json:"text,omitempty"`
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
 	ImageURL *ImageURL `json:"image_url,omitempty"`
 	FileURL  *FileURL  `json:"file_url,omitempty"`
 }

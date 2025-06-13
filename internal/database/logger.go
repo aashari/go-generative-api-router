@@ -320,6 +320,9 @@ func LogGenerativeVendorRequest(ctx context.Context, vendorLog GenerativeUsage) 
 			vendorLog.Environment = getEnvironment()
 		}
 
+		// Truncate message content fields before storing
+		truncateMessageContent(&vendorLog)
+
 		// Create the log entry
 		err = repo.CreateGenerativeVendorLog(dbCtx, &vendorLog)
 		if err != nil {
@@ -334,6 +337,118 @@ func LogGenerativeVendorRequest(ctx context.Context, vendorLog GenerativeUsage) 
 				vendorLog.RequestID, vendorLog.Vendor, vendorLog.Model)
 		}
 	}()
+}
+
+// truncateMessageContent truncates message content fields to max 200 characters
+func truncateMessageContent(vendorLog *GenerativeUsage) {
+	const maxLength = 200
+
+	// Check if payload.request exists and is a map
+	if vendorLog.Payload.Request == nil {
+		return
+	}
+
+	requestMap, ok := vendorLog.Payload.Request.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	// Check if messages field exists
+	messagesInterface, exists := requestMap["messages"]
+	if !exists {
+		return
+	}
+
+	// Check if messages is an array
+	messages, ok := messagesInterface.([]interface{})
+	if !ok {
+		return
+	}
+
+	// Process each message
+	for _, messageInterface := range messages {
+		message, ok := messageInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Get content field
+		contentInterface, exists := message["content"]
+		if !exists {
+			continue
+		}
+
+		// Handle content based on its type
+		switch content := contentInterface.(type) {
+		case string:
+			// If content is a string, truncate it directly
+			if len(content) > maxLength {
+				message["content"] = content[:maxLength]
+			}
+
+		case map[string]interface{}:
+			// If content is an object, process its fields
+			// Truncate text field if it exists
+			if textInterface, exists := content["text"]; exists {
+				if text, ok := textInterface.(string); ok && len(text) > maxLength {
+					content["text"] = text[:maxLength]
+				}
+			}
+
+			// Truncate image_url.url if it exists
+			if imageURLInterface, exists := content["image_url"]; exists {
+				if imageURL, ok := imageURLInterface.(map[string]interface{}); ok {
+					if urlInterface, exists := imageURL["url"]; exists {
+						if url, ok := urlInterface.(string); ok && len(url) > maxLength {
+							imageURL["url"] = url[:maxLength]
+						}
+					}
+				}
+			}
+
+		case []interface{}:
+			// If content is an array (e.g., multimodal content), process each item
+			for _, itemInterface := range content {
+				item, ok := itemInterface.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				// Check type field
+				typeInterface, exists := item["type"]
+				if !exists {
+					continue
+				}
+
+				typeStr, ok := typeInterface.(string)
+				if !ok {
+					continue
+				}
+
+				switch typeStr {
+				case "text":
+					// Truncate text field
+					if textInterface, exists := item["text"]; exists {
+						if text, ok := textInterface.(string); ok && len(text) > maxLength {
+							item["text"] = text[:maxLength]
+						}
+					}
+
+				case "image_url":
+					// Truncate image_url.url field
+					if imageURLInterface, exists := item["image_url"]; exists {
+						if imageURL, ok := imageURLInterface.(map[string]interface{}); ok {
+							if urlInterface, exists := imageURL["url"]; exists {
+								if url, ok := urlInterface.(string); ok && len(url) > maxLength {
+									imageURL["url"] = url[:maxLength]
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 // isVerboseLoggingEnabled checks if verbose logging is enabled
