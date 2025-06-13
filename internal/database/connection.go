@@ -124,31 +124,31 @@ func (c *Connection) createIndexes(ctx context.Context) error {
 	// Index for timestamp-based queries
 	timestampIndex := mongo.IndexModel{
 		Keys:    bson.D{{Key: "created_at", Value: -1}}, // Descending order for recent-first queries
-		Options: options.Index().SetName("created_at_desc").SetBackground(true),
+		Options: options.Index().SetName("created_at_desc"),
 	}
 
 	// Index for vendor-based queries
 	vendorIndex := mongo.IndexModel{
 		Keys:    bson.D{{Key: "vendor", Value: 1}, {Key: "created_at", Value: -1}},
-		Options: options.Index().SetName("vendor_created_at_desc").SetBackground(true),
+		Options: options.Index().SetName("vendor_created_at_desc"),
 	}
 
 	// Index for request ID lookups
 	requestIdIndex := mongo.IndexModel{
 		Keys:    bson.D{{Key: "request_id", Value: 1}},
-		Options: options.Index().SetName("request_id").SetBackground(true),
+		Options: options.Index().SetName("request_id"),
 	}
 
 	// Index for requested_at timestamp
 	requestedAtIndex := mongo.IndexModel{
 		Keys:    bson.D{{Key: "requested_at", Value: -1}},
-		Options: options.Index().SetName("requested_at_desc").SetBackground(true),
+		Options: options.Index().SetName("requested_at_desc"),
 	}
 
 	// Index for status code queries
 	statusCodeIndex := mongo.IndexModel{
 		Keys:    bson.D{{Key: "status_code", Value: 1}, {Key: "created_at", Value: -1}},
-		Options: options.Index().SetName("status_code_created_at_desc").SetBackground(true),
+		Options: options.Index().SetName("status_code_created_at_desc"),
 	}
 
 	indexes := []mongo.IndexModel{timestampIndex, vendorIndex, requestIdIndex, requestedAtIndex, statusCodeIndex}
