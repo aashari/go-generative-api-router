@@ -186,9 +186,9 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 		if IsRetriableValidationError(err) {
 			logger.LogWithStructure(ctx, logger.LevelWarn, "Vendor validation failed, attempting random fallback",
 				map[string]interface{}{
-					"original_vendor": selection.Vendor,
-					"original_model":  selection.Model,
-					"error":           err.Error(),
+					"original_vendor":   selection.Vendor,
+					"original_model":    selection.Model,
+					"error":             err.Error(),
 					"fallback_strategy": "random_selection",
 				},
 				nil, // request
@@ -266,12 +266,13 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 
 		// Check if this is a retriable API error (quota, rate limits, server errors)
 		if IsRetriableAPIError(err) {
+			isQuotaError := IsQuotaError(err)
 			logger.LogWithStructure(ctx, logger.LevelError, "Retriable API error after all retry attempts",
 				map[string]interface{}{
 					"vendor":     selection.Vendor,
 					"error":      err.Error(),
-					"error_type": "retriable_api_error",
-					"is_quota":   IsQuotaError(err),
+					"error_type": "retriable_api_error_exhausted",
+					"is_quota":   isQuotaError,
 				},
 				nil, // request
 				nil, // response
@@ -280,11 +281,11 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 					"type":    "api_error_retry_exhausted",
 				}) // error
 
-			// For quota errors, return 429 status
-			if IsQuotaError(err) {
-				http.Error(w, "API quota exceeded. Please try again later.", http.StatusTooManyRequests)
+			// For quota or rate limit errors, return 429 status
+			if isQuotaError {
+				http.Error(w, "API quota or rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
 			} else {
-				http.Error(w, "Service temporarily unavailable. Please try again later.", http.StatusServiceUnavailable)
+				http.Error(w, "Service temporarily unavailable after multiple retries.", http.StatusServiceUnavailable)
 			}
 			return err
 		}

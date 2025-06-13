@@ -69,9 +69,9 @@ func IsRetriableAPIError(err error) bool {
 func IsQuotaError(err error) bool {
 	var apiErr *VendorAPIError
 	if errors.As(err, &apiErr) {
-		return apiErr.ErrorType == "insufficient_quota" || 
-			   apiErr.ErrorType == "rate_limit_exceeded" ||
-			   apiErr.StatusCode == http.StatusTooManyRequests
+		return apiErr.ErrorType == "insufficient_quota" ||
+			apiErr.ErrorType == "rate_limit_exceeded" ||
+			apiErr.StatusCode == http.StatusTooManyRequests
 	}
 	return false
 }
@@ -87,7 +87,7 @@ func ParseVendorError(vendor string, statusCode int, responseBody []byte) error 
 	if len(responseBody) > 0 {
 		// Simple JSON parsing without importing json package
 		bodyStr := string(responseBody)
-		
+
 		// Check for common error patterns
 		if strings.Contains(bodyStr, "insufficient_quota") {
 			return &VendorAPIError{
@@ -98,7 +98,7 @@ func ParseVendorError(vendor string, statusCode int, responseBody []byte) error 
 				Retriable:  true, // Quota errors should be retried with backoff
 			}
 		}
-		
+
 		if strings.Contains(bodyStr, "rate_limit") || statusCode == http.StatusTooManyRequests {
 			return &VendorAPIError{
 				Vendor:     vendor,
@@ -121,9 +121,9 @@ func ParseVendorError(vendor string, statusCode int, responseBody []byte) error 
 			Retriable:  true,
 		}
 	case http.StatusInternalServerError, // 500
-		 http.StatusBadGateway,          // 502
-		 http.StatusServiceUnavailable,  // 503
-		 http.StatusGatewayTimeout:      // 504
+		http.StatusBadGateway,         // 502
+		http.StatusServiceUnavailable, // 503
+		http.StatusGatewayTimeout:     // 504
 		return &VendorAPIError{
 			Vendor:     vendor,
 			StatusCode: statusCode,

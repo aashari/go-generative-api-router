@@ -2,9 +2,10 @@ package reliability
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/big"
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
@@ -64,10 +65,10 @@ func (r *RetryExecutor) ExecuteWithRetry(ctx context.Context, operation func() e
 			if !r.isRetryableError(err) {
 				logger.LogWithStructure(ctx, logger.LevelWarn, "Non-retriable error encountered",
 					map[string]interface{}{
-						"attempt":     attempt,
-						"error":       err.Error(),
-						"error_type":  fmt.Sprintf("%T", err),
-						"retriable":   false,
+						"attempt":    attempt,
+						"error":      err.Error(),
+						"error_type": fmt.Sprintf("%T", err),
+						"retriable":  false,
 					},
 					nil, // request
 					nil, // response
@@ -168,9 +169,17 @@ func (r *RetryExecutor) calculateBackoff(attempt int) time.Duration {
 
 	// Add jitter if enabled (±25% randomness)
 	if r.config.JitterEnabled {
-		jitter := delay * 0.25 * (rand.Float64()*2 - 1) // Random value between -0.25 and +0.25
-		delay += jitter
-		
+		// Use crypto/rand for cryptographically secure randomness
+		maxJitter := new(big.Int).SetInt64(int64(delay * 0.5)) // Max jitter is 50% of the delay (±25%)
+		jitter, err := rand.Int(rand.Reader, maxJitter)
+		if err != nil {
+			// Fallback to less random jitter if crypto/rand fails
+			delay += (r.config.InitialDelay.Seconds() * 0.25 * (2*float64(time.Now().UnixNano()%100)/100 - 1))
+		} else {
+			// Apply jitter: delay - 25% to delay + 25%
+			delay += (float64(jitter.Int64()) - (delay * 0.25))
+		}
+
 		// Ensure delay is not negative
 		if delay < 0 {
 			delay = float64(r.config.InitialDelay)
@@ -188,7 +197,7 @@ func (r *RetryExecutor) isRetryableError(err error) bool {
 
 	// Import the proxy package to check for specific error types
 	// Note: This creates a circular dependency, so we'll use interface-based approach
-	
+
 	// Check if error implements a Retriable interface
 	if retriable, ok := err.(interface{ IsRetriable() bool }); ok {
 		return retriable.IsRetriable()
@@ -207,12 +216,12 @@ func (r *RetryExecutor) isRetryableError(err error) bool {
 
 // contains checks if a string contains a substring (case-insensitive)
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		   (s == substr || 
-		    (len(s) > len(substr) && 
-		     (s[:len(substr)] == substr || 
-		      s[len(s)-len(substr):] == substr || 
-		      indexOf(s, substr) >= 0)))
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			(len(s) > len(substr) &&
+				(s[:len(substr)] == substr ||
+					s[len(s)-len(substr):] == substr ||
+					indexOf(s, substr) >= 0)))
 }
 
 // indexOf finds the index of substr in s, returns -1 if not found
@@ -233,18 +242,18 @@ type RetryableError interface {
 
 // RetryMetrics holds metrics about retry operations
 type RetryMetrics struct {
-	TotalAttempts    int
+	TotalAttempts     int
 	SuccessfulRetries int
-	FailedRetries    int
-	AverageDelay     time.Duration
+	FailedRetries     int
+	AverageDelay      time.Duration
 }
 
 // GetMetrics returns current retry metrics (placeholder for future implementation)
 func (r *RetryExecutor) GetMetrics() *RetryMetrics {
 	return &RetryMetrics{
-		TotalAttempts:    0,
+		TotalAttempts:     0,
 		SuccessfulRetries: 0,
-		FailedRetries:    0,
-		AverageDelay:     0,
+		FailedRetries:     0,
+		AverageDelay:      0,
 	}
-} 
+}

@@ -153,7 +153,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 				},
 				nil, // request
 				map[string]interface{}{
-					"response_body": string(errorBody),
+					"response_body":    string(errorBody),
 					"response_headers": map[string][]string(resp.Header),
 				},
 				map[string]interface{}{
