@@ -218,7 +218,7 @@ HARDCODED_SECRETS=$(grep -r -E '(PASSWORD|SECRET|KEY|TOKEN)=[^$]' \
     --exclude="SECURITY.md" \
     --exclude="user-guide.md" \
     --exclude="plan-correlation.md" \
-    . 2>/dev/null | grep -v -E '(PASSWORD|SECRET|KEY|TOKEN)=\$|your-.*-here|example.*=|placeholder.*=' || true)
+    . 2>/dev/null | grep -v -E '(PASSWORD|SECRET|KEY|TOKEN)=\$|your-.*-here|example.*=|placeholder.*=|<your-.*>|your-password|# MongoDB.*optional' || true)
 
 if [ -n "$HARDCODED_SECRETS" ]; then
     # Check if matches are only in gitignored files

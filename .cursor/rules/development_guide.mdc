@@ -197,12 +197,39 @@ AWS_ACCOUNT_ID=your-account-id    # AWS Account ID
 AWS_PROFILE=your-aws-profile      # AWS CLI profile
 AWS_REGION=ap-southeast-3         # AWS region
 
+# MongoDB Configuration (NEW)
+MONGODB_URI=mongodb://localhost:27017  # MongoDB connection string
+MONGODB_USER=                     # MongoDB username (optional)
+MONGODB_PASSWORD=<your-password>  # MongoDB password (optional)
+DB_LOGGING_ENABLED=true          # Enable database logging
+
 # The application automatically loads from .env file at startup
 # Supports multiple locations: .env, configs/.env, ../.env, ~/.env
 
 # Version Configuration (CI/CD sets this to git commit hash)
 VERSION=v2.1.0                    # Application version (defaults to "unknown")
 ```
+
+### 🗄️ Database Environment Management
+
+**Database Naming Convention (Environment-Based)**
+
+The service automatically generates database names based on environment:
+
+```bash
+# Database name resolution helper
+DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" \
+         || ([ "$ENVIRONMENT" = "production" ] && echo "prod-$SERVICE_NAME" \
+         || ([ "$ENVIRONMENT" = "test" ] && echo "test-$SERVICE_NAME" \
+         || echo "dev-$SERVICE_NAME")))
+echo "Target database: $DB_NAME" | cat
+```
+
+**Database Name Examples:**
+- **Local**: `loc-generative-api-router`
+- **Development**: `dev-generative-api-router`
+- **Production**: `prod-generative-api-router`
+- **Test**: `test-generative-api-router`
 
 **Environment Setup Verification:**
 ```bash
@@ -215,6 +242,9 @@ echo "Prod Cluster: $AWS_CLUSTER_PROD" && echo "Prod Service: $AWS_SERVICE_PROD"
 
 # Verify application configuration
 echo "Port: $PORT" && echo "Log Level: $LOG_LEVEL" && echo "Version: $VERSION" | cat
+
+# Verify database configuration (NEW)
+echo "Database Name: $DB_NAME" && echo "MongoDB URI (masked): $(echo $MONGODB_URI | sed 's/:[^@]*@/:****@/')..." && echo "DB Logging: $DB_LOGGING_ENABLED" | cat
 ```
 
 **AWS Command Patterns:**
@@ -475,6 +505,184 @@ grep "Response processing completed" logs/server.log | tail -1 | jq '.data.compl
 # Monitor vendor distribution
 grep "Even distribution selected combination" logs/server.log | tail -20 | cat
 ```
+
+## Database Operations & Management
+
+### 🗄️ **MongoDB Integration Overview**
+
+The Generative API Router includes comprehensive MongoDB integration for:
+
+- **Request Logging**: Complete API request/response logging
+- **Vendor Metrics**: Aggregated vendor performance analytics
+- **System Health**: Database-backed health monitoring
+- **User Sessions**: Session tracking and management
+- **Vendor Logs**: Complete vendor request/response data (unobfuscated)
+
+### **Database Connection Management**
+
+**Local MongoDB Setup (Docker)**
+
+```bash
+# Start MongoDB container (if using Docker)
+docker compose up -d mongodb | cat
+sleep 5 && docker compose ps | cat
+
+# Verify MongoDB connection
+docker compose exec mongodb mongosh --username root --password root --authenticationDatabase admin --quiet --eval "db.runCommand({ping:1})" | cat
+```
+
+**Database Connection Verification**
+
+```bash
+# ALWAYS verify database name before operations
+DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" \
+         || ([ "$ENVIRONMENT" = "production" ] && echo "prod-$SERVICE_NAME" \
+         || ([ "$ENVIRONMENT" = "test" ] && echo "test-$SERVICE_NAME" \
+         || echo "dev-$SERVICE_NAME")))
+echo "Target database: $DB_NAME" | cat
+
+# Local MongoDB connection string
+MONGO_URI="mongodb://localhost:27017"
+
+# Verify connection and database
+mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); print('Connected to DB: ' + db.getName()); db.runCommand({ping:1})" | cat
+```
+
+### **Database Operations - Environment-Aware Access**
+
+**CRITICAL: Always verify database name before queries**
+
+**Local Database Operations**
+
+```bash
+# Document counts with database verification
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); print('Database: ' + db.getName()); printjson({request_logs: db.request_logs.countDocuments(), vendor_metrics: db.vendor_metrics.countDocuments(), system_health: db.system_health.countDocuments(), user_sessions: db.user_sessions.countDocuments(), generative_vendor_logs: db.generative_vendor_logs.countDocuments()})" | cat
+
+# Recent request logs
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); db.request_logs.find({}, {_id: 1, method: 1, path: 1, status_code: 1, created_at: 1}).sort({created_at: -1}).limit(5)" | cat
+
+# Recent vendor logs (complete request/response data)
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); db.generative_vendor_logs.find({}, {_id: 1, model: 1, vendor: 1, created_at: 1}).sort({created_at: -1}).limit(5)" | cat
+
+# Search for specific request patterns
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); db.request_logs.find({path: /chat\/completions/i}, {_id: 1, method: 1, path: 1, status_code: 1, created_at: 1, user_agent: 1})" | cat
+```
+
+**Development/Production Database Operations**
+
+```bash
+# Fetch MongoDB URI from Parameter Store (for AWS environments)
+MONGO_DEV_URI=$(aws --profile $AWS_PROFILE --region $AWS_REGION ssm get-parameter --name "/$SERVICE_NAME/dev/mongodb-uri" --with-decryption --query "Parameter.Value" --output text)
+
+# ALWAYS verify database name first (URI includes database)
+mongosh "$MONGO_DEV_URI" --quiet --eval "print('Connected to DB: ' + db.getName()); db.runCommand({ping:1})" | cat
+
+# For Atlas/remote, database name is in URI, but verify with use() for consistency
+mongosh "$MONGO_DEV_URI" --quiet --eval \
+  "use('dev-$SERVICE_NAME'); print('Using DB: ' + db.getName()); printjson({request_logs: db.request_logs.countDocuments(), vendor_metrics: db.vendor_metrics.countDocuments(), system_health: db.system_health.countDocuments()})" | cat
+```
+
+**Production Database Operations (Extra Safety)**
+
+```bash
+# Production requires extra verification
+MONGO_PROD_URI=$(aws --profile $AWS_PROFILE --region $AWS_REGION ssm get-parameter --name "/$SERVICE_NAME/prod/mongodb-uri" --with-decryption --query "Parameter.Value" --output text)
+
+# MANDATORY verification before any production operation
+mongosh "$MONGO_PROD_URI" --quiet --eval \
+  "use('prod-$SERVICE_NAME'); print('PRODUCTION DB: ' + db.getName()); print('Request logs count: ' + db.request_logs.countDocuments()); print('Vendor logs count: ' + db.generative_vendor_logs.countDocuments());" | cat
+
+# Never run destructive operations without explicit confirmation
+# Example safe query pattern:
+mongosh "$MONGO_PROD_URI" --quiet --eval \
+  "use('prod-$SERVICE_NAME'); print('Querying PRODUCTION: ' + db.getName()); db.request_logs.findOne({path: '/v1/chat/completions'}, {_id: 1, method: 1, path: 1, created_at: 1})" | cat
+```
+
+### **Database Debugging Patterns**
+
+**Request Flow Analysis**
+
+```bash
+# Find requests by user agent
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); db.request_logs.find({user_agent: /BrainyBuddy/i}, {_id: 1, method: 1, path: 1, user_agent: 1, created_at: 1})" | cat
+
+# Get complete vendor interaction for specific request
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); var req = db.request_logs.findOne({_id: ObjectId('request-id')}); printjson(req); db.generative_vendor_logs.find({created_at: {\$gte: req.created_at, \$lte: new Date(req.created_at.getTime() + 60000)}}).sort({created_at: 1})" | cat
+
+# Check for recent errors or high response times
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); db.request_logs.find({status_code: {\$gte: 400}}, {_id: 1, method: 1, path: 1, status_code: 1, response_time_ms: 1, created_at: 1}).sort({created_at: -1}).limit(10)" | cat
+```
+
+**Vendor Performance Analysis**
+
+```bash
+# Vendor distribution analysis
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); db.vendor_metrics.aggregate([{\$group: {_id: '\$vendor', total_requests: {\$sum: '\$request_count'}, avg_response_time: {\$avg: '\$avg_response_time_ms'}}}, {\$sort: {total_requests: -1}}])" | cat
+
+# Recent vendor performance
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); db.generative_vendor_logs.find({}, {_id: 1, vendor: 1, model: 1, response_time_ms: 1, created_at: 1}).sort({created_at: -1}).limit(10)" | cat
+
+# Find slow vendor requests (>5 seconds)
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); db.generative_vendor_logs.find({response_time_ms: {\$gt: 5000}}, {_id: 1, vendor: 1, model: 1, response_time_ms: 1, created_at: 1}).sort({response_time_ms: -1})" | cat
+```
+
+**System Health Monitoring**
+
+```bash
+# Recent system health snapshots
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); db.system_health.find({}, {_id: 1, status: 1, database_status: 1, uptime_seconds: 1, created_at: 1}).sort({created_at: -1}).limit(5)" | cat
+
+# Check for health issues
+mongosh "$MONGO_URI" --quiet --eval \
+  "use('$DB_NAME'); db.system_health.find({status: {\$ne: 'healthy'}}, {_id: 1, status: 1, database_status: 1, created_at: 1}).sort({created_at: -1})" | cat
+```
+
+### **Database Best Practices**
+
+- **Always use `use('database-name')`** to ensure correct database context
+- **Verify database name** with `db.getName()` before operations
+- **Use environment-specific database names**: `loc-service-name`, `dev-service-name`, `prod-service-name`
+- **Limit query results** with `.limit()` to avoid overwhelming output
+- **Include `_id` field** in projections for reference
+- **Use `ObjectId()` constructor** for ID-based queries
+- **Never run destructive operations** without verification on production
+- **Monitor database logging** via `DB_LOGGING_ENABLED` environment variable
+- **Use indexes** for frequently queried fields (automatically created on startup)
+
+### **Database Schema Overview**
+
+**Collections:**
+
+1. **`request_logs`**: Complete API request/response logging
+   - Fields: `method`, `path`, `status_code`, `response_time_ms`, `user_agent`, `created_at`
+   - Indexes: `created_at`, `path`, `status_code`
+
+2. **`vendor_metrics`**: Aggregated vendor performance metrics
+   - Fields: `vendor`, `request_count`, `avg_response_time_ms`, `error_count`, `date`
+   - Indexes: `vendor`, `date`
+
+3. **`system_health`**: System health monitoring snapshots
+   - Fields: `status`, `database_status`, `uptime_seconds`, `version`, `created_at`
+   - Indexes: `created_at`, `status`
+
+4. **`user_sessions`**: User session tracking
+   - Fields: `session_id`, `user_agent`, `ip_address`, `created_at`, `last_activity`
+   - Indexes: `session_id`, `created_at`
+
+5. **`generative_vendor_logs`**: Complete vendor request/response data (unobfuscated)
+   - Fields: `vendor`, `model`, `credential_used`, `request_payload`, `response_payload`, `response_time_ms`, `created_at`
+   - Indexes: `created_at`, `vendor`, `model`
 
 ## Development Workflow
 
