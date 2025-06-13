@@ -6,41 +6,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// PayloadData represents the request/response payload structure
-type PayloadData struct {
-	Request  interface{} `bson:"request" json:"request"`   // Full request object sent to vendor
-	Response interface{} `bson:"response" json:"response"` // Full response object from vendor
-}
-
-// GenerativeUsage represents complete vendor request/response logging
-// Stores full request and response data without obfuscation or truncation
-type GenerativeUsage struct {
-	ID primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-
-	// Credential as full object
-	Credential interface{} `bson:"credential" json:"credential"` // Full credential object
-
-	// Model as full object
-	Model interface{} `bson:"model" json:"model"` // Full model object with config
-
-	// Payload containing request and response
-	Payload PayloadData `bson:"payload" json:"payload"`
-
-	// Timestamps
-	RequestedAt time.Time `bson:"requested_at" json:"requested_at"` // Start time of the request
-	RespondedAt time.Time `bson:"responded_at" json:"responded_at"` // End time when vendor responded
-	CreatedAt   time.Time `bson:"created_at" json:"created_at"`     // When this record was created
-
-	// Additional metadata for context (optional, for backward compatibility)
-	Vendor      string `bson:"vendor,omitempty" json:"vendor,omitempty"`           // Vendor name (openai, gemini, etc.)
-	RequestID   string `bson:"request_id,omitempty" json:"request_id,omitempty"`   // Request ID for correlation
-	StatusCode  int    `bson:"status_code,omitempty" json:"status_code,omitempty"` // HTTP status code
-	Environment string `bson:"environment,omitempty" json:"environment,omitempty"` // Environment (dev, prod, etc.)
-}
-
-// GenerativeVendorLog is deprecated - use GenerativeUsage instead
-// Kept for backward compatibility
-type GenerativeVendorLog = GenerativeUsage
+// PayloadData - REMOVED: No longer needed after removing database logging
+// GenerativeUsage - REMOVED: No longer needed after removing database logging
+// GenerativeVendorLog - REMOVED: No longer needed after removing database logging
 
 // RequestLog represents a logged API request for analytics and monitoring
 type RequestLog struct {

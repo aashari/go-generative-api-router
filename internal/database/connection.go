@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -118,47 +117,7 @@ func (c *Connection) GetCollection(name string) *mongo.Collection {
 
 // createIndexes creates database indexes for performance optimization
 func (c *Connection) createIndexes(ctx context.Context) error {
-	// Create indexes for generative-usages collection
-	generativeUsagesCollection := c.GetCollection("generative-usages")
-
-	// Index for timestamp-based queries
-	timestampIndex := mongo.IndexModel{
-		Keys:    bson.D{{Key: "created_at", Value: -1}}, // Descending order for recent-first queries
-		Options: options.Index().SetName("created_at_desc"),
-	}
-
-	// Index for vendor-based queries
-	vendorIndex := mongo.IndexModel{
-		Keys:    bson.D{{Key: "vendor", Value: 1}, {Key: "created_at", Value: -1}},
-		Options: options.Index().SetName("vendor_created_at_desc"),
-	}
-
-	// Index for request ID lookups
-	requestIdIndex := mongo.IndexModel{
-		Keys:    bson.D{{Key: "request_id", Value: 1}},
-		Options: options.Index().SetName("request_id"),
-	}
-
-	// Index for requested_at timestamp
-	requestedAtIndex := mongo.IndexModel{
-		Keys:    bson.D{{Key: "requested_at", Value: -1}},
-		Options: options.Index().SetName("requested_at_desc"),
-	}
-
-	// Index for status code queries
-	statusCodeIndex := mongo.IndexModel{
-		Keys:    bson.D{{Key: "status_code", Value: 1}, {Key: "created_at", Value: -1}},
-		Options: options.Index().SetName("status_code_created_at_desc"),
-	}
-
-	indexes := []mongo.IndexModel{timestampIndex, vendorIndex, requestIdIndex, requestedAtIndex, statusCodeIndex}
-
-	_, err := generativeUsagesCollection.Indexes().CreateMany(ctx, indexes)
-	if err != nil {
-		return fmt.Errorf("failed to create generative-usages indexes: %w", err)
-	}
-
-	log.Printf("Successfully created database indexes for collection: generative-usages")
+	// Database logging functionality has been removed - no indexes needed for generative-usages
 	return nil
 }
 

@@ -47,8 +47,7 @@ func NewApp() (*App, error) {
 		"vendor_model_pairs", len(models),
 	)
 
-	// Database logging is handled directly by LogGenerativeVendorRequest
-	// No need for RequestLogger initialization
+	// Database logging functionality has been removed
 
 	// Initialize components
 	apiClient := proxy.NewAPIClient()

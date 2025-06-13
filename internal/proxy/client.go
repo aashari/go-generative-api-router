@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aashari/go-generative-api-router/internal/config"
-	"github.com/aashari/go-generative-api-router/internal/database"
 	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/selector"
 	"github.com/aashari/go-generative-api-router/internal/utils"
@@ -146,8 +144,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 			return ParseVendorError(selection.Vendor, resp.StatusCode, nil)
 		}
 
-		// Log error response to database
-		c.logVendorRequestToDatabase(r, selection, modifiedBody, errorBody, startTime, time.Now(), resp.StatusCode, originalModel)
+		// Database logging removed - no longer logging vendor requests
 
 		// Parse the vendor error
 		vendorErr := ParseVendorError(selection.Vendor, resp.StatusCode, errorBody)
@@ -774,73 +771,10 @@ func (c *APIClient) processStreamingResponse(w http.ResponseWriter, reader *bufi
 	}
 }
 
-// logVendorRequestToDatabase logs vendor request/response to database
-func (c *APIClient) logVendorRequestToDatabase(r *http.Request, selection *selector.VendorSelection, requestBody []byte, responseBody []byte, startTime time.Time, endTime time.Time, statusCode int, originalModel string) {
-	// Get request ID from context
-	requestID := "unknown"
-	if reqID := r.Context().Value(logger.RequestIDKey); reqID != nil {
-		if reqIDStr, ok := reqID.(string); ok {
-			requestID = reqIDStr
-		}
-	}
-
-	// Parse request and response as objects
-	var requestPayload interface{}
-	if err := json.Unmarshal(requestBody, &requestPayload); err != nil {
-		requestPayload = string(requestBody) // Fallback to string if parsing fails
-	}
-
-	var responsePayload interface{}
-	if err := json.Unmarshal(responseBody, &responsePayload); err != nil {
-		responsePayload = string(responseBody) // Fallback to string if parsing fails
-	}
-
-	// Get models from context
-	models, _ := r.Context().Value("vendor_models").([]config.VendorModel)
-
-	// Find the full model object
-	var fullModel interface{}
-	for _, m := range models {
-		if m.Vendor == selection.Vendor && m.Model == selection.Model {
-			fullModel = m
-			break
-		}
-	}
-	if fullModel == nil {
-		// Fallback to just the model name if not found
-		fullModel = map[string]string{
-			"vendor": selection.Vendor,
-			"model":  selection.Model,
-		}
-	}
-
-	// Create the full credential object
-	fullCredential := map[string]string{
-		"platform": selection.Credential.Platform,
-		"type":     selection.Credential.Type,
-		"value":    selection.Credential.Value,
-	}
-
-	database.LogGenerativeVendorRequest(r.Context(), database.GenerativeUsage{
-		Model:      fullModel,
-		Credential: fullCredential,
-		Payload: database.PayloadData{
-			Request:  requestPayload,
-			Response: responsePayload,
-		},
-		Vendor:      selection.Vendor,
-		RequestID:   requestID,
-		StatusCode:  statusCode,
-		RequestedAt: startTime,
-		RespondedAt: endTime,
-		CreatedAt:   time.Now(),
-	})
-}
+// Database logging functionality has been removed
 
 // handleNonStreamingWithHeaders processes non-streaming responses
 func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string, duration time.Duration, modifiedBody []byte) error {
-	// Calculate request start time from duration
-	startTime := time.Now().Add(-duration)
 	logger.InfoCtx(r.Context(), "Processing non-streaming request", "vendor", selection.Vendor)
 
 	// 1. Process response body
@@ -982,8 +916,7 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 		},
 		nil) // error
 
-	// Log complete vendor request/response to database (no obfuscation/truncation)
-	c.logVendorRequestToDatabase(r, selection, modifiedBody, responseBody, startTime, time.Now(), resp.StatusCode, originalModel)
+	// Database logging removed - no longer logging vendor requests
 
 	return nil
 }
