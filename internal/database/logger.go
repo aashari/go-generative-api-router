@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -323,6 +324,9 @@ func LogGenerativeVendorRequest(ctx context.Context, vendorLog GenerativeUsage) 
 		// Truncate message content fields before storing
 		truncateMessageContent(&vendorLog)
 
+		// Sanitize UTF-8 content to prevent database encoding issues
+		sanitizeUTF8Content(&vendorLog)
+
 		// Create the log entry
 		err = repo.CreateGenerativeVendorLog(dbCtx, &vendorLog)
 		if err != nil {
@@ -479,4 +483,82 @@ func getEnvironment() string {
 		env = "development"
 	}
 	return env
+}
+
+// sanitizeUTF8Content sanitizes UTF-8 content to prevent database encoding issues
+func sanitizeUTF8Content(vendorLog *GenerativeUsage) {
+	// Sanitize request payload
+	if vendorLog.Payload.Request != nil {
+		vendorLog.Payload.Request = sanitizeUTF8Interface(vendorLog.Payload.Request)
+	}
+
+	// Sanitize response payload
+	if vendorLog.Payload.Response != nil {
+		vendorLog.Payload.Response = sanitizeUTF8Interface(vendorLog.Payload.Response)
+	}
+
+	// Sanitize other string fields
+	vendorLog.Vendor = sanitizeUTF8String(vendorLog.Vendor)
+	vendorLog.RequestID = sanitizeUTF8String(vendorLog.RequestID)
+	vendorLog.Environment = sanitizeUTF8String(vendorLog.Environment)
+
+	// Sanitize credential and model if they contain string values
+	if vendorLog.Credential != nil {
+		vendorLog.Credential = sanitizeUTF8Interface(vendorLog.Credential)
+	}
+	if vendorLog.Model != nil {
+		vendorLog.Model = sanitizeUTF8Interface(vendorLog.Model)
+	}
+}
+
+// sanitizeUTF8Interface recursively sanitizes UTF-8 content in interface{} values
+func sanitizeUTF8Interface(data interface{}) interface{} {
+	switch v := data.(type) {
+	case string:
+		return sanitizeUTF8String(v)
+	case map[string]interface{}:
+		result := make(map[string]interface{})
+		for key, value := range v {
+			result[sanitizeUTF8String(key)] = sanitizeUTF8Interface(value)
+		}
+		return result
+	case []interface{}:
+		result := make([]interface{}, len(v))
+		for i, value := range v {
+			result[i] = sanitizeUTF8Interface(value)
+		}
+		return result
+	case map[interface{}]interface{}:
+		result := make(map[string]interface{})
+		for key, value := range v {
+			keyStr := fmt.Sprintf("%v", key)
+			result[sanitizeUTF8String(keyStr)] = sanitizeUTF8Interface(value)
+		}
+		return result
+	default:
+		// For other types (int, float, bool, etc.), return as-is
+		return v
+	}
+}
+
+// sanitizeUTF8String removes or replaces invalid UTF-8 sequences in a string
+func sanitizeUTF8String(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+
+	// If string contains invalid UTF-8, clean it
+	var result strings.Builder
+	result.Grow(len(s))
+
+	for _, r := range s {
+		if r == utf8.RuneError {
+			// Replace invalid UTF-8 sequences with a replacement character
+			result.WriteRune('\uFFFD')
+		} else {
+			result.WriteRune(r)
+		}
+	}
+
+	return result.String()
 }

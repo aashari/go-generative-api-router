@@ -94,7 +94,9 @@ The service has undergone comprehensive enterprise-grade improvements:
 tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
 # 4. Run full verification
 make ci-check
-# 5. Only commit when user explicitly requests it
+# 5. Check git status before attempting commits
+git status -s | cat
+# 6. Only commit when user explicitly requests it
 ```
 
 ## Multi-Vendor Architecture
@@ -703,7 +705,10 @@ tail -20 logs/server.log | grep -E "(error|Error|failed|Failed)" | cat
 # 5. Verify multi-vendor functionality
 curl -X POST http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq '.model' | cat
 
-# 6. Commit when ready (see Git Workflow section)
+# 6. Check git status before commits
+git status -s | cat
+
+# 7. Commit when ready (see Git Workflow section)
 ```
 
 ### Sequential Thinking Approach
@@ -744,9 +749,47 @@ When approaching complex development tasks, use this systematic methodology:
    tail -20 logs/server.log | cat
    
    # Verify functionality with both vendors
-curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
-curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+   curl -X POST "http://localhost:8082/v1/chat/completions?vendor=gemini" -H "Content-Type: application/json" -d '{"model":"test","messages":[{"role":"user","content":"test"}]}' | jq | cat
+   
+   # Check git status before any commits
+   git status -s | cat
    ```
+
+### Testing Best Practices
+
+When writing tests, especially for string manipulation or truncation:
+
+1. **Always verify exact output first**:
+   ```bash
+   # For string truncation, test the exact output
+   echo -n "Your test string" | head -c 200 | cat
+   
+   # For Go string slicing
+   go run -e 'fmt.Println("test string"[:5])' | cat
+   ```
+
+2. **Write tests after verifying behavior**:
+   - Run the function with sample data first
+   - Capture the exact output
+   - Use that output in your test expectations
+
+3. **Test across all environments**:
+   ```bash
+   # Test with different environment settings
+   ENVIRONMENT=production ./build/server > logs/prod.log 2>&1 & sleep 3 && curl http://localhost:8082/health | cat
+   ENVIRONMENT=development ./build/server > logs/dev.log 2>&1 & sleep 3 && curl http://localhost:8082/health | cat
+   ENVIRONMENT=local ./build/server > logs/local.log 2>&1 & sleep 3 && curl http://localhost:8082/health | cat
+   ```
+
+### Database Feature Development
+
+When implementing database-related features:
+
+1. **Environment-Aware Implementation**: Always use environment variables to determine behavior
+2. **Test Across Environments**: Verify functionality works in production, development, and local environments
+3. **Non-Destructive Operations**: Database modifications should not affect API responses
+4. **Asynchronous Logging**: Use goroutines for database operations to avoid blocking API responses
 
 ## AWS Deployment & Monitoring
 
@@ -1311,6 +1354,23 @@ START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log
     *   Works with both public URLs and protected URLs requiring authentication
     *   Monitor logs for image processing details: `grep "image" logs/server.log`
     *   Verify concurrent processing works with multiple images
+*   **Test Writing for String Operations**: When writing tests involving string truncation or manipulation:
+    *   Always verify the exact output first using command line: `echo -n "string" | head -c 200 | cat`
+    *   Use the actual output in your test expectations
+    *   Test edge cases like strings exactly at the limit
+    *   Remember Go's string slicing behavior: `str[:200]` takes first 200 characters
+*   **Git Status Checks**: Always check `git status -s` before attempting to commit:
+    *   Avoid confusion about already-committed changes
+    *   Verify which files have been modified
+    *   Ensure you're on the correct branch
+*   **Multi-Line Content Creation**: When creating files with multi-line content:
+    *   Use the file creation tool instead of shell heredocs (`cat > file << EOF`)
+    *   Shell heredocs in terminal commands can cause parsing errors
+    *   For temporary files, use the appropriate file creation/editing tools
+*   **Environment-Aware Testing**: When implementing features that depend on environment:
+    *   Test with `ENVIRONMENT=production`, `ENVIRONMENT=development`, and `ENVIRONMENT=local`
+    *   Verify the feature works consistently across all environments
+    *   Use environment detection functions that provide sensible defaults
 
 ---
 
@@ -1588,43 +1648,43 @@ git tag -a $NEW_VERSION -m "$NEW_VERSION: Brief release title" \
 # 1. Push the tag to remote
 git push origin $NEW_VERSION | cat
 
-# 2. Create release notes file (temp file for GitHub release)
-cat > temp-release-notes.md << 'EOF'
-## ✨ What's New
-
-### Features
-- New feature descriptions with details
-- Enhanced functionality explanations
-
-### Improvements  
-- Performance optimizations
-- Code quality enhancements
-- Better error handling
-
-### Bug Fixes
-- Fixed specific issues
-- Resolved edge cases
-
-### Technical Changes
-- Updated dependencies
-- Improved test coverage
-- Enhanced documentation
-
-## 🔧 Migration Guide
-
-If there are breaking changes, provide migration instructions here.
-
-## 📊 Impact
-
-- Performance improvements
-- Reduced memory usage
-- Better reliability
-
-## 🧪 Verification
-
-- ✅ Manual verification completed
-- ✅ Performance verified
-EOF
+# 2. Create release notes file using appropriate file creation tool
+# Note: Use file creation tool, not shell heredoc, to avoid parsing errors
+# Create temp-release-notes.md with the following content:
+# ## ✨ What's New
+# 
+# ### Features
+# - New feature descriptions with details
+# - Enhanced functionality explanations
+# 
+# ### Improvements  
+# - Performance optimizations
+# - Code quality enhancements
+# - Better error handling
+# 
+# ### Bug Fixes
+# - Fixed specific issues
+# - Resolved edge cases
+# 
+# ### Technical Changes
+# - Updated dependencies
+# - Improved test coverage
+# - Enhanced documentation
+# 
+# ## 🔧 Migration Guide
+# 
+# If there are breaking changes, provide migration instructions here.
+# 
+# ## 📊 Impact
+# 
+# - Performance improvements
+# - Reduced memory usage
+# - Better reliability
+# 
+# ## 🧪 Verification
+# 
+# - ✅ Manual verification completed
+# - ✅ Performance verified
 
 # 3. Create and publish GitHub release
 gh release create $NEW_VERSION --title "🚀 Generative API Router $NEW_VERSION" --notes-file temp-release-notes.md | cat
