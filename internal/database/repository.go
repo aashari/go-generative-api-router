@@ -23,7 +23,7 @@ func NewRepository() (*Repository, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database connection: %w", err)
 	}
-	
+
 	return &Repository{
 		conn: conn,
 		db:   conn.Database,
@@ -38,7 +38,7 @@ type RequestLogRepository struct {
 // GetRequestLogRepository returns a repository for request logs
 func (r *Repository) GetRequestLogRepository() *RequestLogRepository {
 	return &RequestLogRepository{
-		collection: r.conn.GetCollection("request_logs"),
+		collection: r.conn.GetCollection("request-logs"),
 	}
 }
 
@@ -46,12 +46,12 @@ func (r *Repository) GetRequestLogRepository() *RequestLogRepository {
 func (rlr *RequestLogRepository) InsertRequestLog(ctx context.Context, log *RequestLog) error {
 	log.CreatedAt = time.Now()
 	log.UpdatedAt = time.Now()
-	
+
 	_, err := rlr.collection.InsertOne(ctx, log)
 	if err != nil {
 		return fmt.Errorf("failed to insert request log: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -61,7 +61,7 @@ func (rlr *RequestLogRepository) GetRequestLogByID(ctx context.Context, id strin
 	if err != nil {
 		return nil, fmt.Errorf("invalid object ID: %w", err)
 	}
-	
+
 	var log RequestLog
 	err = rlr.collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&log)
 	if err != nil {
@@ -70,7 +70,7 @@ func (rlr *RequestLogRepository) GetRequestLogByID(ctx context.Context, id strin
 		}
 		return nil, fmt.Errorf("failed to get request log: %w", err)
 	}
-	
+
 	return &log, nil
 }
 
@@ -84,7 +84,7 @@ func (rlr *RequestLogRepository) GetRequestLogByRequestID(ctx context.Context, r
 		}
 		return nil, fmt.Errorf("failed to get request log by request ID: %w", err)
 	}
-	
+
 	return &log, nil
 }
 
@@ -94,13 +94,13 @@ func (rlr *RequestLogRepository) GetRecentRequestLogs(ctx context.Context, limit
 		SetSort(bson.D{{Key: "timestamp", Value: -1}}).
 		SetLimit(limit).
 		SetSkip(offset)
-	
+
 	cursor, err := rlr.collection.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find request logs: %w", err)
 	}
 	defer cursor.Close(ctx)
-	
+
 	var logs []*RequestLog
 	for cursor.Next(ctx) {
 		var log RequestLog
@@ -109,11 +109,11 @@ func (rlr *RequestLogRepository) GetRecentRequestLogs(ctx context.Context, limit
 		}
 		logs = append(logs, &log)
 	}
-	
+
 	if err := cursor.Err(); err != nil {
 		return nil, fmt.Errorf("cursor error: %w", err)
 	}
-	
+
 	return logs, nil
 }
 
@@ -122,13 +122,13 @@ func (rlr *RequestLogRepository) GetRequestLogsByVendor(ctx context.Context, ven
 	opts := options.Find().
 		SetSort(bson.D{{Key: "timestamp", Value: -1}}).
 		SetLimit(limit)
-	
+
 	cursor, err := rlr.collection.Find(ctx, bson.M{"selected_vendor": vendor}, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find request logs by vendor: %w", err)
 	}
 	defer cursor.Close(ctx)
-	
+
 	var logs []*RequestLog
 	for cursor.Next(ctx) {
 		var log RequestLog
@@ -137,7 +137,7 @@ func (rlr *RequestLogRepository) GetRequestLogsByVendor(ctx context.Context, ven
 		}
 		logs = append(logs, &log)
 	}
-	
+
 	return logs, nil
 }
 
@@ -149,17 +149,17 @@ func (rlr *RequestLogRepository) GetRequestLogsByTimeRange(ctx context.Context, 
 			"$lte": end,
 		},
 	}
-	
+
 	opts := options.Find().
 		SetSort(bson.D{{Key: "timestamp", Value: -1}}).
 		SetLimit(limit)
-	
+
 	cursor, err := rlr.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find request logs by time range: %w", err)
 	}
 	defer cursor.Close(ctx)
-	
+
 	var logs []*RequestLog
 	for cursor.Next(ctx) {
 		var log RequestLog
@@ -168,7 +168,7 @@ func (rlr *RequestLogRepository) GetRequestLogsByTimeRange(ctx context.Context, 
 		}
 		logs = append(logs, &log)
 	}
-	
+
 	return logs, nil
 }
 
@@ -188,12 +188,12 @@ func (r *Repository) GetVendorMetricsRepository() *VendorMetricsRepository {
 func (vmr *VendorMetricsRepository) InsertVendorMetrics(ctx context.Context, metrics *VendorMetrics) error {
 	metrics.CreatedAt = time.Now()
 	metrics.UpdatedAt = time.Now()
-	
+
 	_, err := vmr.collection.InsertOne(ctx, metrics)
 	if err != nil {
 		return fmt.Errorf("failed to insert vendor metrics: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -206,15 +206,15 @@ func (vmr *VendorMetricsRepository) GetVendorMetricsByPeriod(ctx context.Context
 		"period_start": bson.M{"$gte": start},
 		"period_end":   bson.M{"$lte": end},
 	}
-	
+
 	opts := options.Find().SetSort(bson.D{{Key: "period_start", Value: -1}})
-	
+
 	cursor, err := vmr.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find vendor metrics: %w", err)
 	}
 	defer cursor.Close(ctx)
-	
+
 	var metrics []*VendorMetrics
 	for cursor.Next(ctx) {
 		var metric VendorMetrics
@@ -223,7 +223,7 @@ func (vmr *VendorMetricsRepository) GetVendorMetricsByPeriod(ctx context.Context
 		}
 		metrics = append(metrics, &metric)
 	}
-	
+
 	return metrics, nil
 }
 
@@ -242,12 +242,12 @@ func (r *Repository) GetSystemHealthRepository() *SystemHealthRepository {
 // InsertSystemHealth inserts new system health data
 func (shr *SystemHealthRepository) InsertSystemHealth(ctx context.Context, health *SystemHealth) error {
 	health.CreatedAt = time.Now()
-	
+
 	_, err := shr.collection.InsertOne(ctx, health)
 	if err != nil {
 		return fmt.Errorf("failed to insert system health: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -255,7 +255,7 @@ func (shr *SystemHealthRepository) InsertSystemHealth(ctx context.Context, healt
 func (shr *SystemHealthRepository) GetLatestSystemHealth(ctx context.Context, environment string) (*SystemHealth, error) {
 	filter := bson.M{"environment": environment}
 	opts := options.FindOne().SetSort(bson.D{{Key: "timestamp", Value: -1}})
-	
+
 	var health SystemHealth
 	err := shr.collection.FindOne(ctx, filter, opts).Decode(&health)
 	if err != nil {
@@ -264,7 +264,7 @@ func (shr *SystemHealthRepository) GetLatestSystemHealth(ctx context.Context, en
 		}
 		return nil, fmt.Errorf("failed to get latest system health: %w", err)
 	}
-	
+
 	return &health, nil
 }
 
@@ -283,14 +283,14 @@ func (r *Repository) GetUserSessionRepository() *UserSessionRepository {
 // UpsertUserSession creates or updates a user session
 func (usr *UserSessionRepository) UpsertUserSession(ctx context.Context, session *UserSession) error {
 	filter := bson.M{"session_id": session.SessionID}
-	
+
 	update := bson.M{
 		"$set": bson.M{
-			"user_agent":    session.UserAgent,
-			"client_ip":     session.ClientIP,
-			"environment":   session.Environment,
-			"last_seen":     time.Now(),
-			"updated_at":    time.Now(),
+			"user_agent":  session.UserAgent,
+			"client_ip":   session.ClientIP,
+			"environment": session.Environment,
+			"last_seen":   time.Now(),
+			"updated_at":  time.Now(),
 		},
 		"$inc": bson.M{
 			"request_count": 1,
@@ -304,14 +304,14 @@ func (usr *UserSessionRepository) UpsertUserSession(ctx context.Context, session
 			"created_at": time.Now(),
 		},
 	}
-	
+
 	opts := options.Update().SetUpsert(true)
-	
+
 	_, err := usr.collection.UpdateOne(ctx, filter, update, opts)
 	if err != nil {
 		return fmt.Errorf("failed to upsert user session: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -320,17 +320,17 @@ func (usr *UserSessionRepository) GetActiveUserSessions(ctx context.Context, sin
 	filter := bson.M{
 		"last_seen": bson.M{"$gte": since},
 	}
-	
+
 	opts := options.Find().
 		SetSort(bson.D{{Key: "last_seen", Value: -1}}).
 		SetLimit(limit)
-	
+
 	cursor, err := usr.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find active user sessions: %w", err)
 	}
 	defer cursor.Close(ctx)
-	
+
 	var sessions []*UserSession
 	for cursor.Next(ctx) {
 		var session UserSession
@@ -339,7 +339,7 @@ func (usr *UserSessionRepository) GetActiveUserSessions(ctx context.Context, sin
 		}
 		sessions = append(sessions, &session)
 	}
-	
+
 	return sessions, nil
 }
 
@@ -353,23 +353,23 @@ func (r *Repository) CreateGenerativeVendorLog(ctx context.Context, log *Generat
 	if log.CreatedAt.IsZero() {
 		log.CreatedAt = time.Now()
 	}
-	
-	collection := r.db.Collection("generative_vendor_logs")
+
+	collection := r.db.Collection("generative-usages")
 	_, err := collection.InsertOne(ctx, log)
 	if err != nil {
 		return fmt.Errorf("failed to create generative vendor log: %w", err)
 	}
-	
+
 	return nil
 }
 
 // GetGenerativeVendorLogs retrieves generative vendor logs with pagination and filtering
 func (r *Repository) GetGenerativeVendorLogs(ctx context.Context, filter GenerativeVendorLogFilter) ([]GenerativeVendorLog, error) {
-	collection := r.db.Collection("generative_vendor_logs")
-	
+	collection := r.db.Collection("generative-usages")
+
 	// Build MongoDB filter
 	mongoFilter := bson.M{}
-	
+
 	if filter.Vendor != "" {
 		mongoFilter["vendor"] = filter.Vendor
 	}
@@ -392,36 +392,36 @@ func (r *Repository) GetGenerativeVendorLogs(ctx context.Context, filter Generat
 		}
 		mongoFilter["created_at"] = timeFilter
 	}
-	
+
 	// Set up find options
 	findOptions := options.Find()
 	findOptions.SetSort(bson.D{{Key: "created_at", Value: -1}}) // Sort by newest first
-	
+
 	if filter.Limit > 0 {
 		findOptions.SetLimit(int64(filter.Limit))
 	}
 	if filter.Skip > 0 {
 		findOptions.SetSkip(int64(filter.Skip))
 	}
-	
+
 	cursor, err := collection.Find(ctx, mongoFilter, findOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find generative vendor logs: %w", err)
 	}
 	defer cursor.Close(ctx)
-	
+
 	var logs []GenerativeVendorLog
 	if err = cursor.All(ctx, &logs); err != nil {
 		return nil, fmt.Errorf("failed to decode generative vendor logs: %w", err)
 	}
-	
+
 	return logs, nil
 }
 
 // GetGenerativeVendorLogByID retrieves a specific generative vendor log by ID
 func (r *Repository) GetGenerativeVendorLogByID(ctx context.Context, id primitive.ObjectID) (*GenerativeVendorLog, error) {
-	collection := r.db.Collection("generative_vendor_logs")
-	
+	collection := r.db.Collection("generative-usages")
+
 	var log GenerativeVendorLog
 	err := collection.FindOne(ctx, bson.M{"_id": id}).Decode(&log)
 	if err != nil {
@@ -430,17 +430,17 @@ func (r *Repository) GetGenerativeVendorLogByID(ctx context.Context, id primitiv
 		}
 		return nil, fmt.Errorf("failed to get generative vendor log: %w", err)
 	}
-	
+
 	return &log, nil
 }
 
 // CountGenerativeVendorLogs returns the count of generative vendor logs matching the filter
 func (r *Repository) CountGenerativeVendorLogs(ctx context.Context, filter GenerativeVendorLogFilter) (int64, error) {
-	collection := r.db.Collection("generative_vendor_logs")
-	
+	collection := r.db.Collection("generative-usages")
+
 	// Build MongoDB filter (same logic as GetGenerativeVendorLogs)
 	mongoFilter := bson.M{}
-	
+
 	if filter.Vendor != "" {
 		mongoFilter["vendor"] = filter.Vendor
 	}
@@ -463,12 +463,12 @@ func (r *Repository) CountGenerativeVendorLogs(ctx context.Context, filter Gener
 		}
 		mongoFilter["created_at"] = timeFilter
 	}
-	
+
 	count, err := collection.CountDocuments(ctx, mongoFilter)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count generative vendor logs: %w", err)
 	}
-	
+
 	return count, nil
 }
 
@@ -482,4 +482,4 @@ type GenerativeVendorLogFilter struct {
 	EndTime     time.Time `json:"end_time,omitempty"`
 	Limit       int       `json:"limit,omitempty"`
 	Skip        int       `json:"skip,omitempty"`
-} 
+}

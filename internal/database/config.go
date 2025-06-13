@@ -104,4 +104,4 @@ func (c *DatabaseConfig) MaskSensitiveData() *DatabaseConfig {
 		}
 	}
 	return &masked
-} 
+}

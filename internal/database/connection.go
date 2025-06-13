@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -43,7 +44,7 @@ func newConnection(config *DatabaseConfig) (*Connection, error) {
 
 	// Create client options with URI (URI contains all connection details including auth)
 	clientOptions := options.Client().ApplyURI(config.URI)
-	
+
 	// Set application name for connection tracking
 	if config.AppName != "" {
 		clientOptions.SetAppName(config.AppName)
@@ -51,7 +52,7 @@ func newConnection(config *DatabaseConfig) (*Connection, error) {
 
 	// Log connection attempt (with masked sensitive data)
 	maskedConfig := config.MaskSensitiveData()
-	log.Printf("Connecting to MongoDB database: %s (URI: %s)", 
+	log.Printf("Connecting to MongoDB database: %s (URI: %s)",
 		maskedConfig.DatabaseName, maskedConfig.URI)
 
 	// Connect to MongoDB
@@ -117,45 +118,47 @@ func (c *Connection) GetCollection(name string) *mongo.Collection {
 
 // createIndexes creates database indexes for performance optimization
 func (c *Connection) createIndexes(ctx context.Context) error {
-	// For now, we'll create basic indexes for common collections
-	// This can be expanded based on the application's data models
+	// Create indexes for generative-usages collection
+	generativeUsagesCollection := c.GetCollection("generative-usages")
 
-	// Example: Create indexes for request logs collection
-	requestLogsCollection := c.GetCollection("request_logs")
-	
 	// Index for timestamp-based queries
 	timestampIndex := mongo.IndexModel{
-		Keys: map[string]interface{}{
-			"timestamp": -1, // Descending order for recent-first queries
-		},
-		Options: options.Index().SetName("timestamp_desc").SetBackground(true),
+		Keys:    bson.D{{Key: "created_at", Value: -1}}, // Descending order for recent-first queries
+		Options: options.Index().SetName("created_at_desc").SetBackground(true),
 	}
 
 	// Index for vendor-based queries
 	vendorIndex := mongo.IndexModel{
-		Keys: map[string]interface{}{
-			"vendor": 1,
-			"timestamp": -1,
-		},
-		Options: options.Index().SetName("vendor_timestamp_desc").SetBackground(true),
+		Keys:    bson.D{{Key: "vendor", Value: 1}, {Key: "created_at", Value: -1}},
+		Options: options.Index().SetName("vendor_created_at_desc").SetBackground(true),
 	}
 
 	// Index for request ID lookups
 	requestIdIndex := mongo.IndexModel{
-		Keys: map[string]interface{}{
-			"request_id": 1,
-		},
-		Options: options.Index().SetName("request_id").SetBackground(true).SetUnique(true),
+		Keys:    bson.D{{Key: "request_id", Value: 1}},
+		Options: options.Index().SetName("request_id").SetBackground(true),
 	}
 
-	indexes := []mongo.IndexModel{timestampIndex, vendorIndex, requestIdIndex}
+	// Index for requested_at timestamp
+	requestedAtIndex := mongo.IndexModel{
+		Keys:    bson.D{{Key: "requested_at", Value: -1}},
+		Options: options.Index().SetName("requested_at_desc").SetBackground(true),
+	}
 
-	_, err := requestLogsCollection.Indexes().CreateMany(ctx, indexes)
+	// Index for status code queries
+	statusCodeIndex := mongo.IndexModel{
+		Keys:    bson.D{{Key: "status_code", Value: 1}, {Key: "created_at", Value: -1}},
+		Options: options.Index().SetName("status_code_created_at_desc").SetBackground(true),
+	}
+
+	indexes := []mongo.IndexModel{timestampIndex, vendorIndex, requestIdIndex, requestedAtIndex, statusCodeIndex}
+
+	_, err := generativeUsagesCollection.Indexes().CreateMany(ctx, indexes)
 	if err != nil {
-		return fmt.Errorf("failed to create request_logs indexes: %w", err)
+		return fmt.Errorf("failed to create generative-usages indexes: %w", err)
 	}
 
-	log.Printf("Successfully created database indexes for collection: request_logs")
+	log.Printf("Successfully created database indexes for collection: generative-usages")
 	return nil
 }
 
@@ -173,4 +176,4 @@ func (c *Connection) HealthCheck() error {
 	}
 
 	return nil
-} 
+}

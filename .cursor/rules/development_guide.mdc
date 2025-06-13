@@ -201,7 +201,7 @@ AWS_REGION=ap-southeast-3         # AWS region
 MONGODB_URI=mongodb://localhost:27017  # MongoDB connection string
 MONGODB_USER=                     # MongoDB username (optional)
 MONGODB_PASSWORD=<your-password>  # MongoDB password (optional)
-DB_LOGGING_ENABLED=true          # Enable database logging
+# Database logging is automatically enabled when MONGODB_URI is provided
 
 # The application automatically loads from .env file at startup
 # Supports multiple locations: .env, configs/.env, ../.env, ~/.env
@@ -512,11 +512,10 @@ grep "Even distribution selected combination" logs/server.log | tail -20 | cat
 
 The Generative API Router includes comprehensive MongoDB integration for:
 
-- **Request Logging**: Complete API request/response logging
+- **Usage Logging**: Complete API request/response logging in `generative-usages` collection
 - **Vendor Metrics**: Aggregated vendor performance analytics
 - **System Health**: Database-backed health monitoring
-- **User Sessions**: Session tracking and management
-- **Vendor Logs**: Complete vendor request/response data (unobfuscated)
+- **Complete Payloads**: Request and response stored as objects (not JSON strings)
 
 ### **Database Connection Management**
 
@@ -557,19 +556,15 @@ mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); print('Connected to DB: ' 
 ```bash
 # Document counts with database verification
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); print('Database: ' + db.getName()); printjson({request_logs: db.request_logs.countDocuments(), vendor_metrics: db.vendor_metrics.countDocuments(), system_health: db.system_health.countDocuments(), user_sessions: db.user_sessions.countDocuments(), generative_vendor_logs: db.generative_vendor_logs.countDocuments()})" | cat
+  "use('$DB_NAME'); print('Database: ' + db.getName()); printjson({generative_usages: db['generative-usages'].countDocuments()})" | cat
 
-# Recent request logs
+# Recent usage logs
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); db.request_logs.find({}, {_id: 1, method: 1, path: 1, status_code: 1, created_at: 1}).sort({created_at: -1}).limit(5)" | cat
-
-# Recent vendor logs (complete request/response data)
-mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); db.generative_vendor_logs.find({}, {_id: 1, model: 1, vendor: 1, created_at: 1}).sort({created_at: -1}).limit(5)" | cat
+  "use('$DB_NAME'); db['generative-usages'].find({}, {_id: 1, model: 1, vendor: 1, status_code: 1, created_at: 1}).sort({created_at: -1}).limit(5)" | cat
 
 # Search for specific request patterns
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); db.request_logs.find({path: /chat\/completions/i}, {_id: 1, method: 1, path: 1, status_code: 1, created_at: 1, user_agent: 1})" | cat
+  "use('$DB_NAME'); db['generative-usages'].find({vendor: 'openai'}, {_id: 1, model: 1, status_code: 1, created_at: 1})" | cat
 ```
 
 **Development/Production Database Operations**
@@ -653,36 +648,40 @@ mongosh "$MONGO_URI" --quiet --eval \
 - **Always use `use('database-name')`** to ensure correct database context
 - **Verify database name** with `db.getName()` before operations
 - **Use environment-specific database names**: `loc-service-name`, `dev-service-name`, `prod-service-name`
+- **Collection naming**: Use hyphens instead of underscores (e.g., `generative-usages` not `generative_usages`)
+- **Store payloads as objects**: Request/response payloads should be stored as MongoDB objects, not JSON strings
+- **Single collection design**: Only use `generative-usages` collection for all vendor request/response logging
 - **Limit query results** with `.limit()` to avoid overwhelming output
 - **Include `_id` field** in projections for reference
 - **Use `ObjectId()` constructor** for ID-based queries
 - **Never run destructive operations** without verification on production
-- **Monitor database logging** via `DB_LOGGING_ENABLED` environment variable
+- **Automatic database logging**: Enabled when `MONGODB_URI` is provided (no `DB_LOGGING_ENABLED` needed)
 - **Use indexes** for frequently queried fields (automatically created on startup)
+- **Log all vendor responses**: Both success and error responses are logged to database
 
 ### **Database Schema Overview**
 
-**Collections:**
+**Collection:**
 
-1. **`request_logs`**: Complete API request/response logging
-   - Fields: `method`, `path`, `status_code`, `response_time_ms`, `user_agent`, `created_at`
-   - Indexes: `created_at`, `path`, `status_code`
-
-2. **`vendor_metrics`**: Aggregated vendor performance metrics
-   - Fields: `vendor`, `request_count`, `avg_response_time_ms`, `error_count`, `date`
-   - Indexes: `vendor`, `date`
-
-3. **`system_health`**: System health monitoring snapshots
-   - Fields: `status`, `database_status`, `uptime_seconds`, `version`, `created_at`
-   - Indexes: `created_at`, `status`
-
-4. **`user_sessions`**: User session tracking
-   - Fields: `session_id`, `user_agent`, `ip_address`, `created_at`, `last_activity`
-   - Indexes: `session_id`, `created_at`
-
-5. **`generative_vendor_logs`**: Complete vendor request/response data (unobfuscated)
-   - Fields: `vendor`, `model`, `credential_used`, `request_payload`, `response_payload`, `response_time_ms`, `created_at`
-   - Indexes: `created_at`, `vendor`, `model`
+**`generative-usages`**: Complete vendor request/response logging
+- Structure:
+  ```json
+  {
+    "credential": { "platform": "...", "type": "...", "value": "..." },
+    "model": { "vendor": "...", "model": "...", "config": {...} },
+    "payload": {
+      "request": { /* full request object */ },
+      "response": { /* full response object */ }
+    },
+    "requested_at": "timestamp",
+    "responded_at": "timestamp",
+    "created_at": "timestamp",
+    "vendor": "...",
+    "request_id": "...",
+    "status_code": 200
+  }
+  ```
+- Indexes: `created_at`, `vendor`, `request_id`, `requested_at`, `status_code`
 
 ## Development Workflow
 

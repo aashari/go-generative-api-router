@@ -102,9 +102,10 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, selection *selector.VendorSelection, body []byte,
 	creds []config.Credential, models []config.VendorModel, apiClient APIClientInterface, modelSelector selector.Selector, originalModel string) error {
 
-	// Enrich context with vendor information
+	// Enrich context with vendor information and models
 	ctx := context.WithValue(r.Context(), logger.VendorKey, selection.Vendor)
 	ctx = context.WithValue(ctx, logger.ModelKey, selection.Model)
+	ctx = context.WithValue(ctx, "vendor_models", models)
 	r = r.WithContext(ctx)
 
 	logger.DebugCtx(ctx, "Vendor and model selected",

@@ -23,27 +23,40 @@ type RequestLogger struct {
 
 // NewRequestLogger creates a new request logger
 func NewRequestLogger() *RequestLogger {
-	// Check if database logging is enabled
-	enabled := strings.ToLower(os.Getenv("DB_LOGGING_ENABLED")) == "true"
-	
 	environment := os.Getenv("ENVIRONMENT")
 	if environment == "" {
 		environment = "development"
 	}
-	
+
 	version := os.Getenv("VERSION")
 	if version == "" {
 		version = "unknown"
 	}
 
+	// Check if MongoDB URI is provided
+	mongoURI := os.Getenv("MONGODB_URI")
+	enabled := false
 	var repo *Repository
-	if enabled {
+
+	if mongoURI != "" {
+		// Try to initialize repository and connect to MongoDB
 		var err error
 		repo, err = NewRepository()
 		if err != nil {
-			log.Printf("Warning: Failed to initialize database repository for logging: %v", err)
+			log.Printf("Warning: MongoDB URI provided but failed to initialize database repository: %v", err)
 			enabled = false
+		} else {
+			// Test the connection
+			if repo.conn != nil && repo.conn.IsConnected() {
+				log.Printf("Database logging enabled: Successfully connected to MongoDB")
+				enabled = true
+			} else {
+				log.Printf("Warning: MongoDB URI provided but connection failed")
+				enabled = false
+			}
 		}
+	} else {
+		log.Printf("Database logging disabled: No MongoDB URI provided or using default local URI")
 	}
 
 	return &RequestLogger{
@@ -108,35 +121,35 @@ func (rl *RequestLogger) LogRequest(
 
 		// Create request log
 		requestLog := &RequestLog{
-			RequestID:   requestID,
-			Timestamp:   time.Now(),
-			Method:      r.Method,
-			Path:        r.URL.Path,
-			UserAgent:   r.Header.Get("User-Agent"),
-			ClientIP:    clientIP,
-			Headers:     headers,
-			
-			OriginalModel:      originalModel,
-			RequestBody:        requestBody,
-			
+			RequestID: requestID,
+			Timestamp: time.Now(),
+			Method:    r.Method,
+			Path:      r.URL.Path,
+			UserAgent: r.Header.Get("User-Agent"),
+			ClientIP:  clientIP,
+			Headers:   headers,
+
+			OriginalModel: originalModel,
+			RequestBody:   requestBody,
+
 			SelectedVendor:     selectedVendor,
 			SelectedModel:      selectedModel,
 			SelectedCredential: "", // Could be added if needed
-			
+
 			StatusCode:   statusCode,
 			ResponseBody: responseBody,
 			DurationMs:   duration.Milliseconds(),
-			
+
 			ErrorMessage: errorMessage,
 			ErrorType:    errorType,
-			
+
 			IsStreaming:  isStreaming,
 			StreamChunks: streamChunks,
-			
+
 			PromptTokens:     promptTokens,
 			CompletionTokens: completionTokens,
 			TotalTokens:      totalTokens,
-			
+
 			Environment: rl.environment,
 			Version:     rl.version,
 			Metadata:    make(map[string]interface{}),
@@ -170,17 +183,17 @@ func (rl *RequestLogger) LogSystemHealth(
 		health := &SystemHealth{
 			Timestamp:   time.Now(),
 			Environment: rl.environment,
-			
+
 			ServiceStatus:  serviceStatus,
 			DatabaseStatus: databaseStatus,
 			VendorStatuses: vendorStatuses,
-			
+
 			RequestsPerMinute: requestsPerMinute,
 			AvgResponseTime:   avgResponseTime,
 			ErrorRate:         errorRate,
-			
+
 			CircuitBreakerStates: circuitBreakerStates,
-			
+
 			Version:  rl.version,
 			Metadata: make(map[string]interface{}),
 		}
@@ -240,7 +253,7 @@ func isSensitiveHeader(header string) bool {
 		"x-auth-token",
 		"bearer",
 	}
-	
+
 	headerLower := strings.ToLower(header)
 	for _, sensitive := range sensitiveHeaders {
 		if strings.Contains(headerLower, sensitive) {
@@ -282,18 +295,18 @@ func (rl *RequestLogger) MaskSensitiveData(data string) string {
 
 // LogGenerativeVendorRequest logs complete vendor request and response data
 // This function stores full request/response payloads without obfuscation or truncation
-func LogGenerativeVendorRequest(ctx context.Context, vendorLog GenerativeVendorLog) {
+func LogGenerativeVendorRequest(ctx context.Context, vendorLog GenerativeUsage) {
 	// Skip if database logging is disabled
 	if !isDBLoggingEnabled() {
 		return
 	}
-	
+
 	// Use goroutine for non-blocking logging
 	go func() {
 		// Create a new context with timeout for the database operation
 		dbCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		
+
 		// Get repository
 		repo, err := NewRepository()
 		if err != nil {
@@ -301,12 +314,12 @@ func LogGenerativeVendorRequest(ctx context.Context, vendorLog GenerativeVendorL
 			fmt.Printf("Failed to create repository for vendor logging: %v\n", err)
 			return
 		}
-		
+
 		// Set environment if not already set
 		if vendorLog.Environment == "" {
 			vendorLog.Environment = getEnvironment()
 		}
-		
+
 		// Create the log entry
 		err = repo.CreateGenerativeVendorLog(dbCtx, &vendorLog)
 		if err != nil {
@@ -314,10 +327,10 @@ func LogGenerativeVendorRequest(ctx context.Context, vendorLog GenerativeVendorL
 			fmt.Printf("Failed to log generative vendor request: %v\n", err)
 			return
 		}
-		
+
 		// Optional: Log success for debugging
 		if isVerboseLoggingEnabled() {
-			fmt.Printf("Successfully logged vendor request: %s to %s model %s\n", 
+			fmt.Printf("Successfully logged vendor request: %s to %s model %s\n",
 				vendorLog.RequestID, vendorLog.Vendor, vendorLog.Model)
 		}
 	}()
@@ -330,7 +343,18 @@ func isVerboseLoggingEnabled() bool {
 
 // isDBLoggingEnabled checks if database logging is enabled
 func isDBLoggingEnabled() bool {
-	return os.Getenv("DB_LOGGING_ENABLED") == "true"
+	mongoURI := os.Getenv("MONGODB_URI")
+	if mongoURI == "" || mongoURI == "mongodb://localhost:27017" {
+		return false
+	}
+
+	// Try to get a connection to verify it's working
+	conn, err := GetConnection()
+	if err != nil {
+		return false
+	}
+
+	return conn.IsConnected()
 }
 
 // getEnvironment returns the current environment
@@ -340,4 +364,4 @@ func getEnvironment() string {
 		env = "development"
 	}
 	return env
-} 
+}
