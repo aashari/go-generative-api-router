@@ -38,22 +38,118 @@ func ProcessResponse(responseBody []byte, vendor string, contentEncoding string,
 		return nil, err
 	}
 
-	// 2. Unwrap array responses (Gemini errors)
-	unwrapped := unwrapArrayResponse(decompressed)
+	// 2. Check if response is an array
+	trimmed := bytes.TrimSpace(decompressed)
+	if bytes.HasPrefix(trimmed, []byte("[")) {
+		// Handle array response
+		var arrayResponse []interface{}
+		if err := json.Unmarshal(decompressed, &arrayResponse); err != nil {
+			logger.LogError(context.Background(), "response_processor", err, map[string]any{
+				"response_body_bytes": decompressed,
+				"response_size":       len(decompressed),
+				"vendor":              vendor,
+				"content_encoding":    contentEncoding,
+				"original_model":      originalModel,
+				"response_body":       string(decompressed),
+				"response_type":       "array_parse_error",
+			})
+			return decompressed, nil // Return original response on parse error
+		}
 
-	// 3. Parse JSON
+		// Log array response details
+		logger.LogWithStructure(context.Background(), logger.LevelInfo, "Received array response from vendor",
+			map[string]interface{}{
+				"vendor":         vendor,
+				"array_length":   len(arrayResponse),
+				"original_model": originalModel,
+			},
+			nil, // request
+			map[string]interface{}{
+				"array_response": arrayResponse,
+			},
+			nil) // error
+
+		// Handle different array response scenarios
+		if len(arrayResponse) == 0 {
+			// Empty array - create error response
+			errorResponse := map[string]interface{}{
+				"error": map[string]interface{}{
+					"message": "Empty response array from vendor",
+					"type":    "invalid_response_error",
+					"param":   nil,
+					"code":    "empty_array",
+				},
+			}
+			modifiedResponseBody, _ := json.Marshal(errorResponse)
+			return modifiedResponseBody, nil
+		} else if len(arrayResponse) == 1 {
+			// Single element array - unwrap it
+			if firstElem, ok := arrayResponse[0].(map[string]interface{}); ok {
+				decompressed, _ = json.Marshal(firstElem)
+			} else {
+				// First element is not an object - create error response
+				errorResponse := map[string]interface{}{
+					"error": map[string]interface{}{
+						"message": fmt.Sprintf("Invalid array element type: %T", arrayResponse[0]),
+						"type":    "invalid_response_error",
+						"param":   nil,
+						"code":    "invalid_array_element",
+					},
+				}
+				modifiedResponseBody, _ := json.Marshal(errorResponse)
+				return modifiedResponseBody, nil
+			}
+		} else {
+			// Multi-element array - check if it's a batch response or error
+			// For now, we'll take the first valid object response
+			var validResponse map[string]interface{}
+			for _, elem := range arrayResponse {
+				if obj, ok := elem.(map[string]interface{}); ok {
+					// Check if it's an error object
+					if _, hasError := obj["error"]; hasError {
+						// Use the first error
+						validResponse = obj
+						break
+					}
+					// Check if it's a valid completion response
+					if _, hasID := obj["id"]; hasID {
+						validResponse = obj
+						break
+					}
+				}
+			}
+			
+			if validResponse != nil {
+				decompressed, _ = json.Marshal(validResponse)
+			} else {
+				// No valid response found - create error
+				errorResponse := map[string]interface{}{
+					"error": map[string]interface{}{
+						"message": fmt.Sprintf("No valid response found in array of %d elements", len(arrayResponse)),
+						"type":    "invalid_response_error",
+						"param":   nil,
+						"code":    "no_valid_response",
+					},
+				}
+				modifiedResponseBody, _ := json.Marshal(errorResponse)
+				return modifiedResponseBody, nil
+			}
+		}
+	}
+
+	// 3. Parse JSON (now handles both objects and processed arrays)
 	var responseData map[string]interface{}
-	if err := json.Unmarshal(unwrapped, &responseData); err != nil {
+	if err := json.Unmarshal(decompressed, &responseData); err != nil {
 		// Log complete unmarshaling error
 		logger.LogError(context.Background(), "response_processor", err, map[string]any{
-			"response_body_bytes": unwrapped,
-			"response_size":       len(unwrapped),
+			"response_body_bytes": decompressed,
+			"response_size":       len(decompressed),
 			"vendor":              vendor,
 			"content_encoding":    contentEncoding,
 			"original_model":      originalModel,
-			"response_body":       string(unwrapped),
+			"response_body":       string(decompressed),
 		})
-		return unwrapped, nil // Return original response on parse error
+		return decompressed, nil // Return original response on parse error
 	}
 
 	// Log complete parsed response data
@@ -65,7 +161,7 @@ func ProcessResponse(responseBody []byte, vendor string, contentEncoding string,
 		},
 		nil, // request
 		map[string]interface{}{
-			"response_body": string(unwrapped),
+			"response_body": string(decompressed),
 		},
 		nil) // error
 
@@ -94,9 +190,9 @@ func ProcessResponse(responseBody []byte, vendor string, contentEncoding string,
 			"vendor":                 vendor,
 			"original_model":         originalModel,
 			"complete_response_data": responseData,
-			"original_response_body": string(unwrapped),
+			"original_response_body": string(decompressed),
 		})
-		return unwrapped, fmt.Errorf("error marshaling modified response: %w", err)
+		return decompressed, fmt.Errorf("error marshaling modified response: %w", err)
 	}
 
 	// Log complete processing completion
@@ -104,13 +200,13 @@ func ProcessResponse(responseBody []byte, vendor string, contentEncoding string,
 		map[string]interface{}{
 			"vendor":                 vendor,
 			"original_model":         originalModel,
-			"original_size":          len(unwrapped),
+			"original_size":          len(decompressed),
 			"modified_size":          len(modifiedResponseBody),
 			"complete_response_data": responseData,
 		},
 		nil, // request
 		map[string]interface{}{
-			"original_response": string(unwrapped),
+			"original_response": string(decompressed),
 			"modified_response": string(modifiedResponseBody),
 		},
 		nil) // error
@@ -175,25 +271,7 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 	return decompressedBody, nil
 }
 
-// unwrapArrayResponse handles single-element arrays (Gemini errors)
-func unwrapArrayResponse(responseBody []byte) []byte {
-	if !bytes.HasPrefix(bytes.TrimSpace(responseBody), []byte("[")) {
-		return responseBody
-	}
 
-	var arrayData []interface{}
-	if err := json.Unmarshal(responseBody, &arrayData); err == nil {
-		// If it's a single element array, unwrap it to be consistent with OpenAI
-		if len(arrayData) == 1 {
-			// Convert the single element back to JSON
-			unwrappedData, err := json.Marshal(arrayData[0])
-			if err == nil {
-				return unwrappedData
-			}
-		}
-	}
-	return responseBody
-}
 
 // addMissingIDs generates missing chat completion IDs
 func addMissingIDs(responseData map[string]interface{}) {
