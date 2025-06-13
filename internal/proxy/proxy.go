@@ -8,6 +8,7 @@ import (
 
 	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/reliability"
 	"github.com/aashari/go-generative-api-router/internal/selector"
 	"github.com/aashari/go-generative-api-router/internal/validator"
 )
@@ -97,7 +98,7 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 	}
 }
 
-// executeProxyRequestWithRetry handles the actual proxy request with optional retry for Gemini validation errors
+// executeProxyRequestWithRetry handles the actual proxy request with comprehensive retry logic
 func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, selection *selector.VendorSelection, body []byte,
 	creds []config.Credential, models []config.VendorModel, apiClient APIClientInterface, modelSelector selector.Selector, originalModel string) error {
 
@@ -172,17 +173,23 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 		},
 	})
 
-	// Use the provided API client
-	err = apiClient.SendRequest(w, r, selection, modifiedBody, originalModel)
+	// Create retry executor with default configuration
+	retryExecutor := reliability.NewRetryExecutor(nil) // Uses default config
+
+	// Execute the API request with retry logic
+	err = retryExecutor.ExecuteWithRetry(ctx, func() error {
+		return apiClient.SendRequest(w, r, selection, modifiedBody, originalModel)
+	})
+
 	if err != nil {
-		// Check if this is a retriable validation error
+		// Check if this is a retriable validation error (vendor fallback)
 		if IsRetriableValidationError(err) {
-			logger.LogWithStructure(ctx, logger.LevelWarn, "Gemini validation failed, attempting OpenAI fallback",
+			logger.LogWithStructure(ctx, logger.LevelWarn, "Vendor validation failed, attempting random fallback",
 				map[string]interface{}{
 					"original_vendor": selection.Vendor,
 					"original_model":  selection.Model,
 					"error":           err.Error(),
-					"fallback_vendor": "openai",
+					"fallback_strategy": "random_selection",
 				},
 				nil, // request
 				nil, // response
@@ -191,21 +198,18 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 					"type":    "vendor_validation_error",
 				}) // error
 
-			// Filter credentials and models for OpenAI only
-			openaiCreds := filterCredentialsByVendor(creds, "openai")
-			openaiModels := filterModelsByVendor(models, "openai")
-
-			if len(openaiCreds) == 0 || len(openaiModels) == 0 {
-				logger.ErrorCtx(ctx, "No OpenAI credentials or models available for fallback",
-					"openai_creds", len(openaiCreds),
-					"openai_models", len(openaiModels),
+			// Check if we have any credentials and models available for fallback
+			if len(creds) == 0 || len(models) == 0 {
+				logger.ErrorCtx(ctx, "No credentials or models available for fallback",
+					"total_creds", len(creds),
+					"total_models", len(models),
 				)
 				http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 				return err
 			}
 
-			// Select an OpenAI model for retry
-			var openaiSelection *selector.VendorSelection
+			// Select a different vendor/model combination for retry
+			var fallbackSelection *selector.VendorSelection
 			var retryErr error
 
 			// Try context-aware selection for retry if available
@@ -213,25 +217,26 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 				// Re-parse the payload to get context
 				payloadContext, _ := AnalyzePayload(body)
 				if payloadContext != nil {
-					openaiSelection, retryErr = contextSelector.SelectWithContext(openaiCreds, openaiModels, payloadContext)
+					fallbackSelection, retryErr = contextSelector.SelectWithContext(creds, models, payloadContext)
 				} else {
-					openaiSelection, retryErr = modelSelector.Select(openaiCreds, openaiModels)
+					fallbackSelection, retryErr = modelSelector.Select(creds, models)
 				}
 			} else {
-				openaiSelection, retryErr = modelSelector.Select(openaiCreds, openaiModels)
+				fallbackSelection, retryErr = modelSelector.Select(creds, models)
 			}
 
 			if retryErr != nil {
-				logger.ErrorCtx(ctx, "Failed to select OpenAI model for fallback", "error", retryErr)
+				logger.ErrorCtx(ctx, "Failed to select fallback vendor/model", "error", retryErr)
 				http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 				return err
 			}
 
-			logger.LogWithStructure(ctx, logger.LevelInfo, "Retrying with OpenAI fallback",
+			logger.LogWithStructure(ctx, logger.LevelInfo, "Retrying with random fallback selection",
 				map[string]interface{}{
-					"fallback_vendor": openaiSelection.Vendor,
-					"fallback_model":  openaiSelection.Model,
+					"fallback_vendor": fallbackSelection.Vendor,
+					"fallback_model":  fallbackSelection.Model,
 					"original_model":  originalModel,
+					"original_vendor": selection.Vendor,
 				},
 				nil, // request
 				nil, // response
@@ -240,8 +245,48 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 			// Create a fresh request for the retry (important for proper context)
 			retryReq := r.Clone(r.Context())
 
-			// Execute retry with OpenAI (no further retries) - parameters already cleaned by validator
-			return executeProxyRequestWithRetry(w, retryReq, openaiSelection, body, creds, models, apiClient, modelSelector, originalModel)
+			// Execute retry with the new selection (no further retries to avoid infinite loops)
+			// Note: We don't call executeProxyRequestWithRetry to avoid infinite recursion
+			// Instead, we directly call the API client with the new selection
+			retryCtx := context.WithValue(retryReq.Context(), logger.VendorKey, fallbackSelection.Vendor)
+			retryCtx = context.WithValue(retryCtx, logger.ModelKey, fallbackSelection.Model)
+			retryReq = retryReq.WithContext(retryCtx)
+
+			// Validate and modify request for the new vendor
+			fallbackModifiedBody, _, validationErr := validator.ValidateAndModifyRequest(processedBody, fallbackSelection.Model)
+			if validationErr != nil {
+				logger.ErrorCtx(retryCtx, "Fallback request validation failed", "error", validationErr)
+				http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
+				return validationErr
+			}
+
+			// Execute the fallback request directly (no retry to avoid recursion)
+			return apiClient.SendRequest(w, retryReq, fallbackSelection, fallbackModifiedBody, originalModel)
+		}
+
+		// Check if this is a retriable API error (quota, rate limits, server errors)
+		if IsRetriableAPIError(err) {
+			logger.LogWithStructure(ctx, logger.LevelError, "Retriable API error after all retry attempts",
+				map[string]interface{}{
+					"vendor":     selection.Vendor,
+					"error":      err.Error(),
+					"error_type": "retriable_api_error",
+					"is_quota":   IsQuotaError(err),
+				},
+				nil, // request
+				nil, // response
+				map[string]interface{}{
+					"message": err.Error(),
+					"type":    "api_error_retry_exhausted",
+				}) // error
+
+			// For quota errors, return 429 status
+			if IsQuotaError(err) {
+				http.Error(w, "API quota exceeded. Please try again later.", http.StatusTooManyRequests)
+			} else {
+				http.Error(w, "Service temporarily unavailable. Please try again later.", http.StatusServiceUnavailable)
+			}
+			return err
 		}
 
 		// Check for specific error types
@@ -264,26 +309,4 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 	}
 
 	return nil
-}
-
-// filterCredentialsByVendor filters credentials by vendor platform
-func filterCredentialsByVendor(creds []config.Credential, vendor string) []config.Credential {
-	var result []config.Credential
-	for _, c := range creds {
-		if c.Platform == vendor {
-			result = append(result, c)
-		}
-	}
-	return result
-}
-
-// filterModelsByVendor filters models by vendor
-func filterModelsByVendor(models []config.VendorModel, vendor string) []config.VendorModel {
-	var result []config.VendorModel
-	for _, m := range models {
-		if m.Vendor == vendor {
-			result = append(result, m)
-		}
-	}
-	return result
 }

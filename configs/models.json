@@ -18,35 +18,5 @@
             "support_tools": true,
             "support_streaming": true
         }
-    },
-    {
-        "vendor": "openai",
-        "model": "gpt-4o",
-        "config": {
-            "support_image": true,
-            "support_video": true,
-            "support_tools": true,
-            "support_streaming": true
-        }
-    },
-    {
-        "vendor": "openai",
-        "model": "gpt-4.1",
-        "config": {
-            "support_image": true,
-            "support_video": true,
-            "support_tools": true,
-            "support_streaming": true
-        }
-    },
-    {
-        "vendor": "openai",
-        "model": "o3-mini",
-        "config": {
-            "support_image": false,
-            "support_video": false,
-            "support_tools": true,
-            "support_streaming": true
-        }
     }
 ]

@@ -128,6 +128,42 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	}
 	defer resp.Body.Close()
 
+	// Check for HTTP error status codes and parse vendor errors
+	if resp.StatusCode >= 400 {
+		// Read response body for error parsing
+		errorBody, readErr := c.standardizer.processResponseBody(resp.Body, resp.Header.Get("Content-Encoding"), selection.Vendor)
+		if readErr != nil {
+			logger.ErrorCtx(r.Context(), "Failed to read error response body",
+				"vendor", selection.Vendor,
+				"status_code", resp.StatusCode,
+				"error", readErr)
+			// Create a generic error if we can't read the response
+			return ParseVendorError(selection.Vendor, resp.StatusCode, nil)
+		}
+
+		// Parse the vendor error
+		vendorErr := ParseVendorError(selection.Vendor, resp.StatusCode, errorBody)
+		if vendorErr != nil {
+			logger.LogWithStructure(r.Context(), logger.LevelWarn, "Vendor API error detected",
+				map[string]interface{}{
+					"vendor":      selection.Vendor,
+					"status_code": resp.StatusCode,
+					"error_type":  fmt.Sprintf("%T", vendorErr),
+					"retriable":   IsRetriableAPIError(vendorErr),
+				},
+				nil, // request
+				map[string]interface{}{
+					"response_body": string(errorBody),
+					"response_headers": map[string][]string(resp.Header),
+				},
+				map[string]interface{}{
+					"message": vendorErr.Error(),
+					"type":    "vendor_api_error",
+				}) // error
+			return vendorErr
+		}
+	}
+
 	// Log complete vendor response headers immediately
 	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete vendor response headers received",
 		map[string]interface{}{
