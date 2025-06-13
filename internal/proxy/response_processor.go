@@ -118,7 +118,7 @@ func ProcessResponse(responseBody []byte, vendor string, contentEncoding string,
 					}
 				}
 			}
-			
+
 			if validResponse != nil {
 				decompressed, _ = json.Marshal(validResponse)
 			} else {
@@ -270,8 +270,6 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 		nil) // error
 	return decompressedBody, nil
 }
-
-
 
 // addMissingIDs generates missing chat completion IDs
 func addMissingIDs(responseData map[string]interface{}) {
