@@ -86,6 +86,8 @@ The service has undergone comprehensive enterprise-grade improvements:
 8. **Multi-Vendor Awareness**: Remember this is a multi-vendor service, not just OpenAI
 9. **Comprehensive Discovery**: Always map all touchpoints systematically before major changes using grep/ripgrep
 10. **Immediate Error Resolution**: Fix compilation errors, unused variables, and imports as soon as they appear
+11. **Environment Setup First**: Always load .env variables and configure AWS environment before any AWS operations
+12. **Verification After Operations**: Always verify cleanup and deployment operations with status checks
 
 ### 🔄 Standard Development Workflow
 
@@ -99,6 +101,46 @@ make ci-check
 # 5. Check git status before attempting commits
 git status -s | cat
 # 6. Only commit when user explicitly requests it
+```
+
+### 🧹 Environment Cleanup Operations
+
+**CRITICAL: Always load environment first before cleanup operations**
+```bash
+# STEP 1: Load environment variables (MANDATORY)
+export $(cat .env | grep -v '^#' | xargs) && echo "✅ Environment loaded from .env" | cat
+export AWS_CLUSTER_DEV=dev-$SERVICE_NAME AWS_SERVICE_DEV=dev-$SERVICE_NAME AWS_CLUSTER_PROD=prod-$SERVICE_NAME AWS_SERVICE_PROD=prod-$SERVICE_NAME && echo "✅ AWS environment configured" | cat
+```
+
+**CloudWatch Log Streams Cleanup:**
+```bash
+# Delete all log streams from development environment
+aws logs describe-log-streams --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_DEV" --query 'logStreams[].logStreamName' --output text | tr '\t' '\n' | while read stream; do aws logs delete-log-stream --profile $AWS_PROFILE --region $AWS_REGION --log-group-name "/aws/ecs/service/$AWS_SERVICE_DEV" --log-stream-name "$stream" 2>/dev/null && echo "✅ Deleted: $stream"; done
+```
+
+**Database Collections Cleanup:**
+```bash
+# Clear all data from database collections
+DB_NAME=$([ "$ENVIRONMENT" = "local" ] && echo "loc-$SERVICE_NAME" || ([ "$ENVIRONMENT" = "production" ] && echo "prod-$SERVICE_NAME" || ([ "$ENVIRONMENT" = "test" ] && echo "test-$SERVICE_NAME" || echo "dev-$SERVICE_NAME")))
+mongosh "$MONGODB_URI" --quiet --eval "use('$DB_NAME'); db.runCommand({listCollections: 1}).cursor.firstBatch.forEach(function(c) { result = db[c.name].deleteMany({}); print('✅ Cleared ' + result.deletedCount + ' documents from ' + c.name); });"
+```
+
+### 🚀 CodeBuild Operations
+
+**Trigger Development Build:**
+```bash
+# Start new CodeBuild for development environment
+aws codebuild start-build --profile $AWS_PROFILE --region $AWS_REGION --project-name "dev-$SERVICE_NAME"
+```
+
+**Monitor Build Progress:**
+```bash
+# Check build status
+BUILD_ID="dev-$SERVICE_NAME:latest-build-id"
+aws codebuild batch-get-builds --profile $AWS_PROFILE --region $AWS_REGION --ids "$BUILD_ID" --query 'builds[0].{Status:buildStatus,Phase:currentPhase,StartTime:startTime}'
+
+# Monitor build logs in real-time
+aws logs tail /aws/codebuild/dev-$SERVICE_NAME --follow --profile $AWS_PROFILE --region $AWS_REGION
 ```
 
 ## Multi-Vendor Architecture
