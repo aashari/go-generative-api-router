@@ -3,12 +3,19 @@
 This guide provides comprehensive information for users who want to integrate with and use the Generative API Router service.
 
 > **📖 Quick Start**: For project overview and initial setup, see the [Main README](../README.md).  
-> **🔧 Development**: For contributing and development information, see [Contributing Guide](contributing-guide.md).
+> **🔧 Development**: For contributing and development information, see [Contributing Guide](contributing-guide.md).  
+> **📋 API Documentation**: For complete API specifications, see [API Reference](api-reference.md).
 
 ## 🚀 Getting Started
 
 ### Service Overview
 The Generative API Router is a transparent proxy that routes OpenAI-compatible API calls to multiple LLM vendors (OpenAI, Gemini) while maintaining complete API compatibility. The service preserves your original model names in responses while intelligently selecting from available vendor-model combinations.
+
+**Key Benefits:**
+- **Vendor Agnostic**: Use any model name - the service handles vendor selection
+- **Transparent**: Your original model names are preserved in responses
+- **Multi-Vendor**: Automatic load distribution across multiple vendors
+- **OpenAI Compatible**: Works with existing OpenAI SDKs and tools
 
 ### Prerequisites
 - The service running on your target host (default: `localhost:8082`)
@@ -63,422 +70,91 @@ Configure available models in `configs/models.json`:
 ]
 ```
 
-## 🔌 API Usage
+## 🔌 Integration Patterns
 
-### Base URL
-- **Local Development**: `http://localhost:8082`
-- **Production**: Your deployed service URL
+### Service Endpoints
+The service provides OpenAI-compatible endpoints:
+
+- **Base URL**: `http://localhost:8082` (local) or your deployed service URL
+- **Health Check**: `GET /health` - Check service status
+- **List Models**: `GET /v1/models` - List available models (accepts any model name)
+- **Chat Completions**: `POST /v1/chat/completions` - Main AI interaction endpoint
+
+> **📋 Complete API Documentation**: See [API Reference](api-reference.md) for detailed endpoint specifications, request/response formats, and examples.
 
 ### Authentication
-The service uses API key authentication. Include your API key in the Authorization header:
+Authentication is optional for development. For production, include your API key:
 
 ```bash
 Authorization: Bearer YOUR_API_KEY
 ```
 
-### Endpoints
+## 🔧 Core Features
 
-#### Health Check
-```bash
-GET /health
-```
+### Multi-Vendor Intelligence
+The service automatically distributes requests across multiple vendors:
 
-**Response:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2025-06-07T05:56:39Z",
-  "services": {
-    "api": "up",
-    "credentials": "up",
-    "models": "up",
-    "selector": "up"
-  },
-  "details": {
-    "uptime": 196,
-    "version": "unknown"
-  }
-}
-```
+- **Automatic Selection**: Service chooses optimal vendor-model combinations
+- **Forced Vendor Selection**: Use `?vendor=openai` or `?vendor=gemini` query parameters
+- **Load Distribution**: Even distribution across all configured vendor credentials
+- **Model Name Preservation**: Your requested model name is always returned in responses
 
-**Response Fields:**
-- `status`: Overall service health ("healthy" or "unhealthy")
-- `services`: Status of individual components (api, credentials, models, selector)
-- `details.uptime`: Service uptime in seconds
-- `details.version`: Service version from VERSION environment variable
+### Advanced Capabilities
 
-#### List Models
-```bash
-GET /v1/models
-```
+**Streaming Support**: Enable real-time responses with `"stream": true`
 
-**Response:**
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "any-model-name",
-      "object": "model",
-      "created": 1234567890,
-      "owned_by": "generative-api-router"
-    }
-  ]
-}
-```
+**File Processing**: Automatic document and image processing from URLs
+- Supports PDF, Word, Excel, PowerPoint, images, and more
+- Custom headers for protected files (authentication, user-agent, etc.)
+- Multiple files in a single request
+- Automatic format detection and conversion
 
-#### Chat Completions
-```bash
-POST /v1/chat/completions
-```
+**Tool Calling**: Full OpenAI-compatible function calling support
 
-**Request:**
-```json
-{
-  "model": "your-preferred-model-name",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Hello, how are you?"
-    }
-  ],
-  "max_tokens": 150,
-  "temperature": 0.7,
-  "stream": false
-}
-```
+**Multi-Modal**: Text, images, and documents in the same conversation
 
-**Response:**
-```json
-{
-  "id": "chatcmpl-abc123",
-  "object": "chat.completion",
-  "created": 1234567890,
-  "model": "your-preferred-model-name",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "Hello! I'm doing well, thank you for asking. How can I help you today?"
-      },
-      "finish_reason": "stop"
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 12,
-    "completion_tokens": 20,
-    "total_tokens": 32
-  }
-}
-```
-
-## 🔧 Advanced Features
-
-### Vendor Selection
-Force a specific vendor by adding a query parameter:
-
-```bash
-POST /v1/chat/completions?vendor=openai
-POST /v1/chat/completions?vendor=gemini
-```
-
-### Streaming Responses
-Enable streaming by setting `"stream": true` in your request:
-
-```json
-{
-  "model": "your-model",
-  "messages": [...],
-  "stream": true
-}
-```
-
-Streaming responses follow the Server-Sent Events format with `data:` prefixed JSON chunks.
-
-### File Processing
-
-The service supports automatic processing of documents and images from URLs. Files are downloaded and converted to text or base64 format automatically.
-
-#### Supported File Types
-
-**Documents** (converted to text using markitdown):
-- PDF files (.pdf)
-- Microsoft Word (.docx, .doc)
-- Microsoft Excel (.xlsx, .xls)
-- Microsoft PowerPoint (.pptx, .ppt)
-- Plain text files (.txt, .md)
-- ZIP archives (extracts and processes contents)
-- CSV, JSON, XML, HTML files
-
-**Images** (converted to base64):
-- PNG, JPEG, GIF, WebP, BMP, TIFF, SVG
-
-#### File Processing Examples
-
-**Basic File Processing:**
-```json
-{
-  "model": "document-analyzer",
-  "messages": [
-    {
-      "role": "user",
-      "content": [
-        {
-          "type": "text",
-          "text": "Please summarize this PDF:"
-        },
-        {
-          "type": "file_url",
-          "file_url": {
-            "url": "https://example.com/document.pdf"
-          }
-        }
-      ]
-    }
-  ]
-}
-```
-
-**File with Custom Headers:**
-```json
-{
-  "type": "file_url",
-  "file_url": {
-    "url": "https://private-server.com/report.docx",
-    "headers": {
-      "Authorization": "Bearer your-token",
-      "User-Agent": "Custom-Agent"
-    }
-  }
-}
-```
-
-**Multiple Files:**
-```json
-{
-  "model": "multi-file-analyzer",
-  "messages": [
-    {
-      "role": "user",
-      "content": [
-        {
-          "type": "text",
-          "text": "Compare these reports:"
-        },
-        {
-          "type": "file_url",
-          "file_url": {
-            "url": "https://example.com/report1.pdf"
-          }
-        },
-        {
-          "type": "file_url",
-          "file_url": {
-            "url": "https://example.com/report2.xlsx"
-          }
-        }
-      ]
-    }
-  ]
-}
-```
-
-#### File Processing Features
-
-- **No Pre-validation**: Files are processed without URL validation
-- **Graceful Error Handling**: Failed downloads result in user-friendly error messages
-- **Custom Headers**: Support for authentication and custom headers
-- **Size Limits**: 20MB maximum per file
-- **Concurrent Processing**: Multiple files processed simultaneously
-- **Format Detection**: Automatic detection of file types
-- **Vendor Compatibility**: Error messages appear as regular user content
-
-#### Error Handling
-
-When file processing fails, the system generates user-friendly error messages:
-
-```
-"I couldn't access the file at https://example.com/broken.pdf due to network connectivity issues. The file server appears to be unreachable or the domain doesn't exist. Please verify the URL or provide an alternative file."
-```
-
-### Tool Calling
-The service supports OpenAI-compatible tool calling:
-
-```json
-{
-  "model": "your-model",
-  "messages": [...],
-  "tools": [
-    {
-      "type": "function",
-      "function": {
-        "name": "get_weather",
-        "description": "Get weather information",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "location": {
-              "type": "string",
-              "description": "City name"
-            }
-          },
-          "required": ["location"]
-        }
-      }
-    }
-  ],
-  "tool_choice": "auto"
-}
-```
+> **📋 Detailed Examples**: See [API Reference](api-reference.md) for complete request/response examples and specifications for all features.
 
 ## 📚 Client Integration
 
-### cURL Examples
-See the [examples/curl/](../examples/curl/) directory for ready-to-use cURL scripts:
+### Ready-to-Use Examples
+See the [examples/](../examples/) directory for complete working examples:
 
-- `basic.sh` - Basic chat completion
-- `streaming.sh` - Streaming responses
-- `tools.sh` - Tool calling examples
+- **cURL**: `basic.sh`, `streaming.sh`, `tools.sh` for command-line testing
+- **Python**: OpenAI SDK integration with file processing examples
+- **Node.js**: JavaScript/TypeScript integration patterns
+- **Go**: Golang client implementation
 
-#### File Processing with cURL
+### OpenAI SDK Compatibility
 
-**Process a PDF document:**
-```bash
-curl -X POST http://localhost:8082/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "document-analyzer",
-    "messages": [
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "text",
-            "text": "Please summarize this research paper:"
-          },
-          {
-            "type": "file_url",
-            "file_url": {
-              "url": "https://ml-site.cdn-apple.com/papers/the-illusion-of-thinking.pdf"
-            }
-          }
-        ]
-      }
-    ]
-  }'
-```
+The service is fully compatible with existing OpenAI SDKs. Simply change the base URL:
 
-**Process multiple files:**
-```bash
-curl -X POST http://localhost:8082/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "multi-file-analyzer",
-    "messages": [
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "text",
-            "text": "Compare these documents:"
-          },
-          {
-            "type": "file_url",
-            "file_url": {
-              "url": "https://example.com/report1.pdf"
-            }
-          },
-          {
-            "type": "file_url",
-            "file_url": {
-              "url": "https://example.com/report2.docx"
-            }
-          }
-        ]
-      }
-    ]
-  }'
-```
-
-### SDK Integration
-
-#### Python (OpenAI SDK)
+**Python:**
 ```python
 import openai
 
 client = openai.OpenAI(
-    api_key="your-api-key",
+    api_key="not-required",  # Optional for development
     base_url="http://localhost:8082/v1"
 )
-
-response = client.chat.completions.create(
-    model="your-preferred-model-name",
-    messages=[
-        {"role": "user", "content": "Hello!"}
-    ]
-)
-
-print(response.choices[0].message.content)
 ```
 
-#### Node.js (OpenAI SDK)
+**Node.js:**
 ```javascript
-import OpenAI from 'openai';
-
 const openai = new OpenAI({
-    apiKey: 'your-api-key',
+    apiKey: 'not-required',  // Optional for development
     baseURL: 'http://localhost:8082/v1',
 });
-
-const response = await openai.chat.completions.create({
-    model: 'your-preferred-model-name',
-    messages: [
-        { role: 'user', content: 'Hello!' }
-    ],
-});
-
-console.log(response.choices[0].message.content);
 ```
 
-#### Go
+**Go:**
 ```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "github.com/sashabaranov/go-openai"
-)
-
-func main() {
-    config := openai.DefaultConfig("your-api-key")
-    config.BaseURL = "http://localhost:8082/v1"
-    client := openai.NewClientWithConfig(config)
-
-    resp, err := client.CreateChatCompletion(
-        context.Background(),
-        openai.ChatCompletionRequest{
-            Model: "your-preferred-model-name",
-            Messages: []openai.ChatCompletionMessage{
-                {
-                    Role:    openai.ChatMessageRoleUser,
-                    Content: "Hello!",
-                },
-            },
-        },
-    )
-
-    if err != nil {
-        fmt.Printf("Error: %v\n", err)
-        return
-    }
-
-    fmt.Println(resp.Choices[0].Message.Content)
-}
+config := openai.DefaultConfig("not-required")  // Optional for development
+config.BaseURL = "http://localhost:8082/v1"
+client := openai.NewClientWithConfig(config)
 ```
+
+> **💡 Pro Tip**: Any existing OpenAI code will work immediately - just change the base URL!
 
 ## 🔍 Troubleshooting
 
