@@ -84,6 +84,8 @@ The service has undergone comprehensive enterprise-grade improvements:
 6. **Monitor Logs**: Always check `logs/server.log` during development and debugging
 7. **Build Verification**: Run full CI checks locally before any commit
 8. **Multi-Vendor Awareness**: Remember this is a multi-vendor service, not just OpenAI
+9. **Comprehensive Discovery**: Always map all touchpoints systematically before major changes using grep/ripgrep
+10. **Immediate Error Resolution**: Fix compilation errors, unused variables, and imports as soon as they appear
 
 ### 🔄 Standard Development Workflow
 
@@ -512,12 +514,14 @@ grep "Even distribution selected combination" logs/server.log | tail -20 | cat
 
 ### 🗄️ **MongoDB Integration Overview**
 
-The Generative API Router includes comprehensive MongoDB integration for:
+The Generative API Router includes MongoDB integration for:
 
-- **Usage Logging**: Complete API request/response logging in `generative-usages` collection
-- **Vendor Metrics**: Aggregated vendor performance analytics
+- **Request Logging**: General API request/response logging for analytics
+- **Vendor Metrics**: Aggregated vendor performance analytics  
 - **System Health**: Database-backed health monitoring
-- **Complete Payloads**: Request and response stored as objects (not JSON strings)
+- **User Sessions**: Session tracking and analytics
+
+**NOTE**: The `generative-usages` collection and related database logging functionality has been removed as of v3.24.0 for performance optimization.
 
 ### **Database Connection Management**
 
@@ -558,15 +562,15 @@ mongosh "$MONGO_URI" --quiet --eval "use('$DB_NAME'); print('Connected to DB: ' 
 ```bash
 # Document counts with database verification
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); print('Database: ' + db.getName()); printjson({generative_usages: db['generative-usages'].countDocuments()})" | cat
+  "use('$DB_NAME'); print('Database: ' + db.getName()); printjson({request_logs: db['request-logs'].countDocuments(), system_health: db['system-health'].countDocuments()})" | cat
 
-# Recent usage logs
+# Recent request logs
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); db['generative-usages'].find({}, {_id: 1, model: 1, vendor: 1, status_code: 1, created_at: 1}).sort({created_at: -1}).limit(5)" | cat
+  "use('$DB_NAME'); db['request-logs'].find({}, {_id: 1, method: 1, path: 1, status_code: 1, created_at: 1}).sort({created_at: -1}).limit(5)" | cat
 
 # Search for specific request patterns
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); db['generative-usages'].find({vendor: 'openai'}, {_id: 1, model: 1, status_code: 1, created_at: 1})" | cat
+  "use('$DB_NAME'); db['request-logs'].find({selected_vendor: 'openai'}, {_id: 1, method: 1, path: 1, status_code: 1, created_at: 1})" | cat
 ```
 
 **Development/Production Database Operations**
@@ -591,7 +595,7 @@ MONGO_PROD_URI=$(aws --profile $AWS_PROFILE --region $AWS_REGION ssm get-paramet
 
 # MANDATORY verification before any production operation
 mongosh "$MONGO_PROD_URI" --quiet --eval \
-  "use('prod-$SERVICE_NAME'); print('PRODUCTION DB: ' + db.getName()); print('Request logs count: ' + db.request_logs.countDocuments()); print('Vendor logs count: ' + db.generative_vendor_logs.countDocuments());" | cat
+  "use('prod-$SERVICE_NAME'); print('PRODUCTION DB: ' + db.getName()); print('Request logs count: ' + db.request_logs.countDocuments()); print('System health count: ' + db.system_health.countDocuments());" | cat
 
 # Never run destructive operations without explicit confirmation
 # Example safe query pattern:
@@ -608,13 +612,13 @@ mongosh "$MONGO_PROD_URI" --quiet --eval \
 mongosh "$MONGO_URI" --quiet --eval \
   "use('$DB_NAME'); db.request_logs.find({user_agent: /BrainyBuddy/i}, {_id: 1, method: 1, path: 1, user_agent: 1, created_at: 1})" | cat
 
-# Get complete vendor interaction for specific request
+# Get complete request details
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); var req = db.request_logs.findOne({_id: ObjectId('request-id')}); printjson(req); db.generative_vendor_logs.find({created_at: {\$gte: req.created_at, \$lte: new Date(req.created_at.getTime() + 60000)}}).sort({created_at: 1})" | cat
+  "use('$DB_NAME'); db.request_logs.findOne({_id: ObjectId('request-id')}, {_id: 1, method: 1, path: 1, selected_vendor: 1, selected_model: 1, status_code: 1, duration_ms: 1, created_at: 1})" | cat
 
 # Check for recent errors or high response times
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); db.request_logs.find({status_code: {\$gte: 400}}, {_id: 1, method: 1, path: 1, status_code: 1, response_time_ms: 1, created_at: 1}).sort({created_at: -1}).limit(10)" | cat
+  "use('$DB_NAME'); db.request_logs.find({status_code: {\$gte: 400}}, {_id: 1, method: 1, path: 1, status_code: 1, duration_ms: 1, created_at: 1}).sort({created_at: -1}).limit(10)" | cat
 ```
 
 **Vendor Performance Analysis**
@@ -624,13 +628,13 @@ mongosh "$MONGO_URI" --quiet --eval \
 mongosh "$MONGO_URI" --quiet --eval \
   "use('$DB_NAME'); db.vendor_metrics.aggregate([{\$group: {_id: '\$vendor', total_requests: {\$sum: '\$request_count'}, avg_response_time: {\$avg: '\$avg_response_time_ms'}}}, {\$sort: {total_requests: -1}}])" | cat
 
-# Recent vendor performance
+# Recent vendor performance from request logs
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); db.generative_vendor_logs.find({}, {_id: 1, vendor: 1, model: 1, response_time_ms: 1, created_at: 1}).sort({created_at: -1}).limit(10)" | cat
+  "use('$DB_NAME'); db.request_logs.find({selected_vendor: {\$exists: true}}, {_id: 1, selected_vendor: 1, selected_model: 1, duration_ms: 1, created_at: 1}).sort({created_at: -1}).limit(10)" | cat
 
-# Find slow vendor requests (>5 seconds)
+# Find slow requests (>5 seconds)
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); db.generative_vendor_logs.find({response_time_ms: {\$gt: 5000}}, {_id: 1, vendor: 1, model: 1, response_time_ms: 1, created_at: 1}).sort({response_time_ms: -1})" | cat
+  "use('$DB_NAME'); db.request_logs.find({duration_ms: {\$gt: 5000}}, {_id: 1, selected_vendor: 1, selected_model: 1, duration_ms: 1, created_at: 1}).sort({duration_ms: -1})" | cat
 ```
 
 **System Health Monitoring**
@@ -638,11 +642,11 @@ mongosh "$MONGO_URI" --quiet --eval \
 ```bash
 # Recent system health snapshots
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); db.system_health.find({}, {_id: 1, status: 1, database_status: 1, uptime_seconds: 1, created_at: 1}).sort({created_at: -1}).limit(5)" | cat
+  "use('$DB_NAME'); db.system_health.find({}, {_id: 1, service_status: 1, database_status: 1, created_at: 1}).sort({created_at: -1}).limit(5)" | cat
 
 # Check for health issues
 mongosh "$MONGO_URI" --quiet --eval \
-  "use('$DB_NAME'); db.system_health.find({status: {\$ne: 'healthy'}}, {_id: 1, status: 1, database_status: 1, created_at: 1}).sort({created_at: -1})" | cat
+  "use('$DB_NAME'); db.system_health.find({service_status: {\$ne: 'healthy'}}, {_id: 1, service_status: 1, database_status: 1, created_at: 1}).sort({created_at: -1})" | cat
 ```
 
 ### **Database Best Practices**
@@ -650,40 +654,36 @@ mongosh "$MONGO_URI" --quiet --eval \
 - **Always use `use('database-name')`** to ensure correct database context
 - **Verify database name** with `db.getName()` before operations
 - **Use environment-specific database names**: `loc-service-name`, `dev-service-name`, `prod-service-name`
-- **Collection naming**: Use hyphens instead of underscores (e.g., `generative-usages` not `generative_usages`)
+- **Collection naming**: Use hyphens instead of underscores (e.g., `request-logs` not `request_logs`)
 - **Store payloads as objects**: Request/response payloads should be stored as MongoDB objects, not JSON strings
-- **Single collection design**: Only use `generative-usages` collection for all vendor request/response logging
 - **Limit query results** with `.limit()` to avoid overwhelming output
 - **Include `_id` field** in projections for reference
 - **Use `ObjectId()` constructor** for ID-based queries
 - **Never run destructive operations** without verification on production
-- **Automatic database logging**: Enabled when `MONGODB_URI` is provided (no `DB_LOGGING_ENABLED` needed)
+- **Automatic database logging**: Enabled when `MONGODB_URI` is provided
 - **Use indexes** for frequently queried fields (automatically created on startup)
-- **Log all vendor responses**: Both success and error responses are logged to database
 
 ### **Database Schema Overview**
 
-**Collection:**
+**Active Collections:**
 
-**`generative-usages`**: Complete vendor request/response logging
-- Structure:
-  ```json
-  {
-    "credential": { "platform": "...", "type": "...", "value": "..." },
-    "model": { "vendor": "...", "model": "...", "config": {...} },
-    "payload": {
-      "request": { /* full request object */ },
-      "response": { /* full response object */ }
-    },
-    "requested_at": "timestamp",
-    "responded_at": "timestamp",
-    "created_at": "timestamp",
-    "vendor": "...",
-    "request_id": "...",
-    "status_code": 200
-  }
-  ```
-- Indexes: `created_at`, `vendor`, `request_id`, `requested_at`, `status_code`
+**`request-logs`**: General API request/response logging
+- Structure: Complete HTTP request/response details with vendor routing information
+- Indexes: `created_at`, `request_id`, `selected_vendor`, `status_code`
+
+**`system-health`**: System health monitoring
+- Structure: Service health metrics and status information
+- Indexes: `created_at`, `environment`, `service_status`
+
+**`vendor-metrics`**: Aggregated vendor performance metrics
+- Structure: Performance statistics grouped by vendor
+- Indexes: `created_at`, `vendor`
+
+**`user-sessions`**: User session tracking (optional)
+- Structure: Session-based analytics and usage patterns
+- Indexes: `session_id`, `last_seen`, `environment`
+
+**REMOVED**: `generative-usages` collection has been removed as of v3.24.0 for performance optimization.
 
 ## Development Workflow
 
@@ -1371,6 +1371,27 @@ START_TS=$(( $(date -u -d '30 minutes ago' +%s) * 1000 )) && aws logs filter-log
     *   Test with `ENVIRONMENT=production`, `ENVIRONMENT=development`, and `ENVIRONMENT=local`
     *   Verify the feature works consistently across all environments
     *   Use environment detection functions that provide sensible defaults
+*   **Comprehensive Discovery Before Major Changes**: Always map all touchpoints systematically before large refactoring:
+    *   Use grep/ripgrep to find all references to components being modified
+    *   Identify integration points, data models, infrastructure, and tests
+    *   Create a complete inventory before starting removal/modification
+    *   Process files in logical dependency order (integration → core → models → infrastructure)
+*   **End-to-End Verification After Major Changes**: After significant code removal or refactoring:
+    *   Run complete build pipeline (`make ci-check`) to catch compilation errors
+    *   Test all API endpoints to verify functionality preservation
+    *   Verify logging and monitoring capabilities remain intact
+    *   Check for unused imports and variables that cause compilation failures
+*   **Immediate Error Resolution During Development**: Address compilation and build errors immediately:
+    *   Fix unused variable errors as soon as they appear
+    *   Remove unused imports when refactoring
+    *   Don't let build errors accumulate - fix them in the same commit
+*   **Structured Removal Approach**: When removing integrated functionality:
+    *   Start with integration points (where functionality is called)
+    *   Remove core functions and business logic
+    *   Clean up data models and structures
+    *   Remove infrastructure components (indexes, collections)
+    *   Delete associated tests and maintenance scripts
+    *   Update documentation and comments
 
 ---
 
