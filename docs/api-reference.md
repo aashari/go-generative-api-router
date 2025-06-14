@@ -17,19 +17,21 @@ The Generative API Router provides an OpenAI-compatible API that routes requests
 
 ## Authentication
 
-All API requests require authentication using an API key in the Authorization header:
+Authentication is optional for this service. If you need authentication, provide an API key in the Authorization header:
 
 ```http
 Authorization: Bearer YOUR_API_KEY
 ```
 
+**Note:** The service will function without authentication for development and testing purposes.
+
 ## Common Headers
 
 | Header | Required | Description |
 |--------|----------|-------------|
-| `Authorization` | Yes | API key for authentication (format: `Bearer YOUR_API_KEY`) |
+| `Authorization` | No | API key for authentication (format: `Bearer YOUR_API_KEY`) |
 | `Content-Type` | Yes | Must be `application/json` |
-| `X-Request-ID` | No | Custom request ID (uses CF-Ray if present, auto-generated if not provided) |
+| `X-Request-ID` | No | Custom request ID (auto-generated if not provided) |
 | `Accept-Encoding` | No | Supports `gzip` compression |
 | `User-Agent` | No | Client identification (optional) |
 
@@ -39,11 +41,13 @@ All responses include:
 
 | Header | Description |
 |--------|-------------|
-| `X-Request-ID` | Unique request identifier for tracking (CF-Ray header value if present) |
-| `X-Vendor-Source` | Indicates which vendor handled the request |
-| `Content-Type` | Always `application/json; charset=utf-8` |
+| `X-Request-ID` | Unique request identifier for tracking |
+| `X-Vendor-Source` | Indicates which vendor handled the request (e.g., "gemini", "openai") |
+| `Content-Type` | Always `application/json; charset=utf-8` for successful responses |
 | `Content-Encoding` | `gzip` if compression is used |
 | `Content-Length` | Response body size |
+| `Server` | Always `Generative-API-Router/1.0` |
+| `X-Powered-By` | Always `Generative-API-Router` |
 
 ## Endpoints
 
@@ -63,15 +67,16 @@ Content-Type: application/json
 
 {
   "status": "healthy",
-  "timestamp": "2025-06-07T05:56:39Z",
+  "timestamp": "2025-06-14T08:57:03Z",
   "services": {
     "api": "up",
     "credentials": "up",
+    "database": "up",
     "models": "up",
     "selector": "up"
   },
   "details": {
-    "uptime": 196,
+    "uptime": 254,
     "version": "unknown"
   }
 }
@@ -86,6 +91,7 @@ Content-Type: application/json
 | `services` | object | Status of individual service components |
 | `services.api` | string | API service status ("up" or "down") |
 | `services.credentials` | string | Credentials loading status ("up" or "down") |
+| `services.database` | string | Database connectivity status ("up" or "down") |
 | `services.models` | string | Models configuration status ("up" or "down") |
 | `services.selector` | string | Vendor selector status ("up" or "down") |
 | `details` | object | Additional service details |
@@ -202,7 +208,8 @@ Messages can contain either simple text content or multi-part content with image
       "file_url": {
         "url": "https://example.com/document.pdf",
         "headers": {
-          "Authorization": "Bearer token"
+          "Authorization": "Bearer token",
+          "User-Agent": "CustomBot/1.0"
         }
       }
     }
@@ -221,31 +228,73 @@ Messages can contain either simple text content or multi-part content with image
 #### Non-Streaming Response
 ```http
 HTTP/1.1 200 OK
-Content-Type: application/json
-X-Request-ID: abc123def456
+Content-Type: application/json; charset=utf-8
+X-Request-ID: 7da546cae5df562d
+X-Vendor-Source: gemini
 
 {
-  "id": "chatcmpl-abc123",
+  "id": "5zhNaIiVG5PQz7IPy_v90A8",
   "object": "chat.completion",
-  "created": 1677652288,
-  "model": "your-preferred-model-name",
+  "created": 1749891303,
+  "model": "test-model",
   "choices": [
     {
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "Hello! I'm doing well, thank you for asking. How can I help you today?"
+        "content": "Hello! Received your test message.\n\nHow can I assist you today?",
+        "annotations": [],
+        "refusal": null
       },
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "logprobs": null
     }
   ],
   "usage": {
-    "prompt_tokens": 12,
-    "completion_tokens": 20,
-    "total_tokens": 32
-  }
+    "prompt_tokens": 8,
+    "completion_tokens": 15,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0
+    },
+    "total_tokens": 520
+  },
+  "service_tier": "default",
+  "system_fingerprint": "fp_8ccf39dc93814d5f89"
 }
 ```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique completion identifier |
+| `object` | string | Always "chat.completion" |
+| `created` | integer | Unix timestamp of completion creation |
+| `model` | string | The model name you provided in the request (preserved) |
+| `choices` | array | Array of completion choices |
+| `choices[].index` | integer | Choice index (usually 0) |
+| `choices[].message` | object | The assistant's message |
+| `choices[].message.role` | string | Always "assistant" |
+| `choices[].message.content` | string | The generated response content |
+| `choices[].message.annotations` | array | Message annotations (usually empty) |
+| `choices[].message.refusal` | string\|null | Refusal message if any (usually null) |
+| `choices[].finish_reason` | string | Reason completion finished ("stop", "length", "tool_calls") |
+| `choices[].logprobs` | object\|null | Log probabilities if requested (usually null) |
+| `usage` | object | Token usage statistics |
+| `usage.prompt_tokens` | integer | Number of tokens in the prompt |
+| `usage.completion_tokens` | integer | Number of tokens in the completion |
+| `usage.total_tokens` | integer | Total tokens used |
+| `usage.completion_tokens_details` | object | Detailed completion token breakdown |
+| `usage.prompt_tokens_details` | object | Detailed prompt token breakdown |
+| `service_tier` | string | Service tier used (usually "default") |
+| `system_fingerprint` | string | System fingerprint for consistency |
 
 #### Streaming Response
 
@@ -453,8 +502,27 @@ The service supports OpenAI-compatible tool calling:
 
 ### Error Handling
 
-The service returns structured error responses:
+The service returns error responses as plain text for most validation errors:
 
+**Missing Required Field (400):**
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: text/plain; charset=utf-8
+X-Request-ID: 82d7462ee81699d4
+
+missing 'messages' field in request
+```
+
+**Invalid JSON Format (400):**
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: text/plain; charset=utf-8
+X-Request-ID: 126e4a6bb0e281fa
+
+Failed to process images: invalid request format: invalid character 'i' looking for beginning of value
+```
+
+**Structured Error Response (for some errors):**
 ```json
 {
   "error": {
@@ -481,29 +549,22 @@ The service returns structured error responses:
 #### Common Error Responses
 
 **Missing Messages Field:**
-```json
-{
-  "error": {
-    "type": "invalid_request_error",
-    "message": "The 'messages' field is required",
-    "code": "missing_required_field",
-    "param": "messages"
-  }
-}
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: text/plain; charset=utf-8
+
+missing 'messages' field in request
 ```
 
 **Invalid JSON:**
-```json
-{
-  "error": {
-    "type": "invalid_request_error",
-    "message": "Invalid JSON format in request body",
-    "code": "json_parse_error"
-  }
-}
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: text/plain; charset=utf-8
+
+Failed to process images: invalid request format: invalid character 'i' looking for beginning of value
 ```
 
-**Authentication Error:**
+**Authentication Error (if authentication is enabled):**
 ```json
 {
   "error": {
@@ -537,8 +598,7 @@ X-Request-ID: abc123def456
 
 **Request:**
 ```bash
-curl -X POST https://genapi.example.com/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST http://localhost:8082/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "my-custom-model-name",
@@ -552,25 +612,40 @@ curl -X POST https://genapi.example.com/v1/chat/completions \
 **Response:**
 ```json
 {
-  "id": "chatcmpl-abc123",
+  "id": "5zhNaIiVG5PQz7IPy_v90A8",
   "object": "chat.completion",
-  "created": 1677652288,
+  "created": 1749891303,
   "model": "my-custom-model-name",
   "choices": [
     {
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "Quantum computing uses quantum mechanics principles to process information differently than classical computers..."
+        "content": "Quantum computing uses quantum mechanics principles to process information differently than classical computers...",
+        "annotations": [],
+        "refusal": null
       },
-      "finish_reason": "length"
+      "finish_reason": "length",
+      "logprobs": null
     }
   ],
   "usage": {
     "prompt_tokens": 15,
     "completion_tokens": 100,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0
+    },
     "total_tokens": 115
-  }
+  },
+  "service_tier": "default",
+  "system_fingerprint": "fp_8ccf39dc93814d5f89"
 }
 ```
 
@@ -578,8 +653,7 @@ curl -X POST https://genapi.example.com/v1/chat/completions \
 
 **Request:**
 ```bash
-curl -X POST https://genapi.example.com/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST http://localhost:8082/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "streaming-model",
@@ -608,8 +682,7 @@ data: [DONE]
 
 **PDF Document Processing:**
 ```bash
-curl -X POST https://genapi.example.com/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST http://localhost:8082/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "document-analyzer",
@@ -635,8 +708,7 @@ curl -X POST https://genapi.example.com/v1/chat/completions \
 
 **ZIP Archive Processing:**
 ```bash
-curl -X POST https://genapi.example.com/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST http://localhost:8082/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "file-analyzer",
@@ -665,8 +737,7 @@ curl -X POST https://genapi.example.com/v1/chat/completions \
 
 **Multiple Files Processing:**
 ```bash
-curl -X POST https://genapi.example.com/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST http://localhost:8082/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "multi-file-analyzer",
@@ -700,8 +771,7 @@ curl -X POST https://genapi.example.com/v1/chat/completions \
 
 **Request:**
 ```bash
-curl -X POST "https://genapi.example.com/v1/chat/completions?vendor=openai" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST "http://localhost:8082/v1/chat/completions?vendor=openai" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "forced-openai-model",
@@ -720,8 +790,8 @@ The service is compatible with existing OpenAI client libraries. Simply change t
 import openai
 
 client = openai.OpenAI(
-    api_key="your-api-key",
-    base_url="https://genapi.example.com/v1"
+    api_key="not-required",  # API key not required for local development
+    base_url="http://localhost:8082/v1"
 )
 
 response = client.chat.completions.create(
@@ -737,8 +807,8 @@ response = client.chat.completions.create(
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
-    apiKey: 'your-api-key',
-    baseURL: 'https://genapi.example.com/v1',
+    apiKey: 'not-required',  // API key not required for local development
+    baseURL: 'http://localhost:8082/v1',
 });
 
 const response = await openai.chat.completions.create({
@@ -759,8 +829,8 @@ import (
 )
 
 func main() {
-    config := openai.DefaultConfig("your-api-key")
-    config.BaseURL = "https://genapi.example.com/v1"
+    config := openai.DefaultConfig("not-required")  // API key not required for local development
+    config.BaseURL = "http://localhost:8082/v1"
     client := openai.NewClientWithConfig(config)
 
     resp, err := client.CreateChatCompletion(
