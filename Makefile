@@ -116,19 +116,16 @@ ci-check: format-check lint-check security-check security-scan build
 	@echo "$(GREEN)✅ Security scan$(NC)"
 	@echo "$(GREEN)✅ Build$(NC)"
 
-# Testing
-test:
+# Testing - Single command for all test scenarios
+test: test-unit test-integration-all
+	@echo "$(GREEN)✅ All tests completed successfully$(NC)"
+
+test-unit:
 	@echo "$(GREEN)Running unit tests...$(NC)"
 	@go test -v ./internal/...
 	@echo "$(GREEN)✅ Unit tests completed$(NC)"
 
-test-coverage:
-	@echo "$(GREEN)Running tests with coverage...$(NC)"
-	@go test -v -coverprofile=coverage.out ./internal/... ./test/...
-	@go tool cover -html=coverage.out -o coverage.html
-	@echo "$(GREEN)✅ Coverage report generated: coverage.html$(NC)"
-
-test-integration:
+test-integration-all:
 	@echo "$(GREEN)Running integration tests...$(NC)"
 	@echo "$(GREEN)Checking for required configuration files...$(NC)"
 	@if [ ! -f configs/credentials.json ]; then \
@@ -141,11 +138,23 @@ test-integration:
 		echo "$(RED)ERROR: configs/models.json not found$(NC)"; \
 		exit 1; \
 	fi
-	@echo "$(GREEN)Configuration files found, running new integration tests...$(NC)"
+	@echo "$(GREEN)Running organized integration tests...$(NC)"
 	@go test -v -timeout=5m ./test/integration/...
-	@echo "$(GREEN)✅ New integration tests completed$(NC)"
+	@echo "$(GREEN)✅ Integration tests completed$(NC)"
+
+test-coverage:
+	@echo "$(GREEN)Running tests with coverage...$(NC)"
+	@go test -v -coverprofile=coverage.out ./internal/... ./test/...
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "$(GREEN)✅ Coverage report generated: coverage.html$(NC)"
+
+# Legacy test targets (deprecated - use 'make test' instead)
+test-integration:
+	@echo "$(YELLOW)WARNING: 'make test-integration' is deprecated. Use 'make test' instead.$(NC)"
+	@$(MAKE) test-integration-all
 
 test-integration-legacy:
+	@echo "$(YELLOW)WARNING: 'make test-integration-legacy' is deprecated. Use 'make test' instead.$(NC)"
 	@echo "$(GREEN)Running legacy integration tests...$(NC)"
 	@echo "$(GREEN)Checking for required configuration files...$(NC)"
 	@if [ ! -f configs/credentials.json ]; then \
@@ -162,8 +171,9 @@ test-integration-legacy:
 	@go test -v -timeout=5m ./integration_test.go ./quick_integration_test.go ./advanced_integration_test.go
 	@echo "$(GREEN)✅ Legacy integration tests completed$(NC)"
 
-test-all: test test-integration
-	@echo "$(GREEN)✅ All tests completed$(NC)"
+test-all:
+	@echo "$(YELLOW)WARNING: 'make test-all' is deprecated. Use 'make test' instead.$(NC)"
+	@$(MAKE) test
 
 # Help
 help:
@@ -180,7 +190,7 @@ help:
 	@echo "  $(GREEN)format-check$(NC)  - Check code formatting without fixing"
 	@echo "  $(GREEN)security-scan$(NC) - Run security scanner"
 	@echo "  $(GREEN)security-check$(NC) - Check for sensitive data (AWS IDs, API keys)"
-	@echo "  $(GREEN)test$(NC)          - Run unit tests"
+	@echo "  $(GREEN)test$(NC)          - Run all tests (unit + integration)"
 	@echo "  $(GREEN)test-coverage$(NC) - Run tests with coverage report"
 	@echo "  $(GREEN)test-integration$(NC) - Run new structured integration tests"
 	@echo "  $(GREEN)test-integration-legacy$(NC) - Run legacy integration tests"

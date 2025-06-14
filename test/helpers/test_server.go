@@ -231,9 +231,41 @@ func (ts *TestServer) AssertJSONResponse(body []byte, target interface{}) {
 	}
 }
 
+// AssertJSONResponseOrSkip attempts to parse JSON response, but skips if it's not JSON (for error responses)
+func (ts *TestServer) AssertJSONResponseOrSkip(body []byte, target interface{}) bool {
+	if err := json.Unmarshal(body, target); err != nil {
+		ts.t.Logf("Response is not JSON (might be plain text error): %s", string(body))
+		return false
+	}
+	return true
+}
+
 // LogResponse logs the response for debugging
 func (ts *TestServer) LogResponse(resp *http.Response, body []byte) {
 	ts.t.Logf("Response Status: %d", resp.StatusCode)
 	ts.t.Logf("Response Headers: %v", resp.Header)
 	ts.t.Logf("Response Body: %s", string(body))
+}
+
+// SetupTestServer creates a test server with default configuration
+// This is a convenience function for tests that don't need custom config
+func SetupTestServer(t *testing.T) *TestServer {
+	config := DefaultTestConfig()
+	config.ServiceName = "integration-test"
+	return NewTestServer(t, config)
+}
+
+// Teardown is an alias for Close to match legacy test patterns
+func (ts *TestServer) Teardown() {
+	ts.Close()
+}
+
+// BaseURL returns the base URL of the test server (for legacy compatibility)
+func (ts *TestServer) BaseURL() string {
+	return ts.baseURL
+}
+
+// HTTPClient returns the HTTP client used by the test server (for legacy compatibility)
+func (ts *TestServer) HTTPClient() *http.Client {
+	return ts.httpClient
 }
