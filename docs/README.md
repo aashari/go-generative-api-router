@@ -7,9 +7,9 @@ Welcome to the Generative API Router documentation! This comprehensive guide cov
 The Generative API Router is a **production-ready transparent proxy** that provides a unified OpenAI-compatible API interface while routing requests to multiple LLM vendors (OpenAI, Gemini) behind the scenes. 
 
 ### **Key Characteristics**
-- **Multi-Vendor Design**: 19 credentials (18 Gemini + 1 OpenAI) with 4 models
+- **Multi-Vendor Design**: 19 credentials (18 Gemini + 1 OpenAI) with 2 models
 - **Transparent Proxy**: Preserves your original model names in responses
-- **Even Distribution**: Fair selection across 114 vendor-credential-model combinations
+- **Context-Aware Selection**: Intelligent selection across 38 vendor-credential-model combinations
 - **Enterprise-Grade**: Security, reliability, monitoring, and performance optimizations
 
 ## 📖 Quick Navigation

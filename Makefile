@@ -124,7 +124,7 @@ test:
 
 test-coverage:
 	@echo "$(GREEN)Running tests with coverage...$(NC)"
-	@go test -v -coverprofile=coverage.out ./internal/...
+	@go test -v -coverprofile=coverage.out ./internal/... ./test/...
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "$(GREEN)✅ Coverage report generated: coverage.html$(NC)"
 
@@ -141,9 +141,26 @@ test-integration:
 		echo "$(RED)ERROR: configs/models.json not found$(NC)"; \
 		exit 1; \
 	fi
-	@echo "$(GREEN)Configuration files found, running integration tests...$(NC)"
-	@go test -v -timeout=5m ./integration_test.go
-	@echo "$(GREEN)✅ Integration tests completed$(NC)"
+	@echo "$(GREEN)Configuration files found, running new integration tests...$(NC)"
+	@go test -v -timeout=5m ./test/integration/...
+	@echo "$(GREEN)✅ New integration tests completed$(NC)"
+
+test-integration-legacy:
+	@echo "$(GREEN)Running legacy integration tests...$(NC)"
+	@echo "$(GREEN)Checking for required configuration files...$(NC)"
+	@if [ ! -f configs/credentials.json ]; then \
+		echo "$(RED)ERROR: configs/credentials.json not found$(NC)"; \
+		echo "$(RED)Integration tests require real credentials to test actual API calls$(NC)"; \
+		echo "$(RED)Please ensure your credentials are configured in configs/credentials.json$(NC)"; \
+		exit 1; \
+	fi
+	@if [ ! -f configs/models.json ]; then \
+		echo "$(RED)ERROR: configs/models.json not found$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Configuration files found, running legacy integration tests...$(NC)"
+	@go test -v -timeout=5m ./integration_test.go ./quick_integration_test.go ./advanced_integration_test.go
+	@echo "$(GREEN)✅ Legacy integration tests completed$(NC)"
 
 test-all: test test-integration
 	@echo "$(GREEN)✅ All tests completed$(NC)"
@@ -165,7 +182,8 @@ help:
 	@echo "  $(GREEN)security-check$(NC) - Check for sensitive data (AWS IDs, API keys)"
 	@echo "  $(GREEN)test$(NC)          - Run unit tests"
 	@echo "  $(GREEN)test-coverage$(NC) - Run tests with coverage report"
-	@echo "  $(GREEN)test-integration$(NC) - Run integration tests with real API calls"
+	@echo "  $(GREEN)test-integration$(NC) - Run new structured integration tests"
+	@echo "  $(GREEN)test-integration-legacy$(NC) - Run legacy integration tests"
 	@echo "  $(GREEN)test-all$(NC)      - Run all tests (unit + integration)"
 	@echo "  $(GREEN)ci-check$(NC)      - Run all CI checks (format, lint, security, build)"
 	@echo "  $(GREEN)setup$(NC)         - Setup development environment"

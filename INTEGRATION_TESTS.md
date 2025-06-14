@@ -8,25 +8,22 @@ The integration tests are designed to validate the router's functionality with *
 
 ### Test Categories
 
-1. **Basic Functionality Tests** (`integration_test.go`)
-   - Health endpoint validation
-   - Models endpoint with vendor filtering
-   - Basic chat completions
-   - Vendor-specific routing
-   - Request distribution testing
-   - Error handling scenarios
-   - CORS support
-   - Concurrent request handling
+1. **Basic Functionality Tests** (`test/integration/`)
+   - Health endpoint validation (`health_test.go`)
+   - Models endpoint testing (`models_test.go`)
+   - Basic chat completions (`chat_basic_test.go`)
+   - Error handling scenarios (`error_handling_test.go`)
 
-2. **Advanced Feature Tests** (`advanced_integration_test.go`)
-   - Streaming support
-   - Image content detection
-   - Vision-capable model routing
-   - Large payload handling
-   - Vendor-specific parameters
-   - Load balancing behavior
-   - Response format validation
-   - Timeout handling
+2. **Legacy Integration Tests** (Root level)
+   - `integration_test.go` - Basic integration tests
+   - `advanced_integration_test.go` - Advanced feature tests
+   - `quick_integration_test.go` - Quick validation tests
+
+3. **Test Structure** (`test/`)
+   - `fixtures/` - Test data and request fixtures
+   - `helpers/` - Test utilities and server helpers
+   - `integration/` - Organized integration tests
+   - `unit/` - Unit test directory
 
 ## 🛠️ Prerequisites
 
@@ -64,14 +61,18 @@ The integration tests are designed to validate the router's functionality with *
 ### Quick Start
 
 ```bash
-# Run all integration tests
-make test-integration
-
-# Run only unit tests
+# Run all tests (includes integration tests)
 make test
 
-# Run all tests (unit + integration)
-make test-all
+# Run tests with coverage
+make test-coverage
+
+# Run specific integration tests
+go test ./test/integration/... -v
+
+# Run legacy integration tests
+go test ./integration_test.go -v
+go test ./advanced_integration_test.go -v
 ```
 
 ### Manual Test Execution

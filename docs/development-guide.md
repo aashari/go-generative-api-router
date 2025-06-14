@@ -5,6 +5,8 @@ This guide provides essential information for developers working on the Generati
 > **📚 Complete Guides**: For comprehensive development workflows, testing procedures, and deployment instructions, see the detailed guides in [`.cursor/rules/`](../.cursor/rules/):
 > - **[Development Guide](../.cursor/rules/development_guide.mdc)** - Complete workflow, architecture, Git practices
 > - **[Running & Testing Guide](../.cursor/rules/running_and_testing.mdc)** - Setup, testing, debugging
+>
+> **⚠️ Note**: This document provides a quick overview. For detailed development procedures, always refer to the comprehensive guides above.
 
 ## 🚀 Quick Start
 

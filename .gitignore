@@ -24,6 +24,7 @@ vendor/
 # IDE specific files
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 .DS_Store
@@ -53,6 +54,7 @@ Thumbs.db
 # Project specific
 repomix-output.xml
 deploy.log
+deploy-output.log
 
 # Test data and responses (except fixtures)
 /test_responses/

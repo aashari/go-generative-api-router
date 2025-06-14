@@ -2,6 +2,8 @@
 
 This document explains the timeout configuration for the Generative API Router to ensure clients don't experience premature timeouts, especially the common 120-second timeout issue.
 
+> **⚠️ Note**: This document describes timeout configuration concepts. For current implementation details, check the source code in `internal/proxy/client.go` and `cmd/server/main.go`.
+
 ## Overview
 
 The service has been configured with generous timeout values to accommodate:

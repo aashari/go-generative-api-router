@@ -16,7 +16,7 @@ Thank you for your interest in contributing to the Generative API Router! This d
 
 ### Prerequisites
 
-- **Go**: Version 1.24.3 or later
+- **Go**: Version 1.21 or later
 - **Docker**: For containerized testing
 - **Make**: For build automation
 - **Git**: For version control

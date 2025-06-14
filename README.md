@@ -20,8 +20,8 @@ This service acts as a **transparent proxy** that provides a unified OpenAI-comp
 
 - **OpenAI API Compatibility**: All vendors accessed through OpenAI-compatible endpoints
 - **Transparent Model Handling**: Preserves your original model names in responses
-- **Multi-Vendor Design**: Currently supports **19 credentials** (18 Gemini + 1 OpenAI) with **4 models**
-- **Even Distribution**: Fair selection across **114 vendor-credential-model combinations**
+- **Multi-Vendor Design**: Currently supports **19 credentials** (18 Gemini + 1 OpenAI) with **2 models**
+- **Context-Aware Selection**: Intelligent selection across **38 vendor-credential-model combinations** based on payload requirements
 
 ### **Enterprise-Grade Features (2024)**
 
@@ -135,13 +135,14 @@ The router uses an **Even Distribution Selector** that ensures fair distribution
 ### Example Distribution
 
 With the current configuration:
-- **18 Gemini credentials** × **6 models** = 108 combinations
-- **1 OpenAI credential** × **6 models** = 6 combinations
-- **Total**: 114 combinations
+- **18 Gemini credentials** × **2 models** = 36 combinations
+- **1 OpenAI credential** × **2 models** = 2 combinations (when OpenAI models are configured)
+- **Total**: 38 combinations (current Gemini-only setup)
 
-Each combination has exactly **1/114 = 0.877%** probability:
-- **Gemini overall**: 108/114 = 94.7%
-- **OpenAI overall**: 6/114 = 5.3%
+The context-aware selector intelligently filters combinations based on:
+- **Image/Video Support**: Routes vision requests to capable models
+- **Tool Support**: Routes function calling to compatible models
+- **Streaming Support**: Ensures streaming requests go to streaming-capable models
 
 This reflects the actual resource availability rather than artificial vendor-level balancing.
 
@@ -158,10 +159,10 @@ This reflects the actual resource availability rather than artificial vendor-lev
 The service logs each selection decision for transparency:
 
 ```
-Even distribution selected combination - Vendor: openai, Model: gpt-4o (from 114 total combinations)
+Context-aware selection - Vendor: gemini, Model: gemini-2.5-flash-preview-04-17 (from 38 total combinations, filtered by capabilities)
 ```
 
-You can monitor the distribution by checking the server logs to verify fair selection across all combinations.
+You can monitor the distribution by checking the server logs to verify intelligent selection based on payload requirements.
 
 ## Usage
 
