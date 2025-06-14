@@ -158,8 +158,9 @@ func handleHealthCheck(ctx context.Context, w http.ResponseWriter, r *http.Reque
 
 	// Copy response to original writer
 	for key, values := range wrapper.Header() {
+		w.Header().Del(key) // Clear any existing values for this header
 		for _, value := range values {
-			w.Header().Add(key, value)
+			w.Header().Add(key, value) // Add all values for this header
 		}
 	}
 	w.WriteHeader(wrapper.statusCode)
@@ -199,8 +200,9 @@ func handleGeneralRequest(ctx context.Context, w http.ResponseWriter, r *http.Re
 
 	// Copy response to original writer
 	for key, values := range wrapper.Header() {
+		w.Header().Del(key) // Clear any existing values for this header
 		for _, value := range values {
-			w.Header().Add(key, value)
+			w.Header().Add(key, value) // Add all values for this header
 		}
 	}
 	w.WriteHeader(wrapper.statusCode)
@@ -282,28 +284,44 @@ func getClientIP(r *http.Request) string {
 // responseWriterWrapper captures response data for logging
 type responseWriterWrapper struct {
 	http.ResponseWriter
-	statusCode  int
-	body        *bytes.Buffer
-	isStreaming bool
+	statusCode    int
+	body          *bytes.Buffer
+	isStreaming   bool
+	headerWritten bool
 }
 
 func (w *responseWriterWrapper) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
-	w.ResponseWriter.WriteHeader(statusCode)
+	// Don't write header to original writer yet - let middleware handle it
+	w.headerWritten = true
 }
 
 func (w *responseWriterWrapper) Write(data []byte) (int, error) {
 	// Check if it's a streaming response
 	if strings.Contains(w.Header().Get("Content-Type"), "text/event-stream") {
 		w.isStreaming = true
+		// For streaming, write directly to original writer
+		if !w.headerWritten {
+			w.WriteHeader(http.StatusOK)
+		}
+		w.ResponseWriter.WriteHeader(w.statusCode)
+		return w.ResponseWriter.Write(data)
 	}
 
-	// Capture response body for logging (unless streaming)
-	if !w.isStreaming && w.body.Len() < 10240 { // Limit to 10KB
+	// For non-streaming responses, only capture data for logging
+	// Don't write to original writer yet - let middleware handle it
+	if w.body.Len() < 10240 { // Limit to 10KB
 		w.body.Write(data)
 	}
 
-	return w.ResponseWriter.Write(data)
+	return len(data), nil // Return success without actually writing yet
+}
+
+// Flush implements http.Flusher interface for streaming support
+func (w *responseWriterWrapper) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // Header constants
