@@ -39,14 +39,12 @@ type AudioData struct {
 
 // ProcessAudioURL downloads audio from a URL and converts it to WAV or MP3 format
 func (p *AudioProcessor) ProcessAudioURL(ctx context.Context, audioURL string, headers map[string]string) (*AudioData, error) {
-	logger.LogWithStructure(ctx, logger.LevelDebug, "Processing audio URL",
-		map[string]interface{}{
-			"url":     audioURL,
-			"headers": headers,
-		},
-		nil, // request
-		nil, // response
-		nil) // error
+	logger.Debug(ctx, "Processing audio URL", map[string]interface{}{
+		"url":       audioURL,
+		"headers":   headers,
+		"component": "AudioProcessor",
+		"stage":     "ProcessingStart",
+	})
 
 	// Download the audio file
 	audioData, contentType, err := p.downloadAudio(ctx, audioURL, headers)
@@ -66,18 +64,16 @@ func (p *AudioProcessor) ProcessAudioURL(ctx context.Context, audioURL string, h
 	// Encode to base64
 	base64Data := base64.StdEncoding.EncodeToString(convertedData)
 
-	logger.LogWithStructure(ctx, logger.LevelDebug, "Audio processed successfully",
-		map[string]interface{}{
-			"original_url":   audioURL,
-			"content_type":   contentType,
-			"output_format":  outputFormat,
-			"original_size":  len(audioData),
-			"converted_size": len(convertedData),
-			"base64_length":  len(base64Data),
-		},
-		nil, // request
-		nil, // response
-		nil) // error
+	logger.Debug(ctx, "Audio processed successfully", map[string]interface{}{
+		"original_url":   audioURL,
+		"content_type":   contentType,
+		"output_format":  outputFormat,
+		"original_size":  len(audioData),
+		"converted_size": len(convertedData),
+		"base64_length":  len(base64Data),
+		"component":      "AudioProcessor",
+		"stage":          "ProcessingCompleted",
+	})
 
 	return &AudioData{
 		Data:   base64Data,

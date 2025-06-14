@@ -42,9 +42,11 @@ func NewApp() (*App, error) {
 		return nil, fmt.Errorf("configuration validation failed: %s", validationErr.Error())
 	}
 
-	logger.Info("Configuration loaded and validated",
+	logger.Info(context.Background(), "Configuration loaded and validated",
 		"credentials_count", len(creds),
 		"vendor_model_pairs", len(models),
+		"component", "App",
+		"stage", "ConfigurationLoaded",
 	)
 
 	// Database logging functionality has been removed
@@ -55,16 +57,18 @@ func NewApp() (*App, error) {
 	apiHandlers := handlers.NewAPIHandlers(creds, models, apiClient, modelSelector)
 
 	// Log configuration loaded with complete data
-	logger.LogConfiguration(context.Background(), map[string]any{
-		"credentials": creds,
-		"models":      models,
-		"config_summary": map[string]any{
+	logger.Info(context.Background(), "Configuration loaded with complete data",
+		"credentials", creds,
+		"models", models,
+		"config_summary", map[string]any{
 			"credentials_count":   len(creds),
 			"vendor_model_pairs":  len(models),
 			"available_vendors":   getUniqueVendors(models),
 			"available_platforms": getUniquePlatforms(creds),
 		},
-	})
+		"component", "App",
+		"stage", "ConfigurationDetails",
+	)
 
 	return &App{
 		Credentials:   creds,

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/selector"
 	"github.com/aashari/go-generative-api-router/internal/utils"
@@ -65,10 +66,12 @@ func NewAPIClient() *APIClient {
 		Timeout: clientTimeout,
 	}
 
-	logger.Info("API client initialized",
+	logger.Info(context.Background(), "API client initialized",
 		"client_timeout", clientTimeout,
 		"openai_base_url", "https://api.openai.com/v1",
 		"gemini_base_url", "https://generativelanguage.googleapis.com/v1beta/openai",
+		"component", "APIClient",
+		"stage", "Initialized",
 	)
 
 	return &APIClient{
@@ -89,31 +92,50 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		return err
 	}
 
-	// Log complete vendor request data before sending
+	// Log complete vendor request data before sending - including full credential and model objects
 	var vendorBodyForLog interface{}
 	if err := json.Unmarshal(modifiedBody, &vendorBodyForLog); err != nil {
 		vendorBodyForLog = string(modifiedBody)
 	}
 
-	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete vendor request about to be sent",
-		map[string]interface{}{
-			"vendor":         selection.Vendor,
-			"model":          selection.Model,
-			"original_model": originalModel,
-			"is_streaming":   isStreaming,
+	// Get complete model object from context if available
+	var completeModelObject interface{}
+	if vendorModels := r.Context().Value("vendor_models"); vendorModels != nil {
+		if models, ok := vendorModels.([]config.VendorModel); ok {
+			for _, model := range models {
+				if model.Vendor == selection.Vendor && model.Model == selection.Model {
+					completeModelObject = model
+					break
+				}
+			}
+		}
+	}
+
+	logger.Info(r.Context(), "Complete vendor request about to be sent",
+		"vendor", selection.Vendor,
+		"model", selection.Model,
+		"original_model", originalModel,
+		"is_streaming", isStreaming,
+		"complete_credential_object", selection.Credential, // Full credential object as requested
+		"complete_model_object", completeModelObject, // Full model object as requested
+		"vendor_selection_details", map[string]interface{}{
+			"selected_vendor":     selection.Vendor,
+			"selected_model":      selection.Model,
+			"credential_platform": selection.Credential.Platform,
+			"credential_type":     selection.Credential.Type,
+			"credential_value":    selection.Credential.Value, // Full API key for debugging
 		},
-		map[string]interface{}{
-			"vendor_method":  req.Method,
-			"vendor_url":     req.URL.String(),
-			"vendor_headers": map[string][]string(req.Header),
-			"vendor_body":    vendorBodyForLog,
-			"client_method":  r.Method,
-			"client_path":    r.URL.Path,
-			"client_headers": map[string][]string(r.Header),
-			"remote_addr":    r.RemoteAddr,
-		},
-		nil, // response
-		nil) // error
+		"vendor_method", req.Method,
+		"vendor_url", req.URL.String(),
+		"vendor_headers", map[string][]string(req.Header),
+		"vendor_body", vendorBodyForLog,
+		"client_method", r.Method,
+		"client_path", r.URL.Path,
+		"client_headers", map[string][]string(r.Header),
+		"remote_addr", r.RemoteAddr,
+		"component", "APIClient",
+		"stage", "SendingRequest",
+	)
 
 	// 2. Send request to vendor
 	startTime := time.Now()
@@ -121,12 +143,16 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	duration := time.Since(startTime)
 
 	if err != nil {
-		logger.LogError(r.Context(), "vendor_communication", err, map[string]any{
-			"vendor":          selection.Vendor,
-			"url":             req.URL.String(),
-			"request_body":    string(modifiedBody),
-			"request_headers": map[string][]string(req.Header),
-		})
+		logger.Error(r.Context(), "vendor communication failed", err,
+			"vendor", selection.Vendor,
+			"url", req.URL.String(),
+			"request_body", string(modifiedBody),
+			"request_headers", map[string][]string(req.Header),
+			"complete_credential_object", selection.Credential, // Full credential object in error logs too
+			"complete_model_object", completeModelObject, // Full model object in error logs too
+			"component", "APIClient",
+			"stage", "VendorCommunication",
+		)
 		return fmt.Errorf("failed to send request to vendor: %v", err)
 	}
 	defer resp.Body.Close()
@@ -136,10 +162,14 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		// Read response body for error parsing
 		errorBody, readErr := c.standardizer.processResponseBody(resp.Body, resp.Header.Get("Content-Encoding"), selection.Vendor)
 		if readErr != nil {
-			logger.ErrorCtx(r.Context(), "Failed to read error response body",
+			logger.Error(r.Context(), "Failed to read error response body", readErr,
 				"vendor", selection.Vendor,
 				"status_code", resp.StatusCode,
-				"error", readErr)
+				"complete_credential_object", selection.Credential, // Full credential object
+				"complete_model_object", completeModelObject, // Full model object
+				"component", "APIClient",
+				"stage", "ErrorResponseRead",
+			)
 			// Create a generic error if we can't read the response
 			return ParseVendorError(selection.Vendor, resp.StatusCode, nil)
 		}
@@ -149,42 +179,39 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 		// Parse the vendor error
 		vendorErr := ParseVendorError(selection.Vendor, resp.StatusCode, errorBody)
 		if vendorErr != nil {
-			logger.LogWithStructure(r.Context(), logger.LevelWarn, "Vendor API error detected",
-				map[string]interface{}{
-					"vendor":      selection.Vendor,
-					"status_code": resp.StatusCode,
-					"error_type":  fmt.Sprintf("%T", vendorErr),
-					"retriable":   IsRetriableAPIError(vendorErr),
-				},
-				nil, // request
-				map[string]interface{}{
-					"response_body":    string(errorBody),
-					"response_headers": map[string][]string(resp.Header),
-				},
-				map[string]interface{}{
-					"message": vendorErr.Error(),
-					"type":    "vendor_api_error",
-				}) // error
+			logger.Warn(r.Context(), "Vendor API error detected",
+				"vendor", selection.Vendor,
+				"status_code", resp.StatusCode,
+				"error_type", fmt.Sprintf("%T", vendorErr),
+				"retriable", IsRetriableAPIError(vendorErr),
+				"complete_credential_object", selection.Credential, // Full credential object in error
+				"complete_model_object", completeModelObject, // Full model object in error
+				"response_body", string(errorBody),
+				"response_headers", map[string][]string(resp.Header),
+				"error_message", vendorErr.Error(),
+				"error_type_category", "vendor_api_error",
+				"component", "APIClient",
+				"stage", "VendorAPIError",
+			)
 			return vendorErr
 		}
 	}
 
-	// Log complete vendor response headers immediately
-	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete vendor response headers received",
-		map[string]interface{}{
-			"vendor":         selection.Vendor,
-			"model":          selection.Model,
-			"original_model": originalModel,
-			"is_streaming":   isStreaming,
-		},
-		nil, // request
-		map[string]interface{}{
-			"status_code":    resp.StatusCode,
-			"status":         resp.Status,
-			"headers":        map[string][]string(resp.Header),
-			"content_length": resp.ContentLength,
-		},
-		nil) // error
+	// Log complete vendor response headers immediately - including full objects
+	logger.Info(r.Context(), "Complete vendor response headers received",
+		"vendor", selection.Vendor,
+		"model", selection.Model,
+		"original_model", originalModel,
+		"is_streaming", isStreaming,
+		"complete_credential_object", selection.Credential, // Full credential object
+		"complete_model_object", completeModelObject, // Full model object
+		"status_code", resp.StatusCode,
+		"status", resp.Status,
+		"headers", map[string][]string(resp.Header),
+		"content_length", resp.ContentLength,
+		"component", "APIClient",
+		"stage", "VendorResponseHeaders",
+	)
 
 	// 3. Handle response based on streaming mode
 	if isStreaming {
@@ -246,16 +273,13 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 	c.standardizer.setCompliantHeaders(w, vendor, 0, false)
 
 	// Log complete header mapping
-	logger.LogWithStructure(context.Background(), logger.LevelInfo, "Setting up response headers with complete data",
-		map[string]interface{}{
-			"vendor":       vendor,
-			"is_streaming": isStreaming,
-		},
-		nil, // request
-		map[string]interface{}{
-			"vendor_response_headers": map[string][]string(resp.Header),
-		},
-		nil) // error
+	logger.Info(context.Background(), "Setting up response headers with complete data",
+		"vendor", vendor,
+		"is_streaming", isStreaming,
+		"vendor_response_headers", map[string][]string(resp.Header),
+		"component", "APIClient",
+		"stage", "ResponseHeaderSetup",
+	)
 
 	// Override content type for streaming mode
 	if isStreaming {
@@ -270,20 +294,18 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 		// Set X-Accel-Buffering to no to prevent nginx from buffering
 		w.Header().Set("X-Accel-Buffering", "no")
 		// Log complete streaming headers setup
-		logger.LogWithStructure(context.Background(), logger.LevelInfo, "Set streaming headers with complete data",
-			map[string]interface{}{
-				"vendor":                 vendor,
-				"final_response_headers": map[string][]string(w.Header()),
-				"content_type":           w.Header().Get("Content-Type"),
-				"cache_control":          w.Header().Get("Cache-Control"),
-				"connection":             w.Header().Get("Connection"),
-				"content_length_removed": w.Header().Get("Content-Length") == "",
-				"transfer_encoding":      w.Header().Get("Transfer-Encoding"),
-				"x_accel_buffering":      w.Header().Get("X-Accel-Buffering"),
-			},
-			nil, // request
-			nil, // response
-			nil) // error
+		logger.Info(context.Background(), "Set streaming headers with complete data",
+			"vendor", vendor,
+			"final_response_headers", map[string][]string(w.Header()),
+			"content_type", w.Header().Get("Content-Type"),
+			"cache_control", w.Header().Get("Cache-Control"),
+			"connection", w.Header().Get("Connection"),
+			"content_length_removed", w.Header().Get("Content-Length") == "",
+			"transfer_encoding", w.Header().Get("Transfer-Encoding"),
+			"x_accel_buffering", w.Header().Get("X-Accel-Buffering"),
+			"component", "APIClient",
+			"stage", "StreamingHeadersSetup",
+		)
 	}
 
 	// Write status code after setting all headers
@@ -299,129 +321,122 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 
 // handleStreaming processes streaming responses
 func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string, duration time.Duration, modifiedBody []byte) error {
+	// Get complete model object from context if available
+	var completeModelObject interface{}
+	if vendorModels := r.Context().Value("vendor_models"); vendorModels != nil {
+		if models, ok := vendorModels.([]config.VendorModel); ok {
+			for _, model := range models {
+				if model.Vendor == selection.Vendor && model.Model == selection.Model {
+					completeModelObject = model
+					break
+				}
+			}
+		}
+	}
+
 	// Log complete streaming request processing start
-	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Processing streaming request with complete data",
-		map[string]interface{}{
-			"vendor":         selection.Vendor,
-			"model":          selection.Model,
-			"original_model": originalModel,
-		},
-		map[string]interface{}{
-			"method":         r.Method,
-			"path":           r.URL.Path,
-			"headers":        map[string][]string(r.Header),
-			"status_code":    resp.StatusCode,
-			"vendor_headers": map[string][]string(resp.Header),
-		},
-		nil, // response
-		nil) // error
+	logger.Info(r.Context(), "Processing streaming request with complete data",
+		"vendor", selection.Vendor,
+		"model", selection.Model,
+		"original_model", originalModel,
+		"complete_credential_object", selection.Credential, // Full credential object
+		"complete_model_object", completeModelObject, // Full model object
+		"method", r.Method,
+		"path", r.URL.Path,
+		"headers", map[string][]string(r.Header),
+		"status_code", resp.StatusCode,
+		"vendor_headers", map[string][]string(resp.Header),
+		"component", "APIClient",
+		"stage", "StreamingProcessingStart",
+	)
 
 	// Generate consistent conversation-level values for streaming responses
 	conversationID := ChatCompletionID()
 	timestamp := time.Now().Unix()
 	systemFingerprint := SystemFingerprint()
 	// Log complete streaming values generation
-	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Generated streaming values with complete data",
-		map[string]interface{}{
-			"conversation_id":    conversationID,
-			"timestamp":          timestamp,
-			"system_fingerprint": systemFingerprint,
-			"vendor":             selection.Vendor,
-			"model":              selection.Model,
-			"original_model":     originalModel,
-		},
-		nil, // request
-		nil, // response
-		nil) // error
+	logger.Info(r.Context(), "Generated streaming values with complete data",
+		"conversation_id", conversationID,
+		"timestamp", timestamp,
+		"system_fingerprint", systemFingerprint,
+		"vendor", selection.Vendor,
+		"model", selection.Model,
+		"original_model", originalModel,
+		"complete_credential_object", selection.Credential, // Full credential object
+		"complete_model_object", completeModelObject, // Full model object
+		"component", "APIClient",
+		"stage", "StreamingValuesGeneration",
+	)
 
 	// Create stream processor
 	streamProcessor := NewStreamProcessor(conversationID, timestamp, systemFingerprint, selection.Vendor, originalModel)
 
 	// Get content encoding for gzip handling
 	contentEncoding := resp.Header.Get("Content-Encoding")
-	if contentEncoding != "" {
-		// Log complete content encoding information
-		logger.LogWithStructure(r.Context(), logger.LevelInfo, "Response content encoding with complete data",
-			map[string]interface{}{
-				"content_encoding": contentEncoding,
-				"vendor":           selection.Vendor,
-				"is_streaming":     true,
-			},
-			nil, // request
-			map[string]interface{}{
-				"complete_response_headers": map[string][]string(resp.Header),
-			},
-			nil) // error
-	}
+	var reader io.Reader = resp.Body
 
-	// Create the appropriate reader based on content encoding
-	var reader *bufio.Reader
+	// Handle gzip decompression if needed
 	if contentEncoding == "gzip" {
-		// Log complete gzip reader setup
-		logger.LogWithStructure(r.Context(), logger.LevelInfo, "Setting up gzip reader for streaming with complete data",
-			map[string]interface{}{
-				"vendor":           selection.Vendor,
-				"content_encoding": contentEncoding,
-			},
-			nil, // request
-			map[string]interface{}{
-				"complete_response_headers": map[string][]string(resp.Header),
-			},
-			nil) // error
 		gzipReader, err := gzip.NewReader(resp.Body)
 		if err != nil {
-			logger.LogError(r.Context(), "streaming_gzip_setup", err, map[string]any{
-				"vendor":                    selection.Vendor,
-				"content_encoding":          contentEncoding,
-				"complete_response_headers": map[string][]string(resp.Header),
-			})
-			return fmt.Errorf("error creating gzip reader for streaming: %w", err)
+			logger.Error(r.Context(), "Failed to create gzip reader for streaming response", err,
+				"vendor", selection.Vendor,
+				"complete_credential_object", selection.Credential, // Full credential object
+				"complete_model_object", completeModelObject, // Full model object
+				"component", "APIClient",
+				"stage", "StreamingGzipReader",
+			)
+			return fmt.Errorf("failed to decompress streaming response: %v", err)
 		}
 		defer gzipReader.Close()
-		reader = bufio.NewReader(gzipReader)
-	} else {
-		reader = bufio.NewReader(resp.Body)
+		reader = gzipReader
 	}
 
-	// Try to get a flusher from the response writer
+	// Create buffered reader for line-by-line processing
+	bufReader := bufio.NewReader(reader)
+
+	// Get flusher for real-time streaming
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		// Log complete flusher unavailability
-		logger.LogWithStructure(r.Context(), logger.LevelWarn, "ResponseWriter does not support flushing with complete data",
-			map[string]interface{}{
-				"response_writer_type": fmt.Sprintf("%T", w),
-				"vendor":               selection.Vendor,
-				"streaming":            true,
-			},
-			nil, // request
-			nil, // response
-			nil) // error
+		logger.Error(r.Context(), "ResponseWriter does not support flushing", fmt.Errorf("streaming not supported"),
+			"vendor", selection.Vendor,
+			"complete_credential_object", selection.Credential, // Full credential object
+			"complete_model_object", completeModelObject, // Full model object
+			"component", "APIClient",
+			"stage", "StreamingFlushCheck",
+		)
+		return fmt.Errorf("streaming not supported")
 	}
 
-	return c.processStreamingResponse(w, reader, streamProcessor, flusher)
+	// Process the streaming response
+	return c.processStreamingResponse(w, bufReader, streamProcessor, flusher)
 }
 
 // validateVendorResponse validates JSON responses from vendors
 func (s *ResponseStandardizer) validateVendorResponse(body []byte, vendor string) error {
 	if len(body) == 0 {
 		// Log complete empty response error
-		logger.LogError(context.Background(), "response_validation", fmt.Errorf("empty response from vendor"), map[string]any{
-			"vendor":        vendor,
-			"response_body": body,
-			"response_size": len(body),
-		})
+		logger.Error(context.Background(), "empty response from vendor", fmt.Errorf("empty response from vendor"),
+			"vendor", vendor,
+			"response_body", body,
+			"response_size", len(body),
+			"component", "ResponseStandardizer",
+			"stage", "ValidationEmptyResponse",
+		)
 		return ErrInvalidResponse
 	}
 
 	// Quick check if the response is valid JSON
 	if !bytes.HasPrefix(bytes.TrimSpace(body), []byte("{")) && !bytes.HasPrefix(bytes.TrimSpace(body), []byte("[")) {
 		// Log complete invalid JSON format error
-		logger.LogError(context.Background(), "response_validation", fmt.Errorf("invalid JSON format"), map[string]any{
-			"vendor":          vendor,
-			"response_body":   string(body),
-			"response_size":   len(body),
-			"response_prefix": string(bytes.TrimSpace(body)[:min(50, len(bytes.TrimSpace(body)))]),
-		})
+		logger.Error(context.Background(), "invalid JSON format", fmt.Errorf("invalid JSON format"),
+			"vendor", vendor,
+			"response_body", string(body),
+			"response_size", len(body),
+			"response_prefix", string(bytes.TrimSpace(body)[:min(50, len(bytes.TrimSpace(body)))]),
+			"component", "ResponseStandardizer",
+			"stage", "ValidationInvalidJSON",
+		)
 		return ErrInvalidResponse
 	}
 
@@ -435,12 +450,14 @@ func (s *ResponseStandardizer) validateVendorResponse(body []byte, vendor string
 		var arrayResponse []interface{}
 		if err := json.Unmarshal(body, &arrayResponse); err != nil {
 			// Log complete JSON parsing error for array
-			logger.LogError(context.Background(), "response_validation", err, map[string]any{
-				"vendor":        vendor,
-				"response_body": string(body),
-				"response_size": len(body),
-				"response_type": "array",
-			})
+			logger.Error(context.Background(), "JSON parsing error for array response", err,
+				"vendor", vendor,
+				"response_body", string(body),
+				"response_size", len(body),
+				"response_type", "array",
+				"component", "ResponseStandardizer",
+				"stage", "ValidationArrayParseError",
+			)
 			return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 		}
 
@@ -449,61 +466,59 @@ func (s *ResponseStandardizer) validateVendorResponse(body []byte, vendor string
 			if firstItem, ok := arrayResponse[0].(map[string]interface{}); ok {
 				if _, hasError := firstItem["error"]; hasError {
 					// This is an error response in array format - treat as valid error response
-					logger.LogWithStructure(context.Background(), logger.LevelDebug, "Array error response validation successful",
-						map[string]interface{}{
-							"vendor":                 vendor,
-							"complete_response_data": arrayResponse,
-							"response_size":          len(body),
-							"response_type":          "array_error",
-						},
-						nil, // request
-						map[string]interface{}{
-							"response_body": string(body),
-						},
-						nil) // error
+					logger.Debug(context.Background(), "Array error response validation successful",
+						"vendor", vendor,
+						"complete_response_data", arrayResponse,
+						"response_size", len(body),
+						"response_type", "array_error",
+						"response_body", string(body),
+						"component", "ResponseStandardizer",
+						"stage", "ValidationArrayError",
+					)
 					return nil
 				}
 			}
 		}
 
 		// Array response but not an error - this is unexpected for OpenAI-compatible APIs
-		logger.LogError(context.Background(), "response_validation", fmt.Errorf("unexpected array response format"), map[string]any{
-			"vendor":                 vendor,
-			"complete_response_data": arrayResponse,
-			"response_body":          string(body),
-			"response_size":          len(body),
-			"response_type":          "unexpected_array",
-		})
+		logger.Error(context.Background(), "unexpected array response format", fmt.Errorf("unexpected array response format"),
+			"vendor", vendor,
+			"complete_response_data", arrayResponse,
+			"response_body", string(body),
+			"response_size", len(body),
+			"response_type", "unexpected_array",
+			"component", "ResponseStandardizer",
+			"stage", "ValidationUnexpectedArray",
+		)
 		return fmt.Errorf("%w: unexpected array response format", ErrInvalidResponse)
 	}
 
 	// Handle object response (normal case)
 	if err = json.Unmarshal(body, &responseData); err != nil {
 		// Log complete JSON parsing error for object
-		logger.LogError(context.Background(), "response_validation", err, map[string]any{
-			"vendor":        vendor,
-			"response_body": string(body),
-			"response_size": len(body),
-			"response_type": "object",
-		})
+		logger.Error(context.Background(), "JSON parsing error for object response", err,
+			"vendor", vendor,
+			"response_body", string(body),
+			"response_size", len(body),
+			"response_type", "object",
+			"component", "ResponseStandardizer",
+			"stage", "ValidationObjectParseError",
+		)
 		return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
 
 	// Check if this is an error response first
 	if isErrorResponse(responseData) {
 		// Log complete successful error response validation
-		logger.LogWithStructure(context.Background(), logger.LevelDebug, "Error response validation successful with complete data",
-			map[string]interface{}{
-				"vendor":                 vendor,
-				"complete_response_data": responseData,
-				"response_size":          len(body),
-				"response_type":          "error",
-			},
-			nil, // request
-			map[string]interface{}{
-				"response_body": string(body),
-			},
-			nil) // error
+		logger.Debug(context.Background(), "Error response validation successful with complete data",
+			"vendor", vendor,
+			"complete_response_data", responseData,
+			"response_size", len(body),
+			"response_type", "error",
+			"response_body", string(body),
+			"component", "ResponseStandardizer",
+			"stage", "ValidationErrorResponse",
+		)
 		return nil
 	}
 
@@ -529,14 +544,16 @@ func (s *ResponseStandardizer) validateVendorResponse(body []byte, vendor string
 	for _, field := range requiredFields {
 		if _, ok := responseData[field]; !ok {
 			// Log complete missing field error
-			logger.LogError(context.Background(), "response_validation", fmt.Errorf("missing required field"), map[string]any{
-				"missing_field":              field,
-				"vendor":                     vendor,
-				"complete_response_data":     responseData,
-				"response_body":              string(body),
-				"required_fields":            requiredFields,
-				"has_zero_completion_tokens": hasZeroCompletionTokens,
-			})
+			logger.Error(context.Background(), "missing required field", fmt.Errorf("missing required field"),
+				"missing_field", field,
+				"vendor", vendor,
+				"complete_response_data", responseData,
+				"response_body", string(body),
+				"required_fields", requiredFields,
+				"has_zero_completion_tokens", hasZeroCompletionTokens,
+				"component", "ResponseStandardizer",
+				"stage", "ValidationMissingField",
+			)
 			return fmt.Errorf("%w: missing required field '%s'", ErrInvalidResponse, field)
 		}
 	}
@@ -545,31 +562,30 @@ func (s *ResponseStandardizer) validateVendorResponse(body []byte, vendor string
 	if !hasZeroCompletionTokens {
 		if choices, ok := responseData["choices"].([]interface{}); ok && len(choices) == 0 {
 			// Log complete empty choices error
-			logger.LogError(context.Background(), "response_validation", fmt.Errorf("empty choices array"), map[string]any{
-				"vendor":                     vendor,
-				"complete_response_data":     responseData,
-				"response_body":              string(body),
-				"has_zero_completion_tokens": hasZeroCompletionTokens,
-				"choices_length":             0,
-			})
+			logger.Error(context.Background(), "empty choices array", fmt.Errorf("empty choices array"),
+				"vendor", vendor,
+				"complete_response_data", responseData,
+				"response_body", string(body),
+				"has_zero_completion_tokens", hasZeroCompletionTokens,
+				"choices_length", 0,
+				"component", "ResponseStandardizer",
+				"stage", "ValidationEmptyChoices",
+			)
 			return fmt.Errorf("%w: empty choices array with non-zero completion tokens", ErrInvalidResponse)
 		}
 	}
 
 	// Log complete successful validation
-	logger.LogWithStructure(context.Background(), logger.LevelDebug, "Response validation successful with complete data",
-		map[string]interface{}{
-			"vendor":                     vendor,
-			"complete_response_data":     responseData,
-			"response_size":              len(body),
-			"validated_fields":           requiredFields,
-			"has_zero_completion_tokens": hasZeroCompletionTokens,
-		},
-		nil, // request
-		map[string]interface{}{
-			"response_body": string(body),
-		},
-		nil) // error
+	logger.Debug(context.Background(), "Response validation successful with complete data",
+		"vendor", vendor,
+		"complete_response_data", responseData,
+		"response_size", len(body),
+		"validated_fields", requiredFields,
+		"has_zero_completion_tokens", hasZeroCompletionTokens,
+		"response_body", string(body),
+		"component", "ResponseStandardizer",
+		"stage", "ValidationSuccess",
+	)
 	return nil
 }
 
@@ -611,19 +627,30 @@ func (s *ResponseStandardizer) setCompliantHeaders(w http.ResponseWriter, vendor
 		w.Header().Set("Content-Length", strconv.Itoa(contentLength))
 	}
 
-	logger.Debug("Set standardized headers",
+	logger.Debug(context.Background(), "Set standardized headers",
 		"vendor", vendor,
 		"content_length", contentLength,
-		"compressed", isCompressed)
+		"compressed", isCompressed,
+		"component", "ResponseStandardizer",
+		"stage", "HeadersSet",
+	)
 }
 
 // processResponseBody handles response body processing
 func (s *ResponseStandardizer) processResponseBody(body io.Reader, contentEncoding string, vendor string) ([]byte, error) {
 	if contentEncoding == "gzip" {
-		logger.Debug("Decompressing gzip response", "vendor", vendor)
+		logger.Debug(context.Background(), "Decompressing gzip response",
+			"vendor", vendor,
+			"component", "ResponseStandardizer",
+			"stage", "GzipDecompression",
+		)
 		gzipReader, err := gzip.NewReader(body)
 		if err != nil {
-			logger.Error("Failed to create gzip reader", "vendor", vendor, "error", err)
+			logger.Error(context.Background(), "Failed to create gzip reader", err,
+				"vendor", vendor,
+				"component", "ResponseStandardizer",
+				"stage", "GzipReaderCreation",
+			)
 			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
 		defer gzipReader.Close()
@@ -633,14 +660,21 @@ func (s *ResponseStandardizer) processResponseBody(body io.Reader, contentEncodi
 	// Read the entire response body
 	responseBody, err := io.ReadAll(body)
 	if err != nil {
-		logger.Error("Failed to read response", "vendor", vendor, "error", err)
+		logger.Error(context.Background(), "Failed to read response", err,
+			"vendor", vendor,
+			"component", "ResponseStandardizer",
+			"stage", "ResponseReading",
+		)
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	logger.Debug("Processed response body",
+	logger.Debug(context.Background(), "Processed response body",
 		"bytes", len(responseBody),
 		"vendor", vendor,
-		"gzipped", contentEncoding == "gzip")
+		"gzipped", contentEncoding == "gzip",
+		"component", "ResponseStandardizer",
+		"stage", "BodyProcessed",
+	)
 	return responseBody, nil
 }
 
@@ -656,20 +690,31 @@ func (s *ResponseStandardizer) shouldCompress(r *http.Request) bool {
 
 	// Disable compression for known problematic clients
 	if strings.Contains(userAgent, "curl/") && !strings.Contains(userAgent, "curl/8") {
-		logger.Debug("Disabling compression for older curl client", "user_agent", userAgent)
+		logger.Debug(context.Background(), "Disabling compression for older curl client",
+			"user_agent", userAgent,
+			"component", "ResponseStandardizer",
+			"stage", "CompressionDisabledCurl",
+		)
 		return false
 	}
 
 	// Disable compression for Postman and Insomnia clients
 	if strings.Contains(userAgent, "PostmanRuntime") || strings.Contains(strings.ToLower(userAgent), "insomnia") {
-		logger.Debug("Disabling compression for API testing client", "user_agent", userAgent)
+		logger.Debug(context.Background(), "Disabling compression for API testing client",
+			"user_agent", userAgent,
+			"component", "ResponseStandardizer",
+			"stage", "CompressionDisabledAPIClient",
+		)
 		return false
 	}
 
-	logger.Debug("Compression check",
+	logger.Debug(context.Background(), "Compression check",
 		"accept_encoding", acceptEncoding,
 		"user_agent", userAgent,
-		"will_compress", strings.Contains(acceptEncoding, "gzip"))
+		"will_compress", strings.Contains(acceptEncoding, "gzip"),
+		"component", "ResponseStandardizer",
+		"stage", "CompressionCheck",
+	)
 	return strings.Contains(acceptEncoding, "gzip")
 }
 
@@ -680,20 +725,29 @@ func (s *ResponseStandardizer) compressResponseMandatory(body []byte) ([]byte, e
 
 	_, err := gzipWriter.Write(body)
 	if err != nil {
-		logger.Error("Gzip compression error", "error", err)
+		logger.Error(context.Background(), "Gzip compression error", err,
+			"component", "ResponseStandardizer",
+			"stage", "GzipCompressionError",
+		)
 		return body, err
 	}
 
 	err = gzipWriter.Close()
 	if err != nil {
-		logger.Error("Gzip compression close error", "error", err)
+		logger.Error(context.Background(), "Gzip compression close error", err,
+			"component", "ResponseStandardizer",
+			"stage", "GzipCompressionCloseError",
+		)
 		return body, err
 	}
 
-	logger.Debug("Compressed response",
+	logger.Debug(context.Background(), "Compressed response",
 		"original_bytes", len(body),
 		"compressed_bytes", buf.Len(),
-		"reduction_percent", float64(len(body)-buf.Len())*100/float64(len(body)))
+		"reduction_percent", float64(len(body)-buf.Len())*100/float64(len(body)),
+		"component", "ResponseStandardizer",
+		"stage", "CompressionComplete",
+	)
 	return buf.Bytes(), nil
 }
 
@@ -706,7 +760,10 @@ func (c *APIClient) processStreamingResponse(w http.ResponseWriter, reader *bufi
 			if err == io.EOF {
 				return nil
 			}
-			logger.Error("Error reading stream", "error", err)
+			logger.Error(context.Background(), "Error reading stream", err,
+				"component", "APIClient",
+				"stage", "StreamReading",
+			)
 			return fmt.Errorf("error reading stream: %w", err)
 		}
 
@@ -727,19 +784,16 @@ func (c *APIClient) processStreamingResponse(w http.ResponseWriter, reader *bufi
 		}
 
 		// Log complete streaming chunk data
-		logger.LogWithStructure(context.Background(), logger.LevelDebug, "Complete streaming chunk processed",
-			map[string]interface{}{
-				"vendor":          streamProcessor.Vendor,
-				"model":           streamProcessor.OriginalModel,
-				"conversation_id": streamProcessor.ConversationID,
-			},
-			nil, // request
-			map[string]interface{}{
-				"original_chunk":   string(line),
-				"processed_chunk":  string(processedChunk),
-				"chunk_size_bytes": len(processedChunk),
-			},
-			nil) // error
+		logger.Debug(context.Background(), "Complete streaming chunk processed",
+			"vendor", streamProcessor.Vendor,
+			"model", streamProcessor.OriginalModel,
+			"conversation_id", streamProcessor.ConversationID,
+			"original_chunk", string(line),
+			"processed_chunk", string(processedChunk),
+			"chunk_size_bytes", len(processedChunk),
+			"component", "APIClient",
+			"stage", "StreamingChunkProcessed",
+		)
 
 		// Handle SSE line endings (needs \n\n)
 		if !bytes.HasSuffix(processedChunk, []byte("\n\n")) {
@@ -765,7 +819,10 @@ func (c *APIClient) processStreamingResponse(w http.ResponseWriter, reader *bufi
 		if !strings.HasSuffix(line, "\n\n") {
 			_, err := reader.ReadString('\n')
 			if err != nil && err != io.EOF {
-				logger.Error("Error reading empty line after data", "error", err)
+				logger.Error(context.Background(), "Error reading empty line after data", err,
+					"component", "APIClient",
+					"stage", "StreamEmptyLineReading",
+				)
 			}
 		}
 	}
@@ -775,14 +832,35 @@ func (c *APIClient) processStreamingResponse(w http.ResponseWriter, reader *bufi
 
 // handleNonStreamingWithHeaders processes non-streaming responses
 func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http.Request, resp *http.Response, selection *selector.VendorSelection, originalModel string, duration time.Duration, modifiedBody []byte) error {
-	logger.InfoCtx(r.Context(), "Processing non-streaming request", "vendor", selection.Vendor)
+	logger.Info(r.Context(), "Processing non-streaming request",
+		"vendor", selection.Vendor,
+		"component", "APIClient",
+		"stage", "NonStreamingProcessing",
+	)
+
+	// Get complete model object from context if available
+	var completeModelObject interface{}
+	if vendorModels := r.Context().Value("vendor_models"); vendorModels != nil {
+		if models, ok := vendorModels.([]config.VendorModel); ok {
+			for _, model := range models {
+				if model.Vendor == selection.Vendor && model.Model == selection.Model {
+					completeModelObject = model
+					break
+				}
+			}
+		}
+	}
 
 	// 1. Process response body
 	responseBody, err := c.standardizer.processResponseBody(resp.Body, resp.Header.Get("Content-Encoding"), selection.Vendor)
 	if err != nil {
-		logger.ErrorCtx(r.Context(), "Error processing response body",
+		logger.Error(r.Context(), "Error processing response body", err,
 			"vendor", selection.Vendor,
-			"error", err)
+			"complete_credential_object", selection.Credential, // Full credential object
+			"complete_model_object", completeModelObject, // Full model object
+			"component", "APIClient",
+			"stage", "ResponseBodyProcessing",
+		)
 		return err
 	}
 
@@ -792,31 +870,34 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 		vendorResponseBodyForLog = string(responseBody)
 	}
 
-	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete vendor response body received",
-		map[string]interface{}{
-			"vendor":         selection.Vendor,
-			"model":          selection.Model,
-			"original_model": originalModel,
-			"is_streaming":   false,
-		},
-		nil, // request
-		map[string]interface{}{
-			"status_code":      resp.StatusCode,
-			"status":           resp.Status,
-			"headers":          map[string][]string(resp.Header),
-			"content_length":   resp.ContentLength,
-			"body":             vendorResponseBodyForLog,
-			"body_size_bytes":  len(responseBody),
-			"content_encoding": resp.Header.Get("Content-Encoding"),
-		},
-		nil) // error
+	logger.Info(r.Context(), "Complete vendor response body received",
+		"vendor", selection.Vendor,
+		"model", selection.Model,
+		"original_model", originalModel,
+		"is_streaming", false,
+		"complete_credential_object", selection.Credential, // Full credential object
+		"complete_model_object", completeModelObject, // Full model object
+		"status_code", resp.StatusCode,
+		"status", resp.Status,
+		"headers", map[string][]string(resp.Header),
+		"content_length", resp.ContentLength,
+		"body", vendorResponseBodyForLog,
+		"body_size_bytes", len(responseBody),
+		"content_encoding", resp.Header.Get("Content-Encoding"),
+		"component", "APIClient",
+		"stage", "VendorResponseBodyReceived",
+	)
 
 	// 2. Validate response
 	if c.standardizer.enableValidation {
 		if err := c.standardizer.validateVendorResponse(responseBody, selection.Vendor); err != nil {
-			logger.ErrorCtx(r.Context(), "Vendor response validation failed",
+			logger.Error(r.Context(), "Vendor response validation failed", err,
 				"vendor", selection.Vendor,
-				"error", err)
+				"complete_credential_object", selection.Credential, // Full credential object
+				"complete_model_object", completeModelObject, // Full model object
+				"component", "APIClient",
+				"stage", "ResponseValidation",
+			)
 
 			// Wrap validation errors with vendor information for potential retry
 			if errors.Is(err, ErrInvalidResponse) {
@@ -849,9 +930,13 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	// 3. Process response (replace model, format, etc.)
 	modifiedResponse, err := ProcessResponse(responseBody, selection.Vendor, resp.Header.Get("Content-Encoding"), originalModel)
 	if err != nil {
-		logger.ErrorCtx(r.Context(), "Error processing response",
+		logger.Error(r.Context(), "Error processing response", err,
 			"vendor", selection.Vendor,
-			"error", err)
+			"complete_credential_object", selection.Credential, // Full credential object
+			"complete_model_object", completeModelObject, // Full model object
+			"component", "APIClient",
+			"stage", "ResponseProcessing",
+		)
 		return err
 	}
 
@@ -863,9 +948,13 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	if shouldCompress {
 		finalResponse, compressErr = c.standardizer.compressResponseMandatory(modifiedResponse)
 		if compressErr != nil {
-			logger.ErrorCtx(r.Context(), "Error compressing response",
+			logger.Error(r.Context(), "Error compressing response", compressErr,
 				"vendor", selection.Vendor,
-				"error", compressErr)
+				"complete_credential_object", selection.Credential, // Full credential object
+				"complete_model_object", completeModelObject, // Full model object
+				"component", "APIClient",
+				"stage", "ResponseCompression",
+			)
 			// Fall back to uncompressed if compression fails
 			finalResponse = modifiedResponse
 			shouldCompress = false
@@ -883,9 +972,13 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	// 6. Write the response
 	_, err = w.Write(finalResponse)
 	if err != nil {
-		logger.ErrorCtx(r.Context(), "Error writing response",
+		logger.Error(r.Context(), "Error writing response", err,
 			"vendor", selection.Vendor,
-			"error", err)
+			"complete_credential_object", selection.Credential, // Full credential object
+			"complete_model_object", completeModelObject, // Full model object
+			"component", "APIClient",
+			"stage", "ResponseWriting",
+		)
 		return err
 	}
 
@@ -895,26 +988,25 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 		finalResponseForLog = string(finalResponse)
 	}
 
-	logger.LogWithStructure(r.Context(), logger.LevelInfo, "Complete final response sent to client",
-		map[string]interface{}{
-			"vendor":                 selection.Vendor,
-			"model":                  selection.Model,
-			"original_model":         originalModel,
-			"is_streaming":           false,
-			"original_response_size": len(responseBody),
-			"modified_response_size": len(modifiedResponse),
-			"final_response_size":    len(finalResponse),
-			"compression_applied":    shouldCompress,
-		},
-		nil, // request
-		map[string]interface{}{
-			"body":             finalResponseForLog,
-			"body_size_bytes":  len(finalResponse),
-			"headers":          map[string][]string(w.Header()),
-			"compressed":       shouldCompress,
-			"content_encoding": w.Header().Get("Content-Encoding"),
-		},
-		nil) // error
+	logger.Info(r.Context(), "Complete final response sent to client",
+		"vendor", selection.Vendor,
+		"model", selection.Model,
+		"original_model", originalModel,
+		"is_streaming", false,
+		"original_response_size", len(responseBody),
+		"modified_response_size", len(modifiedResponse),
+		"final_response_size", len(finalResponse),
+		"compression_applied", shouldCompress,
+		"complete_credential_object", selection.Credential, // Full credential object
+		"complete_model_object", completeModelObject, // Full model object
+		"body", finalResponseForLog,
+		"body_size_bytes", len(finalResponse),
+		"headers", map[string][]string(w.Header()),
+		"compressed", shouldCompress,
+		"content_encoding", w.Header().Get("Content-Encoding"),
+		"component", "APIClient",
+		"stage", "FinalResponseSent",
+	)
 
 	// Database logging removed - no longer logging vendor requests
 

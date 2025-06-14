@@ -338,7 +338,7 @@ func truncateBase64String(s string) string {
 		return prefix + truncated
 	})
 
-	// Handle plain data URL if the entire string is itself a data URL (backwards compatibility)
+	// Handle plain data URL if the entire string is itself a data URL
 	if strings.HasPrefix(s, "data:") && strings.Contains(s, ";base64,") {
 		parts := strings.SplitN(s, ";base64,", 2)
 		if len(parts) == 2 {
@@ -416,4 +416,23 @@ func truncateBase64Struct(v reflect.Value) reflect.Value {
 		}
 	}
 	return newStruct
+}
+
+// SanitizeHeaders removes sensitive headers like Authorization for logging
+func SanitizeHeaders(headers map[string][]string) map[string][]string {
+	if headers == nil {
+		return nil
+	}
+
+	sanitized := make(map[string][]string)
+	for key, values := range headers {
+		lowerKey := strings.ToLower(key)
+		// Skip sensitive headers
+		if lowerKey == "authorization" || lowerKey == "x-api-key" || strings.Contains(lowerKey, "token") || strings.Contains(lowerKey, "secret") {
+			sanitized[key] = []string{"[REDACTED]"}
+		} else {
+			sanitized[key] = values
+		}
+	}
+	return sanitized
 }

@@ -48,22 +48,16 @@ func (f *FileProcessor) ProcessFileURL(ctx context.Context, fileURL *FileURL) (s
 	// First, detect the file type by downloading headers and initial content
 	fileType, err := f.detectFileType(ctx, url, headers)
 	if err != nil {
-		logger.LogWithStructure(ctx, logger.LevelDebug, "Failed to detect file type",
-			map[string]interface{}{
-				"url":   url,
-				"error": err.Error(),
-			},
-			nil, nil, nil)
+		ctx = logger.WithComponent(ctx, "file_processor")
+		ctx = logger.WithStage(ctx, "file_type_detection")
+		logger.Debug(ctx, "Failed to detect file type", "url", url, "error", err.Error())
 		// Fall back to default file processing
 		return f.processAsDocument(ctx, url, headers)
 	}
 
-	logger.LogWithStructure(ctx, logger.LevelInfo, "Detected file type for intelligent routing",
-		map[string]interface{}{
-			"url":       url,
-			"file_type": fileType,
-		},
-		nil, nil, nil)
+	ctx = logger.WithComponent(ctx, "file_processor")
+	ctx = logger.WithStage(ctx, "file_type_detection")
+	logger.Info(ctx, "Detected file type for intelligent routing", "url", url, "file_type", fileType)
 
 	// Route based on detected file type
 	switch fileType {
@@ -96,12 +90,9 @@ func (f *FileProcessor) ProcessFileURLIntelligent(ctx context.Context, fileURL *
 	// First, detect the file type by downloading headers and initial content
 	fileType, err := f.detectFileType(ctx, url, headers)
 	if err != nil {
-		logger.LogWithStructure(ctx, logger.LevelDebug, "Failed to detect file type",
-			map[string]interface{}{
-				"url":   url,
-				"error": err.Error(),
-			},
-			nil, nil, nil)
+		ctx = logger.WithComponent(ctx, "file_processor")
+		ctx = logger.WithStage(ctx, "intelligent_routing")
+		logger.Debug(ctx, "Failed to detect file type for intelligent routing", "url", url, "error", err.Error())
 		// Fall back to default file processing as text
 		content, procErr := f.processAsDocument(ctx, url, headers)
 		if procErr != nil {
@@ -113,12 +104,9 @@ func (f *FileProcessor) ProcessFileURLIntelligent(ctx context.Context, fileURL *
 		}, nil
 	}
 
-	logger.LogWithStructure(ctx, logger.LevelInfo, "Detected file type for intelligent routing",
-		map[string]interface{}{
-			"url":       url,
-			"file_type": fileType,
-		},
-		nil, nil, nil)
+	ctx = logger.WithComponent(ctx, "file_processor")
+	ctx = logger.WithStage(ctx, "intelligent_routing")
+	logger.Info(ctx, "Detected file type for intelligent routing", "url", url, "file_type", fileType)
 
 	// Route based on detected file type
 	switch fileType {
@@ -347,11 +335,9 @@ func (f *FileProcessor) detectAudioFormat(data []byte) string {
 
 // processAsImage processes the file as an image
 func (f *FileProcessor) processAsImage(ctx context.Context, url string, headers map[string]string) (string, error) {
-	logger.LogWithStructure(ctx, logger.LevelInfo, "Processing file_url as image",
-		map[string]interface{}{
-			"url": url,
-		},
-		nil, nil, nil)
+	ctx = logger.WithComponent(ctx, "file_processor")
+	ctx = logger.WithStage(ctx, "image_processing")
+	logger.Info(ctx, "Processing file_url as image", "url", url)
 
 	// Use the image processor to download and convert to base64
 	_, err := f.imageProcessor.downloadAndConvertImageWithHeaders(ctx, url, headers)
@@ -366,11 +352,9 @@ func (f *FileProcessor) processAsImage(ctx context.Context, url string, headers 
 
 // processAsAudio processes the file as audio
 func (f *FileProcessor) processAsAudio(ctx context.Context, url string, headers map[string]string) (string, error) {
-	logger.LogWithStructure(ctx, logger.LevelInfo, "Processing file_url as audio",
-		map[string]interface{}{
-			"url": url,
-		},
-		nil, nil, nil)
+	ctx = logger.WithComponent(ctx, "file_processor")
+	ctx = logger.WithStage(ctx, "audio_processing")
+	logger.Info(ctx, "Processing file_url as audio", "url", url)
 
 	// Use the audio processor to download and convert
 	audioData, err := f.audioProcessor.ProcessAudioURL(ctx, url, headers)
@@ -392,11 +376,9 @@ func (f *FileProcessor) processAsAudio(ctx context.Context, url string, headers 
 
 // processAsDocument processes the file as a document using markitdown
 func (f *FileProcessor) processAsDocument(ctx context.Context, url string, headers map[string]string) (string, error) {
-	logger.LogWithStructure(ctx, logger.LevelInfo, "Processing file_url as document",
-		map[string]interface{}{
-			"url": url,
-		},
-		nil, nil, nil)
+	ctx = logger.WithComponent(ctx, "file_processor")
+	ctx = logger.WithStage(ctx, "document_processing")
+	logger.Info(ctx, "Processing file_url as document", "url", url)
 
 	// Use the existing markitdown processing
 	content, err := f.imageProcessor.downloadAndConvertFileWithHeaders(ctx, url, headers)

@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -86,12 +87,12 @@ func HandleError(w http.ResponseWriter, err error, statusCode int) {
 		_, _ = w.Write(jsonBytes)
 	} else {
 		// Fallback if JSON marshaling fails
-		logger.Error("Error marshaling error response", "error", jsonErr)
+		logger.Error(context.Background(), "Error marshaling error response", jsonErr)
 		_, _ = w.Write([]byte(`{"error":{"type":"internal_error","message":"Internal server error"}}`))
 	}
 
 	// Log the error for debugging
-	logger.Error("API Error",
+	logger.Info(context.Background(), "API Error",
 		"status_code", statusCode,
 		"error_type", string(apiError.Type),
 		"message", apiError.Message,

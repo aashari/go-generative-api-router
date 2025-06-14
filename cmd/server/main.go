@@ -1,14 +1,13 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/app"
 	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/logger"
-	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // version is set at build time via ldflags
@@ -59,65 +58,34 @@ func main() {
 		os.Setenv("VERSION", version)
 	}
 
-	// Load environment variables from .env file (similar to Node.js dotenv)
-	if err := config.LoadEnvFromMultiplePaths(); err != nil {
-		// This is not fatal - the app can run with system environment variables
-		_, _ = os.Stderr.WriteString("WARNING: Could not load .env file: " + err.Error() + "\n")
+	// Load environment variables from .env file
+	err := config.LoadEnvFile()
+	if err != nil {
+		logger.Warn(context.Background(), "No .env file found, using environment variables")
 	}
 
-	// Initialize structured logging
-	if err := logger.InitFromEnv(); err != nil {
-		// Can't use logger here as it failed to initialize
-		// Fall back to basic output and exit
-		_, _ = os.Stderr.WriteString("FATAL: Failed to initialize logger: " + err.Error() + "\n")
+	// Initialize logger
+	logger.InitFromEnv()
+
+	// Create a new application instance
+	appInstance, err := app.NewApp()
+	if err != nil {
+		logger.Error(context.Background(), "Failed to initialize application", err)
 		os.Exit(1)
 	}
 
-	// Create and initialize the application
-	app, err := app.NewApp()
-	if err != nil {
-		logger.Error("Failed to initialize application", "error", err)
-		os.Exit(1)
+	// Setup router
+	r := appInstance.SetupRoutes()
+
+	// Start server
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8082"
 	}
 
-	// Get router with all routes configured
-	handler := app.SetupRoutes()
-
-	// Apply CORS middleware
-	corsHandler := CORSMiddleware(handler)
-
-	// Configure server address and timeouts from environment variables
-	serverAddr := utils.GetEnvString("SERVER_ADDR", "0.0.0.0:8082")
-	if port := os.Getenv("PORT"); port != "" {
-		serverAddr = "0.0.0.0:" + port
-	}
-
-	// Configure timeouts with generous defaults for AI workloads
-	// Server timeouts should be longer than client timeout to prevent premature connection closure
-	// Increased timeouts to prevent 120-second client timeouts
-	readTimeout := utils.GetEnvDuration("READ_TIMEOUT", 1500*time.Second)   // 25 minutes default
-	writeTimeout := utils.GetEnvDuration("WRITE_TIMEOUT", 1500*time.Second) // 25 minutes default
-	idleTimeout := utils.GetEnvDuration("IDLE_TIMEOUT", 1800*time.Second)   // 30 minutes default
-
-	logger.Info("Server starting",
-		"address", serverAddr,
-		"version", version,
-		"read_timeout", readTimeout,
-		"write_timeout", writeTimeout,
-		"idle_timeout", idleTimeout,
-	)
-	logger.Info("Swagger documentation available", "url", "https://genapi.example.com/swagger/index.html")
-
-	srv := &http.Server{
-		Addr:         serverAddr,
-		Handler:      corsHandler,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
-		IdleTimeout:  idleTimeout,
-	}
-	err = srv.ListenAndServe()
-	if err != nil {
-		logger.Error("Server failed", "error", err)
+	logger.Info(context.Background(), "Starting server", "port", port)
+	if err := http.ListenAndServe(":"+port, r); err != nil {
+		logger.Error(context.Background(), "Failed to start server", err)
 		os.Exit(1)
 	}
 }

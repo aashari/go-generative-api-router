@@ -63,91 +63,67 @@ func (r *RetryExecutor) ExecuteWithRetry(ctx context.Context, operation func() e
 
 			// Check if this error is retriable
 			if !r.isRetryableError(err) {
-				logger.LogWithStructure(ctx, logger.LevelWarn, "Non-retriable error encountered",
-					map[string]interface{}{
-						"attempt":    attempt,
-						"error":      err.Error(),
-						"error_type": fmt.Sprintf("%T", err),
-						"retriable":  false,
-					},
-					nil, // request
-					nil, // response
-					map[string]interface{}{
-						"message": err.Error(),
-						"type":    "non_retriable_error",
-					}) // error
+				retryCtx := logger.WithComponent(ctx, "RetryExecutor")
+				retryCtx = logger.WithStage(retryCtx, "NonRetriableError")
+				logger.Warn(retryCtx, "Non-retriable error encountered",
+					"attempt", attempt,
+					"error", err.Error(),
+					"error_type", fmt.Sprintf("%T", err),
+					"retriable", false,
+				)
 				return err
 			}
 
 			// If this is the last attempt, don't wait
 			if attempt >= r.config.MaxAttempts {
-				logger.LogWithStructure(ctx, logger.LevelError, "All retry attempts exhausted",
-					map[string]interface{}{
-						"total_attempts": attempt,
-						"max_attempts":   r.config.MaxAttempts,
-						"final_error":    err.Error(),
-						"error_type":     fmt.Sprintf("%T", err),
-					},
-					nil, // request
-					nil, // response
-					map[string]interface{}{
-						"message": fmt.Sprintf("Operation failed after %d attempts: %v", attempt, err),
-						"type":    "retry_exhausted",
-					}) // error
+				retryCtx := logger.WithComponent(ctx, "RetryExecutor")
+				retryCtx = logger.WithStage(retryCtx, "RetryExhausted")
+				logger.Error(retryCtx, "All retry attempts exhausted", err,
+					"total_attempts", attempt,
+					"max_attempts", r.config.MaxAttempts,
+					"final_error", err.Error(),
+				)
 				break
 			}
 
 			// Calculate delay for next attempt
 			delay := r.calculateBackoff(attempt)
 
-			logger.LogWithStructure(ctx, logger.LevelWarn, "Operation failed, retrying with exponential backoff",
-				map[string]interface{}{
-					"attempt":       attempt,
-					"max_attempts":  r.config.MaxAttempts,
-					"delay_ms":      delay.Milliseconds(),
-					"delay_seconds": delay.Seconds(),
-					"error":         err.Error(),
-					"error_type":    fmt.Sprintf("%T", err),
-					"next_attempt":  attempt + 1,
-				},
-				nil, // request
-				nil, // response
-				map[string]interface{}{
-					"message": err.Error(),
-					"type":    "retry_attempt",
-				}) // error
+			retryCtx := logger.WithComponent(ctx, "RetryExecutor")
+			retryCtx = logger.WithStage(retryCtx, "RetryAttempt")
+			logger.Warn(retryCtx, "Operation failed, retrying with exponential backoff",
+				"attempt", attempt,
+				"max_attempts", r.config.MaxAttempts,
+				"delay_ms", delay.Milliseconds(),
+				"delay_seconds", delay.Seconds(),
+				"error", err.Error(),
+				"next_attempt", attempt+1,
+			)
 
 			// Wait for the calculated delay or until context is cancelled
 			select {
 			case <-time.After(delay):
 				continue // Proceed to next attempt
 			case <-ctx.Done():
-				logger.LogWithStructure(ctx, logger.LevelWarn, "Retry cancelled due to context cancellation",
-					map[string]interface{}{
-						"attempt":        attempt,
-						"context_error":  ctx.Err().Error(),
-						"original_error": err.Error(),
-					},
-					nil, // request
-					nil, // response
-					map[string]interface{}{
-						"message": ctx.Err().Error(),
-						"type":    "retry_cancelled",
-					}) // error
+				retryCtx := logger.WithComponent(ctx, "RetryExecutor")
+				retryCtx = logger.WithStage(retryCtx, "RetryCancelled")
+				logger.Warn(retryCtx, "Retry cancelled due to context cancellation",
+					"attempt", attempt,
+					"context_error", ctx.Err().Error(),
+					"original_error", err.Error(),
+				)
 				return ctx.Err()
 			}
 		} else {
 			// Operation succeeded
 			if attempt > 1 {
-				logger.LogWithStructure(ctx, logger.LevelInfo, "Operation succeeded after retry",
-					map[string]interface{}{
-						"successful_attempt": attempt,
-						"total_attempts":     attempt,
-						"retry_successful":   true,
-					},
-					nil, // request
-					nil, // response
-					nil) // error
+				retryCtx := logger.WithComponent(ctx, "RetryExecutor")
+				retryCtx = logger.WithStage(retryCtx, "RetrySuccess")
+				logger.Info(retryCtx, "Operation succeeded after retry",
+					"successful_attempt", attempt,
+					"total_attempts", attempt,
+					"retry_successful", true,
+				)
 			}
 			return nil
 		}

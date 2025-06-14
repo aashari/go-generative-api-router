@@ -314,16 +314,13 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 
 	// Log processing start (if logger is available)
 	if len(itemsToProcess) > 0 {
-		logger.LogWithStructure(ctx, logger.LevelInfo, "Processing image URLs, files, and audio URLs concurrently",
-			map[string]interface{}{
-				"item_count":       len(itemsToProcess),
-				"total_parts":      len(parts),
-				"total_items":      totalItems,
-				"items_to_process": itemsToProcess,
-			},
-			nil, // request
-			nil, // response
-			nil) // error
+		ctx = logger.WithComponent(ctx, "image_processor")
+		ctx = logger.WithStage(ctx, "content_processing")
+		logger.Info(ctx, "Processing image URLs, files, and audio URLs concurrently",
+			"item_count", len(itemsToProcess),
+			"total_parts", len(parts),
+			"total_items", totalItems,
+			"items_to_process", itemsToProcess)
 	}
 
 	// Process items concurrently
@@ -432,39 +429,33 @@ func (p *ImageProcessor) processContentParts(ctx context.Context, parts []Conten
 				Text: failureMessage,
 			}
 
-			logger.LogWithStructure(ctx, logger.LevelWarn, "Item processing failed, replaced with failure message",
-				map[string]interface{}{
-					"item_type":       itemType,
-					"item_index":      result.Index,
-					"item_position":   itemPosition,
-					"total_items":     totalItems,
-					"mixed_scenario":  len(itemsToProcess) > 1,
-					"error":           result.Error.Error(),
-					"failure_message": failureMessage,
-				},
-				nil, // request
-				nil, // response
-				nil) // error
+			ctx = logger.WithComponent(ctx, "image_processor")
+			ctx = logger.WithStage(ctx, "error_handling")
+			logger.Warn(ctx, "Item processing failed, replaced with failure message",
+				"item_type", itemType,
+				"item_index", result.Index,
+				"item_position", itemPosition,
+				"total_items", totalItems,
+				"mixed_scenario", len(itemsToProcess) > 1,
+				"error", result.Error.Error(),
+				"failure_message", failureMessage)
 		} else {
 			processedParts[result.Index] = result.Content
 		}
 	}
 
 	// Log processing completion with graceful handling summary
-	logger.LogWithStructure(ctx, logger.LevelInfo, "Item processing completed with graceful error handling",
-		map[string]interface{}{
-			"processed_count":     len(itemsToProcess),
-			"successful_count":    len(itemsToProcess) - len(errors),
-			"failed_count":        len(errors),
-			"failed_item_indices": failedItems,
-			"total_items":         totalItems,
-			"mixed_scenario":      len(itemsToProcess) > 1 && len(errors) > 0 && len(errors) < len(itemsToProcess),
-			"errors":              errors,
-			"graceful_handling":   len(errors) > 0,
-		},
-		nil, // request
-		nil, // response
-		nil) // error
+	ctx = logger.WithComponent(ctx, "image_processor")
+	ctx = logger.WithStage(ctx, "completion_summary")
+	logger.Info(ctx, "Item processing completed with graceful error handling",
+		"processed_count", len(itemsToProcess),
+		"successful_count", len(itemsToProcess)-len(errors),
+		"failed_count", len(errors),
+		"failed_item_indices", failedItems,
+		"total_items", totalItems,
+		"mixed_scenario", len(itemsToProcess) > 1 && len(errors) > 0 && len(errors) < len(itemsToProcess),
+		"errors", errors,
+		"graceful_handling", len(errors) > 0)
 
 	// Always return success - errors are now handled gracefully
 	return processedParts, nil
@@ -545,14 +536,9 @@ func (p *ImageProcessor) downloadAndConvertImage(ctx context.Context, imageURL s
 
 // downloadAndConvertImageWithHeaders downloads an image from a URL with custom headers and converts it to base64
 func (p *ImageProcessor) downloadAndConvertImageWithHeaders(ctx context.Context, imageURL string, headers map[string]string) (string, error) {
-	logger.LogWithStructure(ctx, logger.LevelDebug, "Downloading image from URL with headers",
-		map[string]interface{}{
-			"url":     imageURL,
-			"headers": headers,
-		},
-		nil, // request
-		nil, // response
-		nil) // error
+	ctx = logger.WithComponent(ctx, "image_processor")
+	ctx = logger.WithStage(ctx, "image_download")
+	logger.Debug(ctx, "Downloading image from URL with headers", "url", imageURL, "headers", headers)
 
 	// Create request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
@@ -567,15 +553,7 @@ func (p *ImageProcessor) downloadAndConvertImageWithHeaders(ctx context.Context,
 	if headers != nil {
 		for key, value := range headers {
 			req.Header.Set(key, value)
-			logger.LogWithStructure(ctx, logger.LevelDebug, "Added custom header for image download",
-				map[string]interface{}{
-					"header_key":   key,
-					"header_value": value,
-					"url":          imageURL,
-				},
-				nil, // request
-				nil, // response
-				nil) // error
+			logger.Debug(ctx, "Added custom header for image download", "header_key", key, "header_value", value, "url", imageURL)
 		}
 	}
 
@@ -616,11 +594,7 @@ func (p *ImageProcessor) downloadAndConvertImageWithHeaders(ctx context.Context,
 		strings.HasPrefix(contentType, "application/binary") {
 		if detectedType, isImage := p.detectImageFormat(imageData); isImage {
 			finalContentType = detectedType
-			logger.LogWithStructure(ctx, logger.LevelDebug, "Detected image format from magic numbers", map[string]interface{}{
-				"original_content_type": contentType,
-				"detected_content_type": detectedType,
-				"url":                   imageURL,
-			}, nil, nil, nil)
+			logger.Debug(ctx, "Detected image format from magic numbers", "original_content_type", contentType, "detected_content_type", detectedType, "url", imageURL)
 		} else {
 			return "", fmt.Errorf("content type %s detected but data is not a valid image format", contentType)
 		}
@@ -630,14 +604,13 @@ func (p *ImageProcessor) downloadAndConvertImageWithHeaders(ctx context.Context,
 	base64Data := base64.StdEncoding.EncodeToString(imageData)
 	dataURL := fmt.Sprintf("data:%s;base64,%s", finalContentType, base64Data)
 
-	logger.LogWithStructure(ctx, logger.LevelDebug, "Image downloaded and converted", map[string]interface{}{
-		"original_url":          imageURL,
-		"original_content_type": contentType,
-		"final_content_type":    finalContentType,
-		"size_bytes":            len(imageData),
-		"base64_length":         len(base64Data),
-		"data_url":              dataURL, // This will be properly truncated by LogWithStructure
-	}, nil, nil, nil)
+	logger.Debug(ctx, "Image downloaded and converted",
+		"original_url", imageURL,
+		"original_content_type", contentType,
+		"final_content_type", finalContentType,
+		"size_bytes", len(imageData),
+		"base64_length", len(base64Data),
+		"data_url", dataURL)
 
 	return dataURL, nil
 }
@@ -876,14 +849,9 @@ func mustMarshal(v interface{}) []byte {
 
 // downloadAndConvertFileWithHeaders downloads a file from a URL with custom headers and converts it to text using markitdown
 func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, fileURL string, headers map[string]string) (string, error) {
-	logger.LogWithStructure(ctx, logger.LevelDebug, "Downloading file from URL with headers",
-		map[string]interface{}{
-			"url":     fileURL,
-			"headers": headers,
-		},
-		nil, // request
-		nil, // response
-		nil) // error
+	ctx = logger.WithComponent(ctx, "image_processor")
+	ctx = logger.WithStage(ctx, "file_download")
+	logger.Debug(ctx, "Downloading file from URL with headers", "url", fileURL, "headers", headers)
 
 	// Create request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
@@ -898,15 +866,7 @@ func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, 
 	if headers != nil {
 		for key, value := range headers {
 			req.Header.Set(key, value)
-			logger.LogWithStructure(ctx, logger.LevelDebug, "Added custom header for file download",
-				map[string]interface{}{
-					"header_key":   key,
-					"header_value": value,
-					"url":          fileURL,
-				},
-				nil, // request
-				nil, // response
-				nil) // error
+			logger.Debug(ctx, "Added custom header for file download", "header_key", key, "header_value", value, "url", fileURL)
 		}
 	}
 
@@ -959,15 +919,14 @@ func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, 
 		return "", fmt.Errorf("failed to convert file to text: %w", err)
 	}
 
-	logger.LogWithStructure(ctx, logger.LevelDebug, "File downloaded and converted", map[string]interface{}{
-		"original_url":          fileURL,
-		"original_content_type": originalContentType,
-		"detected_file_type":    detectedFileType,
-		"size_bytes":            len(fileData),
-		"text_length":           len(textContent),
-		"temp_file":             tempFile.Name(),
-		"content_type_detected": originalContentType != detectedFileType && detectedFileType != "unknown",
-	}, nil, nil, nil)
+	logger.Debug(ctx, "File downloaded and converted",
+		"original_url", fileURL,
+		"original_content_type", originalContentType,
+		"detected_file_type", detectedFileType,
+		"size_bytes", len(fileData),
+		"text_length", len(textContent),
+		"temp_file", tempFile.Name(),
+		"content_type_detected", originalContentType != detectedFileType && detectedFileType != "unknown")
 
 	return textContent, nil
 }

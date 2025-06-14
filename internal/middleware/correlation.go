@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -14,10 +13,304 @@ import (
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
-// RequestIDHeader is the header name for request ID
-const RequestIDHeader = "X-Request-ID"
+// Request and Correlation ID tracking with BrainyBuddy priority cascade
+
+// TrackingIDSources contains information about where tracking IDs came from
+type TrackingIDSources struct {
+	RequestIDSource     string `json:"request_id_source"`
+	CorrelationIDSource string `json:"correlation_id_source"`
+}
+
+// RequestCorrelationMiddleware implements BrainyBuddy-style tracking with priority cascade
+func RequestCorrelationMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Tracking ID extraction with priority cascade
+		requestID, correlationID, sources := extractTrackingIDsWithPriority(r)
+
+		// Set response headers
+		w.Header().Set(RequestIDHeader, requestID)
+		w.Header().Set(CorrelationIDHeader, correlationID)
+
+		// Create enriched context
+		ctx := context.WithValue(r.Context(), logger.RequestIDKey, requestID)
+		ctx = context.WithValue(ctx, logger.CorrelationIDKey, correlationID)
+		ctx = logger.WithComponent(ctx, logger.ComponentNames.Middleware)
+
+		// Log tracking ID sources for debugging
+		logger.Debug(logger.WithStage(ctx, logger.LogStages.TrackingSetup),
+			"Generated tracking IDs",
+			"request_id_source", sources.RequestIDSource,
+			"correlation_id_source", sources.CorrelationIDSource,
+		)
+
+		// Health check handling with conditional logging
+		if r.URL.Path == "/health" {
+			handleHealthCheck(ctx, w, r, next)
+			return
+		}
+
+		// General request handling with structured logging
+		handleGeneralRequest(ctx, w, r, next)
+	})
+}
+
+// extractTrackingIDsWithPriority implements BrainyBuddy-style priority cascade
+func extractTrackingIDsWithPriority(r *http.Request) (requestID, correlationID string, sources TrackingIDSources) {
+	// Priority cascade for Request ID (matching BrainyBuddy logic)
+
+	// 1. Client-provided X-Request-ID (highest priority)
+	if clientRequestID := r.Header.Get("X-Request-ID"); clientRequestID != "" {
+		requestID = clientRequestID
+		sources.RequestIDSource = "client-x-request-id"
+	} else if cfRay := r.Header.Get("cf-ray"); cfRay != "" {
+		// 2. CloudFlare Ray ID
+		requestID = cfRay
+		sources.RequestIDSource = "cloudflare-ray"
+	} else if xForwardedFor := r.Header.Get("X-Forwarded-For"); xForwardedFor != "" {
+		// 3. X-Forwarded-For based ID (for load balancer scenarios)
+		requestID = generateHashFromIP(xForwardedFor)
+		sources.RequestIDSource = "x-forwarded-for-hash"
+	} else {
+		// 4. Generated fallback
+		requestID = generateRequestID()
+		sources.RequestIDSource = "generated-uuid"
+	}
+
+	// Priority cascade for Correlation ID
+
+	// 1. Client-provided X-Correlation-ID (highest priority)
+	if clientCorrelationID := r.Header.Get("X-Correlation-ID"); clientCorrelationID != "" {
+		correlationID = clientCorrelationID
+		sources.CorrelationIDSource = "client-x-correlation-id"
+	} else if cfRay := r.Header.Get("cf-ray"); cfRay != "" {
+		// 2. CloudFlare Ray ID for correlation
+		correlationID = cfRay
+		sources.CorrelationIDSource = "cloudflare-ray"
+	} else {
+		// 3. Use request ID as fallback
+		correlationID = requestID
+		sources.CorrelationIDSource = "request-id-fallback"
+	}
+
+	return requestID, correlationID, sources
+}
+
+// generateHashFromIP creates a deterministic hash from IP for tracking
+func generateHashFromIP(ipHeader string) string {
+	ip := strings.Split(ipHeader, ",")[0] // Get first IP from X-Forwarded-For
+	ip = strings.TrimSpace(ip)
+	hash := fmt.Sprintf("%x", ip)
+	if len(hash) > 16 {
+		hash = hash[:16]
+	}
+	return hash + "-" + fmt.Sprintf("%d", time.Now().Unix()%10000)
+}
+
+// handleHealthCheck processes health checks with conditional logging
+func handleHealthCheck(ctx context.Context, w http.ResponseWriter, r *http.Request, next http.Handler) {
+	start := time.Now()
+
+	// Create response wrapper
+	wrapper := &responseWriterWrapper{
+		ResponseWriter: w,
+		statusCode:     http.StatusOK,
+		body:           &bytes.Buffer{},
+	}
+
+	// Process health check
+	next.ServeHTTP(wrapper, r.WithContext(ctx))
+
+	duration := time.Since(start)
+
+	// Only log health checks when there are errors or warnings
+	if wrapper.statusCode >= 400 {
+		// Log error health check
+		logger.Error(logger.WithStage(ctx, logger.LogStages.HealthCheckFailed),
+			"Health check failed", fmt.Errorf("status code: %d", wrapper.statusCode),
+			"response", map[string]interface{}{
+				"status_code": wrapper.statusCode,
+				"duration_ms": duration.Milliseconds(),
+				"body":        wrapper.body.String(),
+			},
+		)
+	} else if wrapper.statusCode == http.StatusOK {
+		// Check response body for warnings
+		if wrapper.body.Len() > 0 {
+			var healthData map[string]interface{}
+			if err := json.Unmarshal(wrapper.body.Bytes(), &healthData); err == nil {
+				if status, ok := healthData["status"].(string); ok && status != "healthy" {
+					// Log degraded health
+					logger.Warn(logger.WithStage(ctx, logger.LogStages.HealthCheckWarning),
+						"Health check shows degraded status",
+						"response", map[string]interface{}{
+							"status_code": wrapper.statusCode,
+							"duration_ms": duration.Milliseconds(),
+							"health_data": healthData,
+						},
+					)
+				}
+			}
+		}
+	}
+
+	// Copy response to original writer
+	for key, values := range wrapper.Header() {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	w.WriteHeader(wrapper.statusCode)
+	w.Write(wrapper.body.Bytes())
+}
+
+// handleGeneralRequest processes general requests with structured logging
+func handleGeneralRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, next http.Handler) {
+	start := time.Now()
+
+	// Read and preserve request body
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.Error(logger.WithStage(ctx, logger.LogStages.Error),
+			"Failed to read request body", err)
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	// Log structured request
+	logStructuredRequest(ctx, r, bodyBytes)
+
+	// Process request
+	wrapper := &responseWriterWrapper{
+		ResponseWriter: w,
+		statusCode:     http.StatusOK,
+		body:           &bytes.Buffer{},
+	}
+
+	next.ServeHTTP(wrapper, r.WithContext(ctx))
+
+	// Log structured response
+	duration := time.Since(start)
+	logStructuredResponse(ctx, wrapper, duration)
+
+	// Copy response to original writer
+	for key, values := range wrapper.Header() {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	w.WriteHeader(wrapper.statusCode)
+	w.Write(wrapper.body.Bytes())
+}
+
+// logStructuredRequest logs incoming request with nested structure
+func logStructuredRequest(ctx context.Context, r *http.Request, body []byte) {
+	// Create structured request data
+	requestData := map[string]interface{}{
+		"method":     r.Method,
+		"endpoint":   r.URL.Path,
+		"user_agent": r.Header.Get("User-Agent"),
+		"client_ip":  getClientIP(r),
+		"headers":    utils.SanitizeHeaders(r.Header),
+	}
+
+	// Add body if present
+	if len(body) > 0 {
+		var bodyData interface{}
+		if err := json.Unmarshal(body, &bodyData); err == nil {
+			requestData["body"] = utils.TruncateBase64InData(bodyData)
+		} else {
+			requestData["body"] = "Non-JSON body omitted"
+		}
+	}
+
+	logger.Info(logger.WithStage(ctx, logger.LogStages.RequestReceived),
+		"Incoming request",
+		"request", requestData,
+	)
+}
+
+// logStructuredResponse logs outgoing response with nested structure
+func logStructuredResponse(ctx context.Context, w *responseWriterWrapper, duration time.Duration) {
+	responseData := map[string]interface{}{
+		"status_code":    w.statusCode,
+		"duration_ms":    duration.Milliseconds(),
+		"content_length": w.body.Len(),
+		"headers":        utils.SanitizeHeaders(w.Header()),
+	}
+
+	// Add response body if available
+	if w.body.Len() > 0 && !w.isStreaming {
+		var bodyData interface{}
+		if err := json.Unmarshal(w.body.Bytes(), &bodyData); err == nil {
+			responseData["body"] = utils.TruncateBase64InData(bodyData)
+		}
+	} else if w.isStreaming {
+		responseData["body"] = "[streaming response]"
+	}
+
+	stage := logger.LogStages.RequestCompleted
+	if w.statusCode >= 400 {
+		stage = logger.LogStages.RequestFailed
+	}
+
+	logger.Info(logger.WithStage(ctx, stage),
+		"Request completed",
+		"response", responseData,
+	)
+}
+
+// getClientIP extracts client IP with priority cascade
+func getClientIP(r *http.Request) string {
+	// Priority: X-Forwarded-For > X-Real-IP > CF-Connecting-IP > RemoteAddr
+	if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+		return strings.Split(forwardedFor, ",")[0]
+	}
+	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+		return realIP
+	}
+	if cfIP := r.Header.Get("CF-Connecting-IP"); cfIP != "" {
+		return cfIP
+	}
+	return r.RemoteAddr
+}
+
+// responseWriterWrapper captures response data for logging
+type responseWriterWrapper struct {
+	http.ResponseWriter
+	statusCode  int
+	body        *bytes.Buffer
+	isStreaming bool
+}
+
+func (w *responseWriterWrapper) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *responseWriterWrapper) Write(data []byte) (int, error) {
+	// Check if it's a streaming response
+	if strings.Contains(w.Header().Get("Content-Type"), "text/event-stream") {
+		w.isStreaming = true
+	}
+
+	// Capture response body for logging (unless streaming)
+	if !w.isStreaming && w.body.Len() < 10240 { // Limit to 10KB
+		w.body.Write(data)
+	}
+
+	return w.ResponseWriter.Write(data)
+}
+
+// Header constants
+const (
+	RequestIDHeader     = "X-Request-ID"
+	CorrelationIDHeader = "X-Correlation-ID"
+)
 
 // generateRequestID creates a unique request ID
 func generateRequestID() string {
@@ -27,289 +320,4 @@ func generateRequestID() string {
 		return hex.EncodeToString([]byte(time.Now().Format("20060102150405.000")))
 	}
 	return hex.EncodeToString(bytes)
-}
-
-// RequestCorrelationMiddleware adds request correlation ID and enriches context
-func RequestCorrelationMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Priority order for request ID:
-		// 1. CF-Ray header (from Cloudflare)
-		// 2. X-Request-ID header (custom header)
-		// 3. Generate new ID
-		var requestID string
-		var requestIDSource string
-
-		// Check CF-Ray first (Cloudflare's ray ID)
-		if cfRay := r.Header.Get("CF-Ray"); cfRay != "" {
-			requestID = cfRay
-			requestIDSource = "cf-ray"
-		} else if xRequestID := r.Header.Get(RequestIDHeader); xRequestID != "" {
-			// Fall back to X-Request-ID
-			requestID = xRequestID
-			requestIDSource = "x-request-id"
-		} else {
-			// Generate new ID if neither header is present
-			requestID = generateRequestID()
-			requestIDSource = "generated"
-		}
-
-		// Set response header
-		w.Header().Set(RequestIDHeader, requestID)
-
-		// Create enriched context
-		ctx := context.WithValue(r.Context(), logger.RequestIDKey, requestID)
-
-		// Extract vendor from query parameter if present
-		vendor := r.URL.Query().Get("vendor")
-		if vendor != "" {
-			ctx = context.WithValue(ctx, logger.VendorKey, vendor)
-		}
-
-		// Check if this is a health check request
-		isHealthCheck := r.URL.Path == "/health"
-
-		// Read and capture request body for complete logging
-		var requestBody []byte
-		var err error
-		if r.Body != nil {
-			requestBody, err = io.ReadAll(r.Body)
-			if err != nil {
-				logger.LogError(ctx, "middleware", err, map[string]any{
-					"operation": "read_request_body",
-					"method":    r.Method,
-					"path":      r.URL.Path,
-					"headers":   map[string][]string(r.Header),
-				})
-				http.Error(w, "Failed to read request body", http.StatusBadRequest)
-				return
-			}
-			// Close the original body
-			r.Body.Close()
-
-			// Create a new ReadCloser with the captured body for downstream handlers
-			r.Body = io.NopCloser(bytes.NewReader(requestBody))
-		}
-
-		// Only log request start for non-health check requests or when in debug mode
-		start := time.Now()
-		if !isHealthCheck {
-			// Log request start with new structured format including complete request body
-			requestData := map[string]interface{}{
-				"request_id":        requestID,
-				"request_id_source": requestIDSource,
-				"method":            r.Method,
-				"path":              r.URL.Path,
-				"query_params":      r.URL.Query(),
-				"remote_addr":       r.RemoteAddr,
-				"user_agent":        r.Header.Get("User-Agent"),
-				"content_length":    r.ContentLength,
-				"host":              r.Host,
-				"request_uri":       r.RequestURI,
-				"headers":           map[string][]string(r.Header),
-			}
-
-			// Parse body as JSON if it's JSON content type
-			// This allows the logger's base64 truncation to work on structured data
-			if strings.Contains(r.Header.Get("Content-Type"), "application/json") && len(requestBody) > 0 {
-				var bodyData interface{}
-				if err := json.Unmarshal(requestBody, &bodyData); err == nil {
-					// Successfully parsed as JSON - log the structured data
-					// The logger will automatically truncate base64 values
-					requestData["body"] = bodyData
-				} else {
-					// Failed to parse - log as string
-					requestData["body"] = string(requestBody)
-					requestData["body_parse_error"] = err.Error()
-				}
-			} else {
-				// Non-JSON body - log as string
-				requestData["body"] = string(requestBody)
-			}
-
-			attributes := map[string]interface{}{
-				"component": "middleware",
-			}
-			if vendor != "" {
-				attributes["vendor"] = vendor
-			}
-
-			logger.LogWithStructure(ctx, logger.LevelInfo, "Request started", attributes, requestData, nil, nil)
-		}
-
-		// Create response writer wrapper to capture status and response data
-		wrapper := &responseWriterWrapper{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK,
-			responseData:   &bytes.Buffer{},
-		}
-
-		// Process request
-		next.ServeHTTP(wrapper, r.WithContext(ctx))
-
-		// Handle logging based on request type and response status
-		duration := time.Since(start)
-
-		// For health checks, only log if there's an error or at debug level
-		if isHealthCheck {
-			if wrapper.statusCode >= 400 {
-				// Log health check errors at WARN level
-				attributes := map[string]interface{}{
-					"component":   "middleware",
-					"duration_ms": duration.Milliseconds(),
-					"path":        r.URL.Path,
-					"status_code": wrapper.statusCode,
-				}
-				logger.LogWithStructure(ctx, logger.LevelWarn, "Health check failed", attributes, nil, nil, nil)
-			} else {
-				// Log successful health checks at DEBUG level with minimal information
-				logger.LogWithStructure(ctx, logger.LevelDebug, "Health check", map[string]interface{}{
-					"duration_ms": duration.Milliseconds(),
-					"status":      wrapper.statusCode,
-				}, nil, nil, nil)
-			}
-		} else {
-			// Log request completion with new structured format for non-health check requests
-			responseData := map[string]interface{}{
-				"request_id":     requestID,
-				"status_code":    wrapper.statusCode,
-				"content_length": wrapper.bytesWritten,
-				"headers":        map[string][]string(wrapper.Header()),
-			}
-
-			// Only include response body for non-streaming responses
-			if wrapper.isStreaming {
-				responseData["body"] = "[STREAMING_RESPONSE]"
-				responseData["streaming"] = true
-			} else if wrapper.responseData != nil && wrapper.responseData.Len() > 0 {
-				// Parse response body as JSON if it's JSON content type
-				// This allows the logger's base64 truncation to work on structured data
-				contentType := wrapper.Header().Get("Content-Type")
-				if strings.Contains(contentType, "application/json") {
-					// Check if response is gzipped and decompress if needed
-					responseBytes := wrapper.responseData.Bytes()
-					contentEncoding := wrapper.Header().Get("Content-Encoding")
-
-					if contentEncoding == "gzip" {
-						// Decompress gzipped response before JSON parsing
-						gzipReader, err := gzip.NewReader(bytes.NewReader(responseBytes))
-						if err != nil {
-							// Failed to create gzip reader - log as string with error
-							responseData["body"] = string(responseBytes)
-							responseData["body_parse_error"] = fmt.Sprintf("gzip decompression failed: %v", err)
-						} else {
-							defer gzipReader.Close()
-							decompressedBytes, err := io.ReadAll(gzipReader)
-							if err != nil {
-								// Failed to decompress - log as string with error
-								responseData["body"] = string(responseBytes)
-								responseData["body_parse_error"] = fmt.Sprintf("gzip read failed: %v", err)
-							} else {
-								// Successfully decompressed - try JSON parsing
-								var bodyData interface{}
-								if err := json.Unmarshal(decompressedBytes, &bodyData); err == nil {
-									// Successfully parsed as JSON - log the structured data
-									responseData["body"] = bodyData
-								} else {
-									// Failed to parse JSON - log decompressed string
-									responseData["body"] = string(decompressedBytes)
-									responseData["body_parse_error"] = err.Error()
-								}
-							}
-						}
-					} else {
-						// Not gzipped - parse directly as JSON
-						var bodyData interface{}
-						if err := json.Unmarshal(responseBytes, &bodyData); err == nil {
-							// Successfully parsed as JSON - log the structured data
-							// The logger will automatically truncate base64 values
-							responseData["body"] = bodyData
-						} else {
-							// Failed to parse - log as string
-							responseData["body"] = wrapper.responseData.String()
-							responseData["body_parse_error"] = err.Error()
-						}
-					}
-				} else {
-					// Non-JSON response - log as string
-					responseData["body"] = wrapper.responseData.String()
-				}
-				responseData["streaming"] = false
-			} else {
-				responseData["body"] = ""
-				responseData["streaming"] = false
-			}
-
-			// Include request data for context
-			requestData := map[string]interface{}{
-				"request_id":        requestID,
-				"request_id_source": requestIDSource,
-				"method":            r.Method,
-				"path":              r.URL.Path,
-				"query_params":      r.URL.Query(),
-				"remote_addr":       r.RemoteAddr,
-				"user_agent":        r.Header.Get("User-Agent"),
-				"content_length":    r.ContentLength,
-				"host":              r.Host,
-				"request_uri":       r.RequestURI,
-				"headers":           map[string][]string(r.Header),
-			}
-
-			// Parse body as JSON if it's JSON content type
-			if strings.Contains(r.Header.Get("Content-Type"), "application/json") && len(requestBody) > 0 {
-				var bodyData interface{}
-				if err := json.Unmarshal(requestBody, &bodyData); err == nil {
-					requestData["body"] = bodyData
-				} else {
-					requestData["body"] = string(requestBody)
-					requestData["body_parse_error"] = err.Error()
-				}
-			} else {
-				requestData["body"] = string(requestBody)
-			}
-
-			attributes := map[string]interface{}{
-				"component":   "middleware",
-				"duration_ms": duration.Milliseconds(),
-				"start_time":  start.Format(time.RFC3339),
-				"end_time":    time.Now().Format(time.RFC3339),
-			}
-
-			logger.LogWithStructure(ctx, logger.LevelInfo, "Request completed", attributes, requestData, responseData, nil)
-		}
-	})
-}
-
-// responseWriterWrapper captures response metadata
-type responseWriterWrapper struct {
-	http.ResponseWriter
-	statusCode   int
-	bytesWritten int64
-	responseData *bytes.Buffer
-	isStreaming  bool
-}
-
-func (w *responseWriterWrapper) WriteHeader(statusCode int) {
-	w.statusCode = statusCode
-
-	// Check if this is a streaming response
-	contentType := w.Header().Get("Content-Type")
-	if strings.Contains(contentType, "text/event-stream") {
-		w.isStreaming = true
-		// Don't buffer streaming responses
-		w.responseData = nil
-	}
-
-	w.ResponseWriter.WriteHeader(statusCode)
-}
-
-func (w *responseWriterWrapper) Write(data []byte) (int, error) {
-	n, err := w.ResponseWriter.Write(data)
-	w.bytesWritten += int64(n)
-
-	// Only capture response data for non-streaming responses
-	if w.responseData != nil && !w.isStreaming {
-		w.responseData.Write(data[:n]) // Only write successfully written bytes
-	}
-
-	return n, err
 }

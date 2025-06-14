@@ -32,7 +32,9 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 		return
 	}
 	if err := r.Body.Close(); err != nil {
-		logger.WarnCtx(r.Context(), "Failed to close request body", "error", err)
+		ctx := logger.WithComponent(r.Context(), "proxy")
+		ctx = logger.WithStage(ctx, "request_handling")
+		logger.Warn(ctx, "Failed to close request body", "error", err)
 	}
 
 	// Parse payload to extract original model and other context
@@ -42,19 +44,22 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 	if err != nil {
 		// If parsing fails, set default
 		originalModel = "any-model"
-		logger.WarnCtx(r.Context(), "Failed to parse request payload for routing", "error", err)
+		ctx := logger.WithComponent(r.Context(), "proxy")
+		ctx = logger.WithStage(ctx, "payload_analysis")
+		logger.Warn(ctx, "Failed to parse request payload for routing", "error", err)
 	} else {
 		originalModel = payloadContext.OriginalModel
 
 		// Log payload context for future routing decisions
-		logger.DebugCtx(r.Context(), "Payload analyzed for routing",
+		ctx := logger.WithComponent(r.Context(), "proxy")
+		ctx = logger.WithStage(ctx, "payload_analysis")
+		logger.Debug(ctx, "Payload analyzed for routing",
 			"original_model", payloadContext.OriginalModel,
 			"has_stream", payloadContext.HasStream,
 			"has_tools", payloadContext.HasTools,
 			"has_images", payloadContext.HasImages,
 			"has_videos", payloadContext.HasVideos,
-			"messages_count", payloadContext.MessagesCount,
-		)
+			"messages_count", payloadContext.MessagesCount)
 	}
 
 	// Use context-aware selection if available
@@ -65,11 +70,15 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 		// Use context-aware selection
 		selection, err = contextSelector.SelectWithContext(creds, models, payloadContext)
 		if err != nil {
-			logger.ErrorCtx(r.Context(), "Context-aware vendor selection failed", "error", err)
+			ctx := logger.WithComponent(r.Context(), "proxy")
+			ctx = logger.WithStage(ctx, "vendor_selection")
+			logger.Error(ctx, "Context-aware vendor selection failed", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		logger.DebugCtx(r.Context(), "Context-aware selection used",
+		ctx := logger.WithComponent(r.Context(), "proxy")
+		ctx = logger.WithStage(ctx, "vendor_selection")
+		logger.Debug(ctx, "Context-aware selection used",
 			"selected_vendor", selection.Vendor,
 			"selected_model", selection.Model,
 			"context_filters", map[string]bool{
@@ -77,13 +86,14 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request, creds []config.Credent
 				"videos": payloadContext.HasVideos,
 				"tools":  payloadContext.HasTools,
 				"stream": payloadContext.HasStream,
-			},
-		)
+			})
 	} else {
 		// Fall back to regular selection
 		selection, err = modelSelector.Select(creds, models)
 		if err != nil {
-			logger.ErrorCtx(r.Context(), "Vendor selection failed", "error", err)
+			ctx := logger.WithComponent(r.Context(), "proxy")
+			ctx = logger.WithStage(ctx, "vendor_selection")
+			logger.Error(ctx, "Vendor selection failed", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -103,76 +113,96 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 	creds []config.Credential, models []config.VendorModel, apiClient APIClientInterface, modelSelector selector.Selector, originalModel string) error {
 
 	// Enrich context with vendor information and models
-	ctx := context.WithValue(r.Context(), logger.VendorKey, selection.Vendor)
-	ctx = context.WithValue(ctx, logger.ModelKey, selection.Model)
+	ctx := context.WithValue(r.Context(), "vendor", selection.Vendor)
+	ctx = context.WithValue(ctx, "model", selection.Model)
 	ctx = context.WithValue(ctx, "vendor_models", models)
 	r = r.WithContext(ctx)
 
-	logger.DebugCtx(ctx, "Vendor and model selected",
+	ctx = logger.WithComponent(ctx, "proxy")
+	ctx = logger.WithStage(ctx, "execution_setup")
+	logger.Debug(ctx, "Vendor and model selected",
 		"selected_vendor", selection.Vendor,
-		"selected_model", selection.Model,
-	)
+		"selected_model", selection.Model)
 
 	// Log complete request data
-	logger.LogRequest(ctx, r.Method, r.URL.Path, r.Header.Get("User-Agent"),
-		map[string][]string(r.Header), body)
+	logger.Info(ctx, "Processing request",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"user_agent", r.Header.Get("User-Agent"),
+		"headers", map[string][]string(r.Header),
+		"body_length", len(body),
+		"component", "Proxy",
+		"stage", "RequestLogging",
+	)
 
 	// Process image URLs if present (convert public URLs to base64)
 	imageProcessor := NewImageProcessor()
 	processedBody, err := imageProcessor.ProcessRequestBody(ctx, body)
 	if err != nil {
-		logger.ErrorCtx(ctx, "Image processing failed", "error", err)
+		ctx = logger.WithStage(ctx, "image_processing")
+		logger.Error(ctx, "Image processing failed", err)
 		http.Error(w, "Failed to process images: "+err.Error(), http.StatusBadRequest)
 		return err
 	}
 
 	// Log if images were processed
 	if len(processedBody) != len(body) {
-		logger.LogWithStructure(ctx, logger.LevelInfo, "Request body modified after image processing",
-			map[string]interface{}{
-				"original_size":   len(body),
-				"processed_size":  len(processedBody),
-				"size_difference": len(processedBody) - len(body),
-			},
-			nil, // request
-			nil, // response
-			nil) // error
+		ctx = logger.WithStage(ctx, "image_processing")
+		logger.Info(ctx, "Request body modified after image processing",
+			"original_size", len(body),
+			"processed_size", len(processedBody),
+			"size_difference", len(processedBody)-len(body))
 	}
 
 	// Validate and modify request
-	modifiedBody, detectedOriginalModel, err := validator.ValidateAndModifyRequest(processedBody, selection.Model)
+	modifiedBody, _, err := validator.ValidateAndModifyRequest(processedBody, selection.Model)
 	if err != nil {
-		logger.ErrorCtx(ctx, "Request validation failed", "error", err)
+		ctx = logger.WithStage(ctx, "request_validation")
+		logger.Error(ctx, "Request validation failed", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return err
 	}
 
 	// Use the passed original model (already extracted in ProxyRequest)
-	// The detectedOriginalModel is kept for backward compatibility but not used
-	_ = detectedOriginalModel
 
-	// Log the complete proxy request with all data
-	logger.LogProxyRequest(ctx, originalModel, selection.Vendor, selection.Model, len(creds)*len(models), map[string]any{
-		"original_request_body":  string(body),
-		"processed_request_body": string(processedBody),
-		"modified_request_body":  string(modifiedBody),
-		"request_headers":        r.Header,
-		"selection_details": map[string]any{
+	// Log the complete proxy request with all data including full objects
+	var completeModelObject interface{}
+	for _, model := range models {
+		if model.Vendor == selection.Vendor && model.Model == selection.Model {
+			completeModelObject = model
+			break
+		}
+	}
+
+	logger.Info(ctx, "Proxy request with complete objects",
+		"original_model", originalModel,
+		"vendor", selection.Vendor,
+		"model", selection.Model,
+		"total_combinations", len(creds)*len(models),
+		"original_request_body", string(body),
+		"processed_request_body", string(processedBody),
+		"modified_request_body", string(modifiedBody),
+		"request_headers", r.Header,
+		"selection_details", map[string]any{
 			"vendor":                selection.Vendor,
 			"model":                 selection.Model,
 			"credentials_available": len(creds),
 			"models_available":      len(models),
 		},
-		"validation_result": map[string]any{
+		"validation_result", map[string]any{
 			"original_model": originalModel,
 			"target_model":   selection.Model,
 		},
-		"image_processing": map[string]any{
+		"image_processing", map[string]any{
 			"body_modified":  len(processedBody) != len(body),
 			"original_size":  len(body),
 			"processed_size": len(processedBody),
 		},
-	})
+		"credential", selection.Credential,
+		"complete_model_object", completeModelObject,
+		"component", "Proxy",
+		"stage", "RequestProcessing",
+	)
 
 	// Create retry executor with default configuration
 	retryExecutor := reliability.NewRetryExecutor(nil) // Uses default config
@@ -185,26 +215,18 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 	if err != nil {
 		// Check if this is a retriable validation error (vendor fallback)
 		if IsRetriableValidationError(err) {
-			logger.LogWithStructure(ctx, logger.LevelWarn, "Vendor validation failed, attempting random fallback",
-				map[string]interface{}{
-					"original_vendor":   selection.Vendor,
-					"original_model":    selection.Model,
-					"error":             err.Error(),
-					"fallback_strategy": "random_selection",
-				},
-				nil, // request
-				nil, // response
-				map[string]interface{}{
-					"message": err.Error(),
-					"type":    "vendor_validation_error",
-				}) // error
+			ctx = logger.WithStage(ctx, "vendor_fallback")
+			logger.Warn(ctx, "Vendor validation failed, attempting random fallback",
+				"original_vendor", selection.Vendor,
+				"original_model", selection.Model,
+				"error", err.Error(),
+				"fallback_strategy", "random_selection")
 
 			// Check if we have any credentials and models available for fallback
 			if len(creds) == 0 || len(models) == 0 {
-				logger.ErrorCtx(ctx, "No credentials or models available for fallback",
+				logger.Error(ctx, "No credentials or models available for fallback", nil,
 					"total_creds", len(creds),
-					"total_models", len(models),
-				)
+					"total_models", len(models))
 				http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 				return err
 			}
@@ -227,21 +249,16 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 			}
 
 			if retryErr != nil {
-				logger.ErrorCtx(ctx, "Failed to select fallback vendor/model", "error", retryErr)
+				logger.Error(ctx, "Failed to select fallback vendor/model", retryErr)
 				http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 				return err
 			}
 
-			logger.LogWithStructure(ctx, logger.LevelInfo, "Retrying with random fallback selection",
-				map[string]interface{}{
-					"fallback_vendor": fallbackSelection.Vendor,
-					"fallback_model":  fallbackSelection.Model,
-					"original_model":  originalModel,
-					"original_vendor": selection.Vendor,
-				},
-				nil, // request
-				nil, // response
-				nil) // error
+			logger.Info(ctx, "Retrying with random fallback selection",
+				"fallback_vendor", fallbackSelection.Vendor,
+				"fallback_model", fallbackSelection.Model,
+				"original_model", originalModel,
+				"original_vendor", selection.Vendor)
 
 			// Create a fresh request for the retry (important for proper context)
 			retryReq := r.Clone(r.Context())
@@ -249,14 +266,15 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 			// Execute retry with the new selection (no further retries to avoid infinite loops)
 			// Note: We don't call executeProxyRequestWithRetry to avoid infinite recursion
 			// Instead, we directly call the API client with the new selection
-			retryCtx := context.WithValue(retryReq.Context(), logger.VendorKey, fallbackSelection.Vendor)
-			retryCtx = context.WithValue(retryCtx, logger.ModelKey, fallbackSelection.Model)
+			retryCtx := context.WithValue(retryReq.Context(), "vendor", fallbackSelection.Vendor)
+			retryCtx = context.WithValue(retryCtx, "model", fallbackSelection.Model)
 			retryReq = retryReq.WithContext(retryCtx)
 
 			// Validate and modify request for the new vendor
 			fallbackModifiedBody, _, validationErr := validator.ValidateAndModifyRequest(processedBody, fallbackSelection.Model)
 			if validationErr != nil {
-				logger.ErrorCtx(retryCtx, "Fallback request validation failed", "error", validationErr)
+				retryCtx = logger.WithStage(retryCtx, "fallback_validation")
+				logger.Error(retryCtx, "Fallback request validation failed", validationErr)
 				http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 				return validationErr
 			}
@@ -268,19 +286,11 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 		// Check if this is a retriable API error (quota, rate limits, server errors)
 		if IsRetriableAPIError(err) {
 			isQuotaError := IsQuotaError(err)
-			logger.LogWithStructure(ctx, logger.LevelError, "Retriable API error after all retry attempts",
-				map[string]interface{}{
-					"vendor":     selection.Vendor,
-					"error":      err.Error(),
-					"error_type": "retriable_api_error_exhausted",
-					"is_quota":   isQuotaError,
-				},
-				nil, // request
-				nil, // response
-				map[string]interface{}{
-					"message": err.Error(),
-					"type":    "api_error_retry_exhausted",
-				}) // error
+			ctx = logger.WithStage(ctx, "api_error_handling")
+			logger.Error(ctx, "Retriable API error after all retry attempts", err,
+				"vendor", selection.Vendor,
+				"error_type", "retriable_api_error_exhausted",
+				"is_quota", isQuotaError)
 
 			// For quota or rate limit errors, return 429 status
 			if isQuotaError {
@@ -293,19 +303,17 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 
 		// Check for specific error types
 		if errors.Is(err, ErrUnknownVendor) {
-			logger.ErrorCtx(r.Context(), "Unknown vendor configuration error",
-				"vendor", selection.Vendor,
-				"error", err,
-			)
+			ctx = logger.WithStage(ctx, "configuration_error")
+			logger.Error(ctx, "Unknown vendor configuration error", err,
+				"vendor", selection.Vendor)
 			http.Error(w, "Internal configuration error: Unknown vendor", http.StatusBadRequest)
 			return err
 		}
 
 		// For other network errors
-		logger.ErrorCtx(r.Context(), "Failed to communicate with upstream service",
-			"vendor", selection.Vendor,
-			"error", err,
-		)
+		ctx = logger.WithStage(ctx, "communication_error")
+		logger.Error(ctx, "Failed to communicate with upstream service", err,
+			"vendor", selection.Vendor)
 		http.Error(w, "Failed to communicate with upstream service: "+err.Error(), http.StatusBadGateway)
 		return err
 	}

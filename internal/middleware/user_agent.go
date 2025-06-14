@@ -42,20 +42,14 @@ func UserAgentFilterMiddleware(next http.Handler) http.Handler {
 		// Check if User-Agent starts with "BrainyBuddy-API"
 		if !strings.HasPrefix(userAgent, "BrainyBuddy-API") {
 			// Log the blocked request
-			logger.LogWithStructure(r.Context(), logger.LevelWarn, "Request blocked by User-Agent filter",
-				map[string]interface{}{
-					"component": "user_agent_middleware",
-					"reason":    "invalid_user_agent",
-				},
-				map[string]interface{}{
-					"method":      r.Method,
-					"path":        r.URL.Path,
-					"user_agent":  userAgent,
-					"remote_addr": r.RemoteAddr,
-					"headers":     map[string][]string(r.Header),
-				},
-				nil, // response
-				nil, // error
+			ctx := logger.WithComponent(r.Context(), "UserAgentMiddleware")
+			ctx = logger.WithStage(ctx, "RequestBlocked")
+			logger.Warn(ctx, "Request blocked by User-Agent filter",
+				"reason", "invalid_user_agent",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"user_agent", userAgent,
+				"remote_addr", r.RemoteAddr,
 			)
 
 			// Return 403 Forbidden with structured error response

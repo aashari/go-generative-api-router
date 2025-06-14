@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -31,7 +32,7 @@ func NewSecureConfigManager() (*SecureConfigManager, error) {
 	// Get encryption key from environment or generate one
 	keyStr := os.Getenv("CONFIG_ENCRYPTION_KEY")
 	if keyStr == "" {
-		logger.Warn("No CONFIG_ENCRYPTION_KEY found, using default key (not recommended for production)")
+		logger.Warn(context.Background(), "No CONFIG_ENCRYPTION_KEY found, using default key (not recommended for production)")
 		keyStr = "default-key-change-in-production-32b" // 32 bytes
 	}
 
@@ -109,7 +110,7 @@ func LoadCredentialsFromEnv() ([]Credential, error) {
 		return nil, fmt.Errorf("no credentials found in environment variables")
 	}
 
-	logger.Info("Loaded credentials from environment variables",
+	logger.Info(context.Background(), "Loaded credentials from environment variables",
 		"count", len(credentials),
 		"platforms", getUniquePlatforms(credentials))
 
@@ -228,23 +229,23 @@ func getUniquePlatforms(credentials []Credential) []string {
 func LoadCredentialsSecurely() ([]Credential, error) {
 	// Priority 1: Existing configuration file (current working method)
 	if creds, err := LoadCredentials("configs/credentials.json"); err == nil {
-		logger.Info("Loaded credentials from configuration file")
+		logger.Info(context.Background(), "Loaded credentials from configuration file")
 		return creds, nil
 	}
 
 	// Priority 2: Environment variables (only if file loading fails)
 	if creds, err := LoadCredentialsFromEnv(); err == nil && len(creds) > 0 {
-		logger.Info("Loaded credentials from environment variables (secure)")
+		logger.Info(context.Background(), "Loaded credentials from environment variables (secure)")
 		return creds, nil
 	}
 
 	// Priority 3: Encrypted file (future enhancement)
 	secureManager, err := NewSecureConfigManager()
 	if err != nil {
-		logger.Warn("Failed to initialize secure config manager", "error", err)
+		logger.Warn(context.Background(), "Failed to initialize secure config manager", "error", err)
 	} else {
 		if creds, err := secureManager.LoadEncryptedCredentials("configs/credentials.json"); err == nil {
-			logger.Info("Loaded credentials from encrypted file")
+			logger.Info(context.Background(), "Loaded credentials from encrypted file")
 			return creds, nil
 		}
 	}
