@@ -30,7 +30,9 @@ func SetupRoutes(apiHandlers *handlers.APIHandlers) http.Handler {
 	))
 
 	// Wrap with middleware stack
-	handler := middleware.RequestCorrelationMiddleware(mux)
+	// Apply User-Agent filtering first, then request correlation
+	handler := middleware.UserAgentFilterMiddleware(mux)
+	handler = middleware.RequestCorrelationMiddleware(handler)
 
 	return handler
 }
