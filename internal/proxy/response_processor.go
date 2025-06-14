@@ -217,6 +217,18 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 		"compressed_size", len(responseBody),
 		"compressed_body", responseBody)
 
+	// Check if the response is actually gzip compressed by looking at the magic bytes
+	// Gzip files start with bytes 0x1f 0x8b
+	if len(responseBody) < 2 || responseBody[0] != 0x1f || responseBody[1] != 0x8b {
+		// The response claims to be gzip but isn't actually compressed
+		// This can happen with some vendors that set the header incorrectly
+		logger.Warn(ctx, "Response claims gzip encoding but is not actually compressed",
+			"content_encoding", contentEncoding,
+			"first_bytes", responseBody[:min(10, len(responseBody))],
+			"response_size", len(responseBody))
+		return responseBody, nil
+	}
+
 	gzipReader, err := gzip.NewReader(bytes.NewReader(responseBody))
 	if err != nil {
 		// Log complete gzip reader error
@@ -224,7 +236,12 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 			"content_encoding", contentEncoding,
 			"compressed_body", responseBody,
 			"compressed_size", len(responseBody))
-		return responseBody, fmt.Errorf("error creating gzip reader: %w", err)
+		// Fall back to returning the original response body
+		// Some vendors might incorrectly set Content-Encoding header
+		logger.Warn(ctx, "Falling back to uncompressed response due to gzip reader error",
+			"content_encoding", contentEncoding,
+			"error", err.Error())
+		return responseBody, nil
 	}
 	defer gzipReader.Close()
 
@@ -235,7 +252,11 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 			"content_encoding", contentEncoding,
 			"compressed_body", responseBody,
 			"compressed_size", len(responseBody))
-		return responseBody, fmt.Errorf("error decompressing gzip response: %w", err)
+		// Fall back to returning the original response body
+		logger.Warn(ctx, "Falling back to uncompressed response due to decompression error",
+			"content_encoding", contentEncoding,
+			"error", err.Error())
+		return responseBody, nil
 	}
 
 	// Log complete decompression success
@@ -247,6 +268,8 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 		"decompressed_body", decompressedBody)
 	return decompressedBody, nil
 }
+
+
 
 // addMissingIDs generates missing chat completion IDs
 func addMissingIDs(responseData map[string]interface{}) {

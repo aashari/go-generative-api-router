@@ -250,16 +250,15 @@ func (c *APIClient) setupRequest(r *http.Request, selection *selector.VendorSele
 		return nil, false, fmt.Errorf("failed to create request: %v", err)
 	}
 
-	// Copy request headers (excluding compression headers to avoid vendor compression)
+	// Copy request headers (now including compression headers to enable vendor compression)
 	for k, vs := range r.Header {
-		// Skip compression-related headers - we handle compression at our service level
-		if strings.ToLower(k) == "accept-encoding" {
-			continue
-		}
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
 	}
+
+	// Enable gzip compression for vendor requests to reduce bandwidth and improve performance
+	req.Header.Set("Accept-Encoding", "gzip")
 
 	// Set authorization header using Bearer token for all vendors
 	req.Header.Set("Authorization", "Bearer "+selection.Credential.Value)
