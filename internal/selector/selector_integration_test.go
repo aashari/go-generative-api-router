@@ -138,7 +138,7 @@ func TestEvenDistributionSelector_StatisticalDistribution(t *testing.T) {
 
 	// Count combinations
 	combinationCounts := make(map[string]int)
-	
+
 	for i := 0; i < iterations; i++ {
 		selection, err := selector.Select(credentials, models)
 		require.NoError(t, err, "Selection should not fail")
@@ -177,20 +177,20 @@ func TestContextAwareSelector_ContextFiltering(t *testing.T) {
 	selector := NewContextAwareSelector()
 
 	tests := []struct {
-		name              string
-		context           *types.PayloadContext
-		expectedModels    []string
-		expectedVendors   []string
-		iterations        int
-		tolerance         float64
+		name            string
+		context         *types.PayloadContext
+		expectedModels  []string
+		expectedVendors []string
+		iterations      int
+		tolerance       float64
 	}{
 		{
-			name: "no context - all models available",
-			context: nil,
-			expectedModels: []string{"gpt-4", "gpt-3.5-turbo", "gemini-pro", "gemini-flash"},
+			name:            "no context - all models available",
+			context:         nil,
+			expectedModels:  []string{"gpt-4", "gpt-3.5-turbo", "gemini-pro", "gemini-flash"},
 			expectedVendors: []string{"openai", "gemini"},
-			iterations: 5000,
-			tolerance: 0.05,
+			iterations:      5000,
+			tolerance:       0.05,
 		},
 		{
 			name: "image support required",
@@ -200,10 +200,10 @@ func TestContextAwareSelector_ContextFiltering(t *testing.T) {
 				HasTools:  false,
 				HasStream: false,
 			},
-			expectedModels: []string{"gpt-4", "gemini-pro", "gemini-flash"}, // Only models with image support
+			expectedModels:  []string{"gpt-4", "gemini-pro", "gemini-flash"}, // Only models with image support
 			expectedVendors: []string{"openai", "gemini"},
-			iterations: 5000,
-			tolerance: 0.05,
+			iterations:      5000,
+			tolerance:       0.05,
 		},
 		{
 			name: "video support required",
@@ -213,10 +213,10 @@ func TestContextAwareSelector_ContextFiltering(t *testing.T) {
 				HasTools:  false,
 				HasStream: false,
 			},
-			expectedModels: []string{"gemini-pro"}, // Only gemini-pro supports video
+			expectedModels:  []string{"gemini-pro"}, // Only gemini-pro supports video
 			expectedVendors: []string{"gemini"},
-			iterations: 1000,
-			tolerance: 0.05,
+			iterations:      1000,
+			tolerance:       0.05,
 		},
 		{
 			name: "tools support required",
@@ -226,10 +226,10 @@ func TestContextAwareSelector_ContextFiltering(t *testing.T) {
 				HasTools:  true,
 				HasStream: false,
 			},
-			expectedModels: []string{"gpt-4", "gpt-3.5-turbo", "gemini-pro"}, // Models with tool support
+			expectedModels:  []string{"gpt-4", "gpt-3.5-turbo", "gemini-pro"}, // Models with tool support
 			expectedVendors: []string{"openai", "gemini"},
-			iterations: 5000,
-			tolerance: 0.05,
+			iterations:      5000,
+			tolerance:       0.05,
 		},
 		{
 			name: "streaming support required",
@@ -239,10 +239,10 @@ func TestContextAwareSelector_ContextFiltering(t *testing.T) {
 				HasTools:  false,
 				HasStream: true,
 			},
-			expectedModels: []string{"gpt-4", "gpt-3.5-turbo", "gemini-pro", "gemini-flash"}, // All support streaming
+			expectedModels:  []string{"gpt-4", "gpt-3.5-turbo", "gemini-pro", "gemini-flash"}, // All support streaming
 			expectedVendors: []string{"openai", "gemini"},
-			iterations: 5000,
-			tolerance: 0.05,
+			iterations:      5000,
+			tolerance:       0.05,
 		},
 		{
 			name: "multiple requirements - image + tools",
@@ -252,10 +252,10 @@ func TestContextAwareSelector_ContextFiltering(t *testing.T) {
 				HasTools:  true,
 				HasStream: false,
 			},
-			expectedModels: []string{"gpt-4", "gemini-pro"}, // Only gpt-4 and gemini-pro support both
+			expectedModels:  []string{"gpt-4", "gemini-pro"}, // Only gpt-4 and gemini-pro support both
 			expectedVendors: []string{"openai", "gemini"},
-			iterations: 3000,
-			tolerance: 0.06,
+			iterations:      3000,
+			tolerance:       0.06,
 		},
 	}
 
@@ -275,7 +275,7 @@ func TestContextAwareSelector_ContextFiltering(t *testing.T) {
 				// Verify selected model is in expected list
 				assert.Contains(t, tt.expectedModels, selection.Model,
 					"Selected model %s should be in expected models %v", selection.Model, tt.expectedModels)
-				
+
 				// Verify selected vendor is in expected list
 				assert.Contains(t, tt.expectedVendors, selection.Vendor,
 					"Selected vendor %s should be in expected vendors %v", selection.Vendor, tt.expectedVendors)
@@ -285,14 +285,14 @@ func TestContextAwareSelector_ContextFiltering(t *testing.T) {
 			// Note: ContextAwareSelector uses EvenDistributionSelector under the hood,
 			// which distributes based on credential-model combinations, not just models.
 			// So we expect uneven distribution across models based on credential counts.
-			
+
 			// Verify all selected models are valid (this is the primary verification)
 			totalSelections := 0
 			for _, count := range modelCounts {
 				totalSelections += count
 			}
 			assert.Equal(t, tt.iterations, totalSelections, "All selections should be accounted for")
-			
+
 			// For reference, log the distribution but don't assert strict equality
 			// since the underlying even distribution is based on combinations
 
@@ -341,7 +341,7 @@ func TestSelector_EdgeCases(t *testing.T) {
 			errorMsg:    "", // Different selectors have different error messages for this case
 		},
 		{
-			name: "single valid combination",
+			name:        "single valid combination",
 			credentials: []config.Credential{{Platform: "openai", Type: "api_key", Value: "test"}},
 			models:      []config.VendorModel{{Vendor: "openai", Model: "gpt-4"}},
 			expectError: false,

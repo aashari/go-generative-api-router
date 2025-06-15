@@ -52,8 +52,8 @@ func TestDownloadFile(t *testing.T) {
 		defer server.Close()
 
 		headers := map[string]string{
-			"Authorization":     expectedAuth,
-			"X-Custom-Header":   expectedCustom,
+			"Authorization":   expectedAuth,
+			"X-Custom-Header": expectedCustom,
 		}
 
 		ctx := context.Background()
@@ -275,7 +275,7 @@ func TestDownloadFileEdgeCases(t *testing.T) {
 
 	t.Run("redirect handling", func(t *testing.T) {
 		finalContent := "final content"
-		
+
 		// Create final server
 		finalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)

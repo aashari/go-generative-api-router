@@ -9,13 +9,13 @@ import (
 
 func TestProcessToolCalls(t *testing.T) {
 	tests := []struct {
-		name             string
-		toolCalls        []interface{}
-		vendor           string
-		expectedCount    int
-		checkGeminiID    bool // Whether to check that Gemini generates new IDs
-		checkOpenAIID    bool // Whether to check that OpenAI preserves existing IDs
-		checkSplitting   bool // Whether to check for argument splitting
+		name           string
+		toolCalls      []interface{}
+		vendor         string
+		expectedCount  int
+		checkGeminiID  bool // Whether to check that Gemini generates new IDs
+		checkOpenAIID  bool // Whether to check that OpenAI preserves existing IDs
+		checkSplitting bool // Whether to check for argument splitting
 	}{
 		{
 			name:          "nil tool calls",
@@ -242,13 +242,13 @@ func TestValidateAndSplitArguments(t *testing.T) {
 
 			if tt.expectSplit {
 				assert.Greater(t, len(result), 1, "Should have split the arguments")
-				
+
 				// Check that each split result has valid JSON arguments
 				for i, splitCall := range result {
 					splitMap := splitCall.(map[string]interface{})
 					function := splitMap["function"].(map[string]interface{})
 					arguments := function["arguments"].(string)
-					
+
 					assert.True(t, isValidJSON(arguments), "Split result %d should have valid JSON arguments", i)
 					assert.True(t, strings.HasPrefix(splitMap["id"].(string), "call_"), "Split result %d should have generated ID", i)
 				}

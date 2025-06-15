@@ -52,7 +52,7 @@ func (h *HTTPLogger) LogRequest(ctx context.Context, req *http.Request) {
 		}
 	}
 
-	logger.Info(ctx, "Sending vendor request", "request", requestData)
+	logger.Info(ctx, "Sending vendor request", "request", utils.TruncateStringsInData(requestData))
 }
 
 // LogResponse logs HTTP response from vendor
@@ -92,7 +92,7 @@ func (h *HTTPLogger) LogResponse(ctx context.Context, resp *http.Response, durat
 		message = "Vendor error response received"
 	}
 
-	logger.Info(ctx, message, "response", responseData)
+	logger.Info(ctx, message, "response", utils.TruncateStringsInData(responseData))
 }
 
 // LogError logs HTTP request errors
@@ -105,7 +105,7 @@ func (h *HTTPLogger) LogError(ctx context.Context, req *http.Request, err error)
 		"url":    req.URL.String(),
 	}
 
-	logger.Error(ctx, "Vendor request failed", err, "request", requestData)
+	logger.Error(ctx, "Vendor request failed", err, "request", utils.TruncateStringsInData(requestData))
 }
 
 // LogRequestWithTiming logs request start with timing info
@@ -145,7 +145,7 @@ func (h *HTTPLogger) LogRequestWithTiming(ctx context.Context, req *http.Request
 		}
 	}
 
-	logger.Info(ctx, "Sending vendor request with tracking", "request", requestData)
+	logger.Info(ctx, "Sending vendor request with tracking", "request", utils.TruncateStringsInData(requestData))
 	return time.Now()
 }
 
@@ -191,7 +191,7 @@ func (h *HTTPLogger) LogResponseWithTiming(ctx context.Context, resp *http.Respo
 		message = "Vendor error response received with timing"
 	}
 
-	logger.Info(ctx, message, "response", responseData)
+	logger.Info(ctx, message, "response", utils.TruncateStringsInData(responseData))
 }
 
 // extractSafeHeaders extracts headers while filtering sensitive ones

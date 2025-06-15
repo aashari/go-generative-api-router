@@ -35,7 +35,7 @@ func TestValidateAndModifyRequest(t *testing.T) {
 		{
 			name: "request with tools",
 			input: map[string]interface{}{
-				"model":   "gpt-4",
+				"model":    "gpt-4",
 				"messages": []interface{}{map[string]interface{}{"role": "user", "content": "Hello"}},
 				"tools": []interface{}{
 					map[string]interface{}{
@@ -100,7 +100,7 @@ func TestValidateAndModifyRequest(t *testing.T) {
 			expectError:   true,
 		},
 		{
-			name: "invalid JSON",
+			name:          "invalid JSON",
 			input:         "invalid json string",
 			selectedModel: "gpt-4",
 			expectError:   true,

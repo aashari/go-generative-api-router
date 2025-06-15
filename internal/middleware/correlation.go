@@ -228,9 +228,10 @@ func logStructuredRequest(ctx context.Context, r *http.Request, body []byte) {
 		}
 	}
 
-	logger.Info(logger.WithStage(ctx, logger.LogStages.RequestReceived),
+	logger.Info(
+		logger.WithStage(ctx, logger.LogStages.RequestReceived),
 		"Incoming request",
-		"request", requestData,
+		"request", utils.TruncateStringsInData(requestData),
 	)
 }
 
@@ -258,9 +259,10 @@ func logStructuredResponse(ctx context.Context, w *responseWriterWrapper, durati
 		stage = logger.LogStages.RequestFailed
 	}
 
-	logger.Info(logger.WithStage(ctx, stage),
+	logger.Info(
+		logger.WithStage(ctx, stage),
 		"Request completed",
-		"response", responseData,
+		"response", utils.TruncateStringsInData(responseData),
 	)
 }
 
