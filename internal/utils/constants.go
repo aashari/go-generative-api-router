@@ -105,6 +105,12 @@ const (
 	AcceptEncodingGzip = "gzip"
 )
 
+// System prompt for describing images
+const ImageDescriptionPrompt = "Describe the image as detailed as possible. If the image contains text, reproduce it in your response."
+
+// Default model name for image description
+const DefaultImageModel = "auto-image-model"
+
 // Header Values for Buffering
 const (
 	XAccelBufferingNo = "no"

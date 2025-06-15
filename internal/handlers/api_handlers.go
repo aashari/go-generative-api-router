@@ -374,11 +374,11 @@ func (h *APIHandlers) ImageToTextHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	payload := map[string]interface{}{
-		"model": "auto-image-model",
+		"model": utils.DefaultImageModel,
 		"messages": []interface{}{
 			map[string]interface{}{
 				"role":    "system",
-				"content": "Describe the image as detailed as possible. If the image contains text, reproduce it in your response.",
+				"content": utils.ImageDescriptionPrompt,
 			},
 			map[string]interface{}{
 				"role":    "user",
