@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/aashari/go-generative-api-router/internal/errors"
@@ -12,8 +13,15 @@ import (
 // UserAgentFilterMiddleware filters requests based on User-Agent header
 // Only allows requests with User-Agent starting with "BrainyBuddy-API"
 // Exceptions: /health, /swagger, /swagger/*, /debug/pprof/*
+// When ENVIRONMENT=local, this middleware is disabled
 func UserAgentFilterMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the environment is local, skip user agent validation if it is
+		if strings.ToLower(os.Getenv("ENVIRONMENT")) == "local" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Define allowed paths that bypass User-Agent filtering
 		allowedPaths := []string{
 			"/health",

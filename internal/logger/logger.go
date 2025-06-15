@@ -193,7 +193,8 @@ func (h *StructuredJSONHandler) Handle(ctx context.Context, r slog.Record) error
 
 	// Set remaining attributes
 	if len(attributes) > 0 {
-		logEntry.Attributes = utils.TruncateBase64InData(attributes).(map[string]interface{})
+		attributes = utils.TruncateBase64InData(attributes).(map[string]interface{})
+		logEntry.Attributes = utils.TruncateStringsInData(attributes).(map[string]interface{})
 	}
 
 	// Marshal and write

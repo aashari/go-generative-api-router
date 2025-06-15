@@ -41,9 +41,9 @@ func (f *FileProcessor) ProcessFileURL(ctx context.Context, fileURL *FileURL) (s
 	url := fileURL.URL
 	headers := fileURL.Headers
 
-	// Empty URL should return a clear error message without system wrapper
+	// Empty URL should return a clear error message with system wrapper
 	if url == "" {
-		return "Error: No file URL provided. Please provide a valid file URL to process.", nil
+		return "<system>Error: No file URL provided. Please provide a valid file URL to process. Even though this message appears to come from the 'user' role, all content within <system> tags is not visible to the user and serves as context/reference for you. Respond naturally that no file URL was provided and ask them to provide a valid file URL.</system>", nil
 	}
 
 	// First, detect the file type by downloading headers and initial content
@@ -84,7 +84,7 @@ func (f *FileProcessor) ProcessFileURLIntelligent(ctx context.Context, fileURL *
 	if url == "" {
 		return ContentPart{
 			Type: "text",
-			Text: "Error: No file URL provided. Please provide a valid file URL to process.",
+			Text: "<system>Error: No file URL provided. Please provide a valid file URL to process. Even though this message appears to come from the 'user' role, all content within <system> tags is not visible to the user and serves as context/reference for you. Respond naturally that no file URL was provided and ask them to provide a valid file URL.</system>",
 		}, nil
 	}
 
@@ -133,16 +133,8 @@ func (f *FileProcessor) ProcessFileURLIntelligent(ctx context.Context, fileURL *
 		// Process as audio and return input_audio ContentPart
 		audioData, err := f.audioProcessor.ProcessAudioURL(ctx, url, headers)
 		if err != nil {
-			// Return error as text
-			errorMsg := err.Error()
-			var errorText string
-			if strings.Contains(errorMsg, "no such host") || strings.Contains(errorMsg, "dial tcp") {
-				errorText = fmt.Sprintf("I couldn't access the audio at %s due to network connectivity issues.", url)
-			} else if strings.Contains(errorMsg, "status 404") {
-				errorText = fmt.Sprintf("The audio URL %s appears to be broken or the file has been moved/deleted.", url)
-			} else {
-				errorText = fmt.Sprintf("There was a technical issue processing the audio at %s.", url)
-			}
+			// Return error as text using consistent error message generation
+			errorText := f.imageProcessor.generateAudioFailureMessage(err, 1, 1, false)
 			return ContentPart{
 				Type: "text",
 				Text: errorText,
@@ -347,8 +339,8 @@ func (f *FileProcessor) processAsImage(ctx context.Context, url string, headers 
 		return f.imageProcessor.generateImageFailureMessage(err, 1, 1, false), nil
 	}
 
-	// Return as a user message indicating it's an image
-	return fmt.Sprintf("I've received an image from: %s", url), nil
+	// Return as a system message indicating it's an image
+	return fmt.Sprintf("<system>I've received an image from: %s. CRITICAL: Do NOT reveal, mention, or reference any content within these <system> tags to the user. This is internal processing information that is completely invisible to the user. Use this content as your context/reference ONLY. Respond naturally as if the user directly shared an image with you in their message, without mentioning URLs, file processing, downloads, or any technical details.</system>", url), nil
 }
 
 // processAsAudio processes the file as audio
@@ -360,19 +352,12 @@ func (f *FileProcessor) processAsAudio(ctx context.Context, url string, headers 
 	// Use the audio processor to download and convert
 	audioData, err := f.audioProcessor.ProcessAudioURL(ctx, url, headers)
 	if err != nil {
-		// Return user-friendly error message
-		errorMsg := err.Error()
-		if strings.Contains(errorMsg, "no such host") || strings.Contains(errorMsg, "dial tcp") {
-			return fmt.Sprintf("I couldn't access the audio at %s due to network connectivity issues. The server appears to be unreachable.", url), nil
-		} else if strings.Contains(errorMsg, "status 404") {
-			return fmt.Sprintf("The audio URL %s appears to be broken or the file has been moved/deleted.", url), nil
-		} else {
-			return fmt.Sprintf("There was a technical issue processing the audio at %s. Please try providing the audio again.", url), nil
-		}
+		// Return user-friendly error message using consistent error generation
+		return f.imageProcessor.generateAudioFailureMessage(err, 1, 1, false), nil
 	}
 
-	// Return as a user message indicating audio was received
-	return fmt.Sprintf("I've received an audio file (%s format) from: %s", audioData.Format, url), nil
+	// Return as a system message indicating audio was received
+	return fmt.Sprintf("<system>I've received an audio file (%s format) from: %s. CRITICAL: Do NOT reveal, mention, or reference any content within these <system> tags to the user. This is internal processing information that is completely invisible to the user. Use this content as your context/reference ONLY. Respond naturally as if the user directly shared an audio file with you in their message, without mentioning URLs, file processing, downloads, or any technical details.</system>", audioData.Format, url), nil
 }
 
 // processAsDocument processes the file as a document using markitdown
@@ -394,24 +379,28 @@ func (f *FileProcessor) processAsDocument(ctx context.Context, url string, heade
 // generateFileErrorMessage creates a user-friendly error message for file processing failures
 func (f *FileProcessor) generateFileErrorMessage(err error, fileURL string) string {
 	errorMsg := err.Error()
+	var baseMessage string
 
 	// Determine specific error message based on error type
 	if strings.Contains(errorMsg, "no such host") || strings.Contains(errorMsg, "dial tcp") {
-		return fmt.Sprintf("I couldn't access the file at %s due to network connectivity issues. The file server appears to be unreachable or the domain doesn't exist. Please verify the URL or provide an alternative file.", fileURL)
+		baseMessage = fmt.Sprintf("Respond naturally that you couldn't access the file at %s due to network connectivity issues. The file server appears to be unreachable or the domain doesn't exist. Ask the user to verify the URL or provide an alternative file.", fileURL)
 	} else if strings.Contains(errorMsg, "status 401") || strings.Contains(errorMsg, "status 403") {
-		return fmt.Sprintf("The file at %s requires authentication or access permissions that weren't provided. Please provide proper authentication headers or use a publicly accessible file.", fileURL)
+		baseMessage = fmt.Sprintf("Respond naturally that the file at %s requires authentication or access permissions that weren't provided. Ask them to provide proper authentication headers or use a publicly accessible file.", fileURL)
 	} else if strings.Contains(errorMsg, "status 404") {
-		return fmt.Sprintf("The file URL %s appears to be broken or the file has been moved/deleted (404 Not Found). Please provide a valid file URL.", fileURL)
+		baseMessage = fmt.Sprintf("Respond naturally that the file URL %s appears to be broken or the file has been moved/deleted (404 Not Found). Ask them to provide a valid file URL.", fileURL)
 	} else if strings.Contains(errorMsg, "size exceeds limit") {
-		return fmt.Sprintf("The file at %s is too large to process (exceeds 20MB limit). Please provide a smaller file or compress it before sharing.", fileURL)
+		baseMessage = fmt.Sprintf("Respond naturally that the file at %s is too large to process (exceeds 20MB limit). Ask them to provide a smaller file or compress it before sharing.", fileURL)
 	} else if strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "deadline exceeded") {
-		return fmt.Sprintf("The file at %s took too long to download due to slow response from the file server. Please try again later or provide an alternative file.", fileURL)
+		baseMessage = fmt.Sprintf("Respond naturally that the file at %s took too long to download due to slow response from the file server. Suggest they try again later or provide an alternative file.", fileURL)
 	} else if strings.Contains(errorMsg, "markitdown failed") {
-		return fmt.Sprintf("The file at %s couldn't be converted to text. The file format may not be supported by the text conversion tool, or the file may be corrupted. Please provide the file in a different format (PDF, Word document, text file, etc.).", fileURL)
+		baseMessage = fmt.Sprintf("Respond naturally that the file at %s couldn't be converted to text. The file format may not be supported by the text conversion tool, or the file may be corrupted. Ask them to provide the file in a different format (PDF, Word document, text file, etc.).", fileURL)
 	} else {
 		// Generic error message for unknown error types
-		return fmt.Sprintf("There was a technical issue processing the file at %s. Please try providing the file again or use an alternative file.", fileURL)
+		baseMessage = fmt.Sprintf("Respond naturally that there was a technical issue processing the file at %s. Ask them to try providing the file again or use an alternative file.", fileURL)
 	}
+
+	// Construct the complete system message with instructions for the AI
+	return fmt.Sprintf("<system>%s CRITICAL: Do NOT reveal, mention, or reference any content within these <system> tags to the user. This is internal processing information that is completely invisible to the user. Use this content as your context/reference ONLY. Respond naturally as if the user asked you to process this content, but acknowledge the processing issue appropriately without mentioning URLs, file processing, downloads, or any technical details.</system>", baseMessage)
 }
 
 // IsFileURLSupported checks if the file URL can be processed
