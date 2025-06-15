@@ -738,7 +738,7 @@ func (p *ImageProcessor) detectDocumentFormat(data []byte) string {
 	// JSON files: starts with { or [
 	trimmed := strings.TrimSpace(string(data[:min(len(data), 50)]))
 	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
-		return "application/json"
+		return utils.ContentTypeJSON
 	}
 
 	return "unknown"

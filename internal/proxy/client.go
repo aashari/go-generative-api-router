@@ -258,7 +258,7 @@ func (c *APIClient) setupRequest(r *http.Request, selection *selector.VendorSele
 	req.Header.Set(utils.HeaderAcceptEncoding, utils.AcceptEncodingGzip)
 
 	// Set authorization header using Bearer token for all vendors
-	req.Header.Set("Authorization", "Bearer "+selection.Credential.Value)
+	req.Header.Set(utils.HeaderAuthorization, "Bearer "+selection.Credential.Value)
 
 	return req, isStreaming, nil
 }
