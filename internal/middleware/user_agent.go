@@ -11,7 +11,7 @@ import (
 )
 
 // UserAgentFilterMiddleware filters requests based on User-Agent header
-// Only allows requests with User-Agent starting with "BrainyBuddy-API"
+// Only allows requests with User-Agent starting with "BrainyBuddy-API" or Authorization header with "Bearer " prefix
 // Exceptions: /health, /swagger, /swagger/*, /debug/pprof/*
 // When ENVIRONMENT=local, this middleware is disabled
 func UserAgentFilterMiddleware(next http.Handler) http.Handler {
@@ -48,8 +48,12 @@ func UserAgentFilterMiddleware(next http.Handler) http.Handler {
 		// Get User-Agent header
 		userAgent := r.Header.Get(utils.HeaderUserAgent)
 
-		// Check if User-Agent starts with "BrainyBuddy-API"
-		if !strings.HasPrefix(userAgent, utils.UserAgentPrefix) {
+		// Check if Authorization header with Bearer token is present
+		authHeader := r.Header.Get(utils.HeaderAuthorization)
+		hasBearerToken := strings.HasPrefix(authHeader, "Bearer ")
+
+		// Check if User-Agent starts with "BrainyBuddy-API" or has valid Bearer token
+		if !strings.HasPrefix(userAgent, utils.UserAgentPrefix) && !hasBearerToken {
 			// Log the blocked request
 			ctx := logger.WithComponent(r.Context(), "UserAgentMiddleware")
 			ctx = logger.WithStage(ctx, "RequestBlocked")
