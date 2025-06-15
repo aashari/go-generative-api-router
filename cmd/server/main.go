@@ -33,7 +33,6 @@ var version = "unknown"
 // @name Authorization
 // @description Type "Bearer" followed by a space and the API key value.
 
-
 func main() {
 	// Set VERSION environment variable from build-time version if not already set
 	if os.Getenv("VERSION") == "" {

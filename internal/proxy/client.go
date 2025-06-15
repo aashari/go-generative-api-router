@@ -39,11 +39,11 @@ func NewResponseStandardizer() *ResponseStandardizer {
 		enableGzip:       true,
 		enableValidation: true,
 		standardHeaders: map[string]string{
-			utils.HeaderCacheControl:          utils.CacheControlNoStore,
-			utils.HeaderXContentTypeOptions:  utils.XContentTypeOptionsNoSniff,
-			utils.HeaderXFrameOptions:         utils.XFrameOptionsDeny,
-			utils.HeaderXXSSProtection:        utils.XXSSProtectionBlock,
-			utils.HeaderReferrerPolicy:        utils.ReferrerPolicyStrict,
+			utils.HeaderCacheControl:        utils.CacheControlNoStore,
+			utils.HeaderXContentTypeOptions: utils.XContentTypeOptionsNoSniff,
+			utils.HeaderXFrameOptions:       utils.XFrameOptionsDeny,
+			utils.HeaderXXSSProtection:      utils.XXSSProtectionBlock,
+			utils.HeaderReferrerPolicy:      utils.ReferrerPolicyStrict,
 		},
 	}
 }

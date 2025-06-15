@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/aashari/go-generative-api-router/internal/types"
 	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/database"
 	"github.com/aashari/go-generative-api-router/internal/errors"
@@ -15,6 +14,7 @@ import (
 	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/proxy"
 	"github.com/aashari/go-generative-api-router/internal/selector"
+	"github.com/aashari/go-generative-api-router/internal/types"
 	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 

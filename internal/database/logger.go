@@ -11,8 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
 	"github.com/aashari/go-generative-api-router/internal/utils"
+	"github.com/google/uuid"
 )
 
 // RequestLogParams contains all parameters for logging a request

@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"net/http"
 	"github.com/aashari/go-generative-api-router/internal/utils"
+	"net/http"
 )
 
 // CORSMiddleware adds CORS headers to allow cross-origin requests

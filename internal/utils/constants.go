@@ -18,10 +18,10 @@ const (
 	HeaderResponseTime  = "X-Response-Time"
 
 	// Client IP Headers (priority order)
-	HeaderXForwardedFor   = "X-Forwarded-For"
-	HeaderXRealIP         = "X-Real-IP"
-	HeaderCFConnectingIP  = "CF-Connecting-IP"
-	HeaderCloudFlareRay   = "cf-ray"
+	HeaderXForwardedFor  = "X-Forwarded-For"
+	HeaderXRealIP        = "X-Real-IP"
+	HeaderCFConnectingIP = "CF-Connecting-IP"
+	HeaderCloudFlareRay  = "cf-ray"
 
 	// Security Headers
 	HeaderXContentTypeOptions = "X-Content-Type-Options"
@@ -31,8 +31,8 @@ const (
 	HeaderXCSRFToken          = "X-CSRF-Token"
 
 	// Service Headers
-	HeaderXPoweredBy     = "X-Powered-By"
-	HeaderXVendorSource  = "X-Vendor-Source"
+	HeaderXPoweredBy      = "X-Powered-By"
+	HeaderXVendorSource   = "X-Vendor-Source"
 	HeaderXAccelBuffering = "X-Accel-Buffering"
 
 	// Transfer Headers
@@ -40,10 +40,10 @@ const (
 	HeaderVary             = "Vary"
 
 	// CORS Headers
-	HeaderAccessControlAllowOrigin      = "Access-Control-Allow-Origin"
-	HeaderAccessControlAllowMethods     = "Access-Control-Allow-Methods"
-	HeaderAccessControlAllowHeaders     = "Access-Control-Allow-Headers"
-	HeaderAccessControlExposeHeaders    = "Access-Control-Expose-Headers"
+	HeaderAccessControlAllowOrigin   = "Access-Control-Allow-Origin"
+	HeaderAccessControlAllowMethods  = "Access-Control-Allow-Methods"
+	HeaderAccessControlAllowHeaders  = "Access-Control-Allow-Headers"
+	HeaderAccessControlExposeHeaders = "Access-Control-Expose-Headers"
 
 	// Authorization Headers
 	HeaderAuthorization = "Authorization"
@@ -51,9 +51,9 @@ const (
 
 // Content Type Constants
 const (
-	ContentTypeJSON       = "application/json"
-	ContentTypeJSONUTF8   = "application/json; charset=utf-8"
-	ContentTypeEventStream = "text/event-stream"
+	ContentTypeJSON            = "application/json"
+	ContentTypeJSONUTF8        = "application/json; charset=utf-8"
+	ContentTypeEventStream     = "text/event-stream"
 	ContentTypeEventStreamUTF8 = "text/event-stream; charset=utf-8"
 )
 
@@ -66,9 +66,9 @@ const (
 // Security Header Values
 const (
 	XContentTypeOptionsNoSniff = "nosniff"
-	XFrameOptionsDeny         = "DENY"
-	XXSSProtectionBlock       = "1; mode=block"
-	ReferrerPolicyStrict      = "strict-origin-when-cross-origin"
+	XFrameOptionsDeny          = "DENY"
+	XXSSProtectionBlock        = "1; mode=block"
+	ReferrerPolicyStrict       = "strict-origin-when-cross-origin"
 )
 
 // Service Values
@@ -79,10 +79,10 @@ const (
 
 // CORS Values
 const (
-	CORSAllowOriginAll     = "*"
-	CORSAllowMethodsAll    = "POST, GET, OPTIONS, PUT, DELETE"
-	CORSAllowHeadersStd    = "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization"
-	CORSExposeHeadersStd   = "X-Request-ID, X-Response-Time"
+	CORSAllowOriginAll   = "*"
+	CORSAllowMethodsAll  = "POST, GET, OPTIONS, PUT, DELETE"
+	CORSAllowHeadersStd  = "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization"
+	CORSExposeHeadersStd = "X-Request-ID, X-Response-Time"
 )
 
 // Transfer Encoding Values

@@ -270,8 +270,6 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 	return decompressedBody, nil
 }
 
-
-
 // addMissingIDs generates missing chat completion IDs
 func addMissingIDs(responseData map[string]interface{}) {
 	if id, ok := responseData["id"]; !ok || id == nil || id == "" {

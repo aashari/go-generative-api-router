@@ -327,4 +327,3 @@ const (
 	RequestIDHeader     = utils.HeaderRequestID
 	CorrelationIDHeader = utils.HeaderCorrelationID
 )
-
