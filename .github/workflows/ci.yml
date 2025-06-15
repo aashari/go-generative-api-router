@@ -131,7 +131,7 @@ jobs:
     - name: Build Docker image
       run: |
         echo "Building Docker image..."
-        docker build -f deployments/docker/Dockerfile -t generative-api-router:test .
+        docker build -f Dockerfile -t generative-api-router:test .
         echo "✅ Docker build successful"
         
     - name: Test Docker image
