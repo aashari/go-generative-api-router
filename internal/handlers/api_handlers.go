@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/aashari/go-generative-api-router/internal/types"
 	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/database"
 	"github.com/aashari/go-generative-api-router/internal/errors"
@@ -14,6 +15,7 @@ import (
 	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/proxy"
 	"github.com/aashari/go-generative-api-router/internal/selector"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // startTime tracks when the application started
@@ -130,7 +132,7 @@ func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set content type to JSON
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(utils.HeaderContentType, utils.ContentTypeJSON)
 
 	// Determine HTTP status code based on overall health
 	statusCode := http.StatusOK
@@ -188,12 +190,12 @@ func (h *APIHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 // @Accept       json
 // @Produce      json
 // @Param        vendor  query     string                 false  "Optional vendor to target (e.g., 'openai', 'gemini')"
-// @Param        request body      ChatCompletionRequest  true   "Chat completion request in OpenAI-compatible format"
+// @Param        request body      types.ChatCompletionRequest  true   "Chat completion request in OpenAI-compatible format"
 // @Security     BearerAuth
-// @Success      200     {object}  ChatCompletionResponse "OpenAI-compatible chat completion response"
-// @Failure      400     {object}  ErrorResponse          "Bad request error"
-// @Failure      401     {object}  ErrorResponse          "Unauthorized error"
-// @Failure      500     {object}  ErrorResponse          "Internal server error"
+// @Success      200     {object}  types.ChatCompletionResponse "OpenAI-compatible chat completion response"
+// @Failure      400     {object}  types.ErrorResponse          "Bad request error"
+// @Failure      401     {object}  types.ErrorResponse          "Unauthorized error"
+// @Failure      500     {object}  types.ErrorResponse          "Internal server error"
 // @Router       /v1/chat/completions [post]
 func (h *APIHandlers) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := logger.WithComponent(r.Context(), "ChatCompletionsHandler")
@@ -263,25 +265,15 @@ func (h *APIHandlers) ChatCompletionsHandler(w http.ResponseWriter, r *http.Requ
 // @Accept       json
 // @Produce      json
 // @Param        vendor  query     string         false  "Optional vendor to filter models (e.g., 'openai', 'gemini')"
-// @Success      200     {object}  ModelsResponse "List of available models"
+// @Success      200     {object}  types.ModelsResponse "List of available models"
 // @Router       /v1/models [get]
 func (h *APIHandlers) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := logger.WithComponent(r.Context(), "ModelsHandler")
 	ctx = logger.WithStage(ctx, "Request")
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(utils.HeaderContentType, utils.ContentTypeJSON)
 
-	type Model struct {
-		ID      string `json:"id"`
-		Object  string `json:"object"`
-		Created int64  `json:"created"`
-		OwnedBy string `json:"owned_by"`
-	}
-
-	var response struct {
-		Object string  `json:"object"`
-		Data   []Model `json:"data"`
-	}
+	var response types.ModelsResponse
 
 	// Optional vendor filter via query parameter
 	vendorFilter := r.URL.Query().Get("vendor")
@@ -299,7 +291,7 @@ func (h *APIHandlers) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 	timestamp := time.Now().Unix() // or a fixed timestamp if preferred
 
 	for _, vm := range models {
-		model := Model{
+		model := types.Model{
 			ID:      vm.Model,
 			Object:  "model",
 			Created: timestamp,
@@ -332,123 +324,4 @@ func (h *APIHandlers) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 			"response_size", len(jsonResp),
 		)
 	}
-}
-
-// Swagger type definitions (aliases to app package types for swagger generation)
-
-// ChatCompletionRequest represents a request to the chat completions API
-type ChatCompletionRequest struct {
-	Messages []Message `json:"messages" example:"[]"`
-	Model    string    `json:"model" example:"gpt-4o"`
-	Stream   bool      `json:"stream,omitempty" example:"false"`
-	// Added OpenAI-compatible fields
-	MaxTokens        int                  `json:"max_tokens,omitempty" example:"100"`
-	Temperature      float64              `json:"temperature,omitempty" example:"0.7"`
-	TopP             float64              `json:"top_p,omitempty" example:"1"`
-	N                int                  `json:"n,omitempty" example:"1"`
-	Stop             []string             `json:"stop,omitempty"`
-	PresencePenalty  float64              `json:"presence_penalty,omitempty" example:"0"`
-	FrequencyPenalty float64              `json:"frequency_penalty,omitempty" example:"0"`
-	LogitBias        map[string]float64   `json:"logit_bias,omitempty"`
-	User             string               `json:"user,omitempty" example:"user-123"`
-	Functions        []FunctionDefinition `json:"functions,omitempty"`
-	FunctionCall     string               `json:"function_call,omitempty" example:"auto"`
-	Tools            []Tool               `json:"tools,omitempty"`
-	ToolChoice       string               `json:"tool_choice,omitempty" example:"auto"`
-	ResponseFormat   map[string]string    `json:"response_format,omitempty"`
-}
-
-// Message represents a chat message
-type Message struct {
-	Role       string     `json:"role" example:"user"`
-	Content    string     `json:"content" example:"Hello, how are you?"`
-	Name       string     `json:"name,omitempty" example:"John"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-}
-
-// FunctionDefinition represents an available function definition
-type FunctionDefinition struct {
-	Name        string                 `json:"name" example:"get_weather"`
-	Description string                 `json:"description,omitempty" example:"Get the current weather in a location"`
-	Parameters  map[string]interface{} `json:"parameters,omitempty"`
-}
-
-// Tool represents a tool available to the model
-type Tool struct {
-	Type     string                 `json:"type" example:"function"`
-	Function map[string]interface{} `json:"function,omitempty"`
-}
-
-// ToolCall represents a call to a tool
-type ToolCall struct {
-	ID       string                 `json:"id" example:"call_8qty38"`
-	Type     string                 `json:"type" example:"function"`
-	Function map[string]interface{} `json:"function"`
-}
-
-// ChatCompletionResponse represents a response from the chat completions API
-type ChatCompletionResponse struct {
-	ID                string   `json:"id" example:"chatcmpl-abc123"`
-	Object            string   `json:"object" example:"chat.completion"`
-	Created           int64    `json:"created" example:"1677652288"`
-	Model             string   `json:"model" example:"gpt-4o"`
-	SystemFingerprint string   `json:"system_fingerprint,omitempty" example:"fp_abc123"`
-	Choices           []Choice `json:"choices"`
-	Usage             Usage    `json:"usage"`
-	ServiceTier       string   `json:"service_tier,omitempty" example:"default"`
-}
-
-// Choice represents a completion choice
-type Choice struct {
-	Index        int     `json:"index" example:"0"`
-	Message      Message `json:"message"`
-	LogProbs     string  `json:"logprobs" example:"null"`
-	FinishReason string  `json:"finish_reason" example:"stop"`
-}
-
-// Usage represents token usage information
-type Usage struct {
-	PromptTokens     int `json:"prompt_tokens" example:"10"`
-	CompletionTokens int `json:"completion_tokens" example:"20"`
-	TotalTokens      int `json:"total_tokens" example:"30"`
-	// Added additional usage details for OpenAI compatibility
-	PromptTokensDetails     TokenDetails `json:"prompt_tokens_details"`
-	CompletionTokensDetails TokenDetails `json:"completion_tokens_details"`
-}
-
-// TokenDetails represents detailed token usage information
-type TokenDetails struct {
-	CachedTokens             int `json:"cached_tokens" example:"0"`
-	AudioTokens              int `json:"audio_tokens" example:"0"`
-	ReasoningTokens          int `json:"reasoning_tokens,omitempty" example:"0"`
-	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty" example:"0"`
-	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty" example:"0"`
-}
-
-// ErrorResponse represents an error response
-type ErrorResponse struct {
-	Error ErrorInfo `json:"error"`
-}
-
-// ErrorInfo contains details about an error
-type ErrorInfo struct {
-	Message string `json:"message" example:"Invalid model specified"`
-	Type    string `json:"type" example:"invalid_request_error"`
-	Param   string `json:"param" example:"model"`
-	Code    string `json:"code,omitempty" example:"invalid_model"`
-}
-
-// ModelsResponse represents the response from the models endpoint
-type ModelsResponse struct {
-	Object string  `json:"object" example:"list"`
-	Data   []Model `json:"data"`
-}
-
-// Model represents a language model
-type Model struct {
-	ID      string `json:"id" example:"gpt-4o"`
-	Object  string `json:"object" example:"model"`
-	Created int64  `json:"created" example:"1677610602"`
-	OwnedBy string `json:"owned_by" example:"openai"`
 }

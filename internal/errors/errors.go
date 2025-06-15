@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // ErrorType represents different types of errors
@@ -68,7 +69,7 @@ func NewAPIErrorWithDetails(errorType ErrorType, message, details string) *APIEr
 
 // HandleError writes a standardized error response to the HTTP response writer
 func HandleError(w http.ResponseWriter, err error, statusCode int) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(utils.HeaderContentType, utils.ContentTypeJSON)
 	w.WriteHeader(statusCode)
 
 	var apiError *APIError

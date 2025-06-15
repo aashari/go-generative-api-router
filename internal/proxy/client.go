@@ -39,11 +39,11 @@ func NewResponseStandardizer() *ResponseStandardizer {
 		enableGzip:       true,
 		enableValidation: true,
 		standardHeaders: map[string]string{
-			"Cache-Control":          "no-cache, no-store, must-revalidate",
-			"X-Content-Type-Options": "nosniff",
-			"X-Frame-Options":        "DENY",
-			"X-XSS-Protection":       "1; mode=block",
-			"Referrer-Policy":        "strict-origin-when-cross-origin",
+			utils.HeaderCacheControl:          utils.CacheControlNoStore,
+			utils.HeaderXContentTypeOptions:  utils.XContentTypeOptionsNoSniff,
+			utils.HeaderXFrameOptions:         utils.XFrameOptionsDeny,
+			utils.HeaderXXSSProtection:        utils.XXSSProtectionBlock,
+			utils.HeaderReferrerPolicy:        utils.ReferrerPolicyStrict,
 		},
 	}
 }
@@ -56,7 +56,7 @@ type APIClient struct {
 }
 
 // NewAPIClient creates a new API client with configured base URLs
-func NewAPIClient() *APIClient {
+func NewAPIClient(vendors map[string]string) *APIClient {
 	// Configure client timeout from environment variable
 	// Default to 1200 seconds (20 minutes) to allow for longer AI model responses
 	// This prevents 120-second timeouts that can occur with complex requests
@@ -68,17 +68,14 @@ func NewAPIClient() *APIClient {
 
 	logger.Info(context.Background(), "API client initialized",
 		"client_timeout", clientTimeout,
-		"openai_base_url", "https://api.openai.com/v1",
-		"gemini_base_url", "https://generativelanguage.googleapis.com/v1beta/openai",
+		"openai_base_url", vendors["openai"],
+		"gemini_base_url", vendors["gemini"],
 		"component", "APIClient",
 		"stage", "Initialized",
 	)
 
 	return &APIClient{
-		BaseURLs: map[string]string{
-			"openai": "https://api.openai.com/v1",
-			"gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
-		},
+		BaseURLs:     vendors,
 		httpClient:   httpClient,
 		standardizer: NewResponseStandardizer(),
 	}
@@ -160,7 +157,7 @@ func (c *APIClient) SendRequest(w http.ResponseWriter, r *http.Request, selectio
 	// Check for HTTP error status codes and parse vendor errors
 	if resp.StatusCode >= 400 {
 		// Read response body for error parsing
-		errorBody, readErr := c.standardizer.processResponseBody(resp.Body, resp.Header.Get("Content-Encoding"), selection.Vendor)
+		errorBody, readErr := c.standardizer.processResponseBody(resp.Body, resp.Header.Get(utils.HeaderContentEncoding), selection.Vendor)
 		if readErr != nil {
 			logger.Error(r.Context(), "Failed to read error response body", readErr,
 				"vendor", selection.Vendor,
@@ -258,7 +255,7 @@ func (c *APIClient) setupRequest(r *http.Request, selection *selector.VendorSele
 	}
 
 	// Enable gzip compression for vendor requests to reduce bandwidth and improve performance
-	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set(utils.HeaderAcceptEncoding, utils.AcceptEncodingGzip)
 
 	// Set authorization header using Bearer token for all vendors
 	req.Header.Set("Authorization", "Bearer "+selection.Credential.Value)
@@ -283,25 +280,25 @@ func (c *APIClient) setupResponseHeadersWithVendor(w http.ResponseWriter, resp *
 	// Override content type for streaming mode
 	if isStreaming {
 		// Set essential SSE headers - override JSON content type for streaming
-		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set(utils.HeaderContentType, utils.ContentTypeEventStreamUTF8)
+		w.Header().Set(utils.HeaderCacheControl, utils.CacheControlNoCache)
+		w.Header().Set(utils.HeaderConnection, utils.ConnectionKeepAlive)
 		// Remove Content-Length for streaming as it's chunked
-		w.Header().Del("Content-Length")
+		w.Header().Del(utils.HeaderContentLength)
 		// Explicitly set Transfer-Encoding to chunked so Go will not add a Content-Length later
-		w.Header().Set("Transfer-Encoding", "chunked")
+		w.Header().Set(utils.HeaderTransferEncoding, utils.TransferEncodingChunked)
 		// Set X-Accel-Buffering to no to prevent nginx from buffering
-		w.Header().Set("X-Accel-Buffering", "no")
+		w.Header().Set(utils.HeaderXAccelBuffering, utils.XAccelBufferingNo)
 		// Log complete streaming headers setup
 		logger.Info(context.Background(), "Set streaming headers with complete data",
 			"vendor", vendor,
 			"final_response_headers", map[string][]string(w.Header()),
-			"content_type", w.Header().Get("Content-Type"),
-			"cache_control", w.Header().Get("Cache-Control"),
+			"content_type", w.Header().Get(utils.HeaderContentType),
+			"cache_control", w.Header().Get(utils.HeaderCacheControl),
 			"connection", w.Header().Get("Connection"),
-			"content_length_removed", w.Header().Get("Content-Length") == "",
-			"transfer_encoding", w.Header().Get("Transfer-Encoding"),
-			"x_accel_buffering", w.Header().Get("X-Accel-Buffering"),
+			"content_length_removed", w.Header().Get(utils.HeaderContentLength) == "",
+			"transfer_encoding", w.Header().Get(utils.HeaderTransferEncoding),
+			"x_accel_buffering", w.Header().Get(utils.HeaderXAccelBuffering),
 			"component", "APIClient",
 			"stage", "StreamingHeadersSetup",
 		)
@@ -350,9 +347,9 @@ func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp
 	)
 
 	// Generate consistent conversation-level values for streaming responses
-	conversationID := ChatCompletionID()
+	conversationID := utils.GenerateChatCompletionID()
 	timestamp := time.Now().Unix()
-	systemFingerprint := SystemFingerprint()
+	systemFingerprint := utils.GenerateSystemFingerprint()
 	// Log complete streaming values generation
 	logger.Info(r.Context(), "Generated streaming values with complete data",
 		"conversation_id", conversationID,
@@ -371,11 +368,11 @@ func (c *APIClient) handleStreaming(w http.ResponseWriter, r *http.Request, resp
 	streamProcessor := NewStreamProcessor(conversationID, timestamp, systemFingerprint, selection.Vendor, originalModel)
 
 	// Get content encoding for gzip handling
-	contentEncoding := resp.Header.Get("Content-Encoding")
+	contentEncoding := resp.Header.Get(utils.HeaderContentEncoding)
 	var reader io.Reader = resp.Body
 
 	// Handle gzip decompression if needed
-	if contentEncoding == "gzip" {
+	if contentEncoding == utils.AcceptEncodingGzip {
 		gzipReader, err := gzip.NewReader(resp.Body)
 		if err != nil {
 			logger.Error(r.Context(), "Failed to create gzip reader for streaming response", err,
@@ -596,15 +593,15 @@ func (s *ResponseStandardizer) setCompliantHeaders(w http.ResponseWriter, vendor
 	}
 
 	// Set service identification headers
-	w.Header().Set("Server", "Generative-API-Router/1.0")
-	w.Header().Set("X-Powered-By", "Generative-API-Router")
-	w.Header().Set("X-Vendor-Source", vendor)
+	w.Header().Set(utils.HeaderServer, utils.ServiceName)
+	w.Header().Set(utils.HeaderXPoweredBy, utils.ServicePowered)
+	w.Header().Set(utils.HeaderXVendorSource, vendor)
 
 	// Set CORS headers
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-	w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID, X-Response-Time")
+	w.Header().Set(utils.HeaderAccessControlAllowOrigin, utils.CORSAllowOriginAll)
+	w.Header().Set(utils.HeaderAccessControlAllowMethods, utils.CORSAllowMethodsAll)
+	w.Header().Set(utils.HeaderAccessControlAllowHeaders, utils.CORSAllowHeadersStd)
+	w.Header().Set(utils.HeaderAccessControlExposeHeaders, utils.CORSExposeHeadersStd)
 
 	// Set date header
 	w.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
@@ -613,17 +610,17 @@ func (s *ResponseStandardizer) setCompliantHeaders(w http.ResponseWriter, vendor
 	// No need to generate a new one here
 
 	// Set content type for JSON responses
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set(utils.HeaderContentType, utils.ContentTypeJSONUTF8)
 
 	// Set compression headers if applicable
 	if isCompressed {
-		w.Header().Set("Content-Encoding", "gzip")
-		w.Header().Set("Vary", "Accept-Encoding")
+		w.Header().Set(utils.HeaderContentEncoding, utils.AcceptEncodingGzip)
+		w.Header().Set(utils.HeaderVary, utils.VaryAcceptEncoding)
 	}
 
 	// Set content length if available
 	if contentLength > 0 {
-		w.Header().Set("Content-Length", strconv.Itoa(contentLength))
+		w.Header().Set(utils.HeaderContentLength, strconv.Itoa(contentLength))
 	}
 
 	logger.Debug(context.Background(), "Set standardized headers",
@@ -637,7 +634,7 @@ func (s *ResponseStandardizer) setCompliantHeaders(w http.ResponseWriter, vendor
 
 // processResponseBody handles response body processing
 func (s *ResponseStandardizer) processResponseBody(body io.Reader, contentEncoding string, vendor string) ([]byte, error) {
-	if contentEncoding == "gzip" {
+	if contentEncoding == utils.AcceptEncodingGzip {
 		logger.Debug(context.Background(), "Decompressing gzip response",
 			"vendor", vendor,
 			"component", "ResponseStandardizer",
@@ -670,7 +667,7 @@ func (s *ResponseStandardizer) processResponseBody(body io.Reader, contentEncodi
 	logger.Debug(context.Background(), "Processed response body",
 		"bytes", len(responseBody),
 		"vendor", vendor,
-		"gzipped", contentEncoding == "gzip",
+		"gzipped", contentEncoding == utils.AcceptEncodingGzip,
 		"component", "ResponseStandardizer",
 		"stage", "BodyProcessed",
 	)
@@ -684,8 +681,8 @@ func (s *ResponseStandardizer) shouldCompress(r *http.Request) bool {
 	}
 
 	// Check Accept-Encoding header
-	acceptEncoding := r.Header.Get("Accept-Encoding")
-	userAgent := r.Header.Get("User-Agent")
+	acceptEncoding := r.Header.Get(utils.HeaderAcceptEncoding)
+	userAgent := r.Header.Get(utils.HeaderUserAgent)
 
 	// Disable compression for known problematic clients
 	if strings.Contains(userAgent, "curl/") && !strings.Contains(userAgent, "curl/8") {
@@ -710,11 +707,11 @@ func (s *ResponseStandardizer) shouldCompress(r *http.Request) bool {
 	logger.Debug(context.Background(), "Compression check",
 		"accept_encoding", acceptEncoding,
 		"user_agent", userAgent,
-		"will_compress", strings.Contains(acceptEncoding, "gzip"),
+		"will_compress", strings.Contains(acceptEncoding, utils.AcceptEncodingGzip),
 		"component", "ResponseStandardizer",
 		"stage", "CompressionCheck",
 	)
-	return strings.Contains(acceptEncoding, "gzip")
+	return strings.Contains(acceptEncoding, utils.AcceptEncodingGzip)
 }
 
 // compressResponseMandatory compresses response data
@@ -851,7 +848,7 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	}
 
 	// 1. Process response body
-	responseBody, err := c.standardizer.processResponseBody(resp.Body, resp.Header.Get("Content-Encoding"), selection.Vendor)
+	responseBody, err := c.standardizer.processResponseBody(resp.Body, resp.Header.Get(utils.HeaderContentEncoding), selection.Vendor)
 	if err != nil {
 		logger.Error(r.Context(), "Error processing response body", err,
 			"vendor", selection.Vendor,
@@ -882,7 +879,7 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 		"content_length", resp.ContentLength,
 		"body", vendorResponseBodyForLog,
 		"body_size_bytes", len(responseBody),
-		"content_encoding", resp.Header.Get("Content-Encoding"),
+		"content_encoding", resp.Header.Get(utils.HeaderContentEncoding),
 		"component", "APIClient",
 		"stage", "VendorResponseBodyReceived",
 	)
@@ -927,7 +924,7 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 	}
 
 	// 3. Process response (replace model, format, etc.)
-	modifiedResponse, err := ProcessResponse(responseBody, selection.Vendor, resp.Header.Get("Content-Encoding"), originalModel)
+	modifiedResponse, err := ProcessResponse(responseBody, selection.Vendor, resp.Header.Get(utils.HeaderContentEncoding), originalModel)
 	if err != nil {
 		logger.Error(r.Context(), "Error processing response", err,
 			"vendor", selection.Vendor,
@@ -959,7 +956,7 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 			shouldCompress = false
 		} else {
 			// Set the Content-Encoding header for compressed responses
-			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Set(utils.HeaderContentEncoding, utils.AcceptEncodingGzip)
 		}
 	} else {
 		finalResponse = modifiedResponse
@@ -1002,7 +999,7 @@ func (c *APIClient) handleNonStreamingWithHeaders(w http.ResponseWriter, r *http
 		"body_size_bytes", len(finalResponse),
 		"headers", map[string][]string(w.Header()),
 		"compressed", shouldCompress,
-		"content_encoding", w.Header().Get("Content-Encoding"),
+		"content_encoding", w.Header().Get(utils.HeaderContentEncoding),
 		"component", "APIClient",
 		"stage", "FinalResponseSent",
 	)

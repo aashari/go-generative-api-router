@@ -3,7 +3,7 @@ services:
   app:
     build:
       context: ../..
-      dockerfile: deployments/docker/Dockerfile
+      dockerfile: Dockerfile
     ports:
       - "8082:8082"
     volumes:

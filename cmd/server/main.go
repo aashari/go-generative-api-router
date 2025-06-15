@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"github.com/aashari/go-generative-api-router/internal/app"
-	"github.com/aashari/go-generative-api-router/internal/config"
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // version is set at build time via ldflags
@@ -33,24 +33,6 @@ var version = "unknown"
 // @name Authorization
 // @description Type "Bearer" followed by a space and the API key value.
 
-// CORSMiddleware adds CORS headers to allow cross-origin requests
-func CORSMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-
-		// Handle preflight requests
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		// Process the request
-		next.ServeHTTP(w, r)
-	})
-}
 
 func main() {
 	// Set VERSION environment variable from build-time version if not already set
@@ -59,7 +41,7 @@ func main() {
 	}
 
 	// Load environment variables from .env file
-	err := config.LoadEnvFile()
+	err := utils.LoadEnvFile()
 	if err != nil {
 		logger.Warn(context.Background(), "No .env file found, using environment variables")
 	}

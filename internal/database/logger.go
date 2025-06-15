@@ -12,7 +12,27 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
+
+// RequestLogParams contains all parameters for logging a request
+type RequestLogParams struct {
+	RequestID        string
+	Request          *http.Request
+	StatusCode       int
+	ResponseBody     string
+	Duration         time.Duration
+	OriginalModel    string
+	SelectedVendor   string
+	SelectedModel    string
+	ErrorMessage     string
+	ErrorType        string
+	IsStreaming      bool
+	StreamChunks     int
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
 
 // RequestLogger handles logging requests to MongoDB
 type RequestLogger struct {
@@ -69,23 +89,7 @@ func NewRequestLogger() *RequestLogger {
 }
 
 // LogRequest logs a request to MongoDB asynchronously
-func (rl *RequestLogger) LogRequest(
-	requestID string,
-	r *http.Request,
-	statusCode int,
-	responseBody string,
-	duration time.Duration,
-	originalModel string,
-	selectedVendor string,
-	selectedModel string,
-	errorMessage string,
-	errorType string,
-	isStreaming bool,
-	streamChunks int,
-	promptTokens int,
-	completionTokens int,
-	totalTokens int,
-) {
+func (rl *RequestLogger) LogRequest(params *RequestLogParams) {
 	if !rl.enabled || rl.repo == nil {
 		return
 	}
@@ -97,7 +101,7 @@ func (rl *RequestLogger) LogRequest(
 
 		// Extract request body if available
 		var requestBody string
-		if r.Body != nil {
+		if params.Request.Body != nil {
 			// Note: In a real implementation, you'd need to capture the body
 			// during the request processing, not here (as it's already consumed)
 			requestBody = "" // Placeholder - body should be captured earlier
@@ -105,51 +109,51 @@ func (rl *RequestLogger) LogRequest(
 
 		// Extract headers (excluding sensitive ones)
 		headers := make(map[string]string)
-		for key, values := range r.Header {
+		for key, values := range params.Request.Header {
 			if !isSensitiveHeader(key) && len(values) > 0 {
 				headers[key] = values[0]
 			}
 		}
 
 		// Extract client IP
-		clientIP := r.Header.Get("X-Forwarded-For")
+		clientIP := params.Request.Header.Get(utils.HeaderXForwardedFor)
 		if clientIP == "" {
-			clientIP = r.Header.Get("X-Real-IP")
+			clientIP = params.Request.Header.Get(utils.HeaderXRealIP)
 		}
 		if clientIP == "" {
-			clientIP = r.RemoteAddr
+			clientIP = params.Request.RemoteAddr
 		}
 
 		// Create request log
 		requestLog := &RequestLog{
-			RequestID: requestID,
+			RequestID: params.RequestID,
 			Timestamp: time.Now(),
-			Method:    r.Method,
-			Path:      r.URL.Path,
-			UserAgent: r.Header.Get("User-Agent"),
+			Method:    params.Request.Method,
+			Path:      params.Request.URL.Path,
+			UserAgent: params.Request.Header.Get(utils.HeaderUserAgent),
 			ClientIP:  clientIP,
 			Headers:   headers,
 
-			OriginalModel: originalModel,
+			OriginalModel: params.OriginalModel,
 			RequestBody:   requestBody,
 
-			SelectedVendor:     selectedVendor,
-			SelectedModel:      selectedModel,
+			SelectedVendor:     params.SelectedVendor,
+			SelectedModel:      params.SelectedModel,
 			SelectedCredential: "", // Could be added if needed
 
-			StatusCode:   statusCode,
-			ResponseBody: responseBody,
-			DurationMs:   duration.Milliseconds(),
+			StatusCode:   params.StatusCode,
+			ResponseBody: params.ResponseBody,
+			DurationMs:   params.Duration.Milliseconds(),
 
-			ErrorMessage: errorMessage,
-			ErrorType:    errorType,
+			ErrorMessage: params.ErrorMessage,
+			ErrorType:    params.ErrorType,
 
-			IsStreaming:  isStreaming,
-			StreamChunks: streamChunks,
+			IsStreaming:  params.IsStreaming,
+			StreamChunks: params.StreamChunks,
 
-			PromptTokens:     promptTokens,
-			CompletionTokens: completionTokens,
-			TotalTokens:      totalTokens,
+			PromptTokens:     params.PromptTokens,
+			CompletionTokens: params.CompletionTokens,
+			TotalTokens:      params.TotalTokens,
 
 			Environment: rl.environment,
 			Version:     rl.version,

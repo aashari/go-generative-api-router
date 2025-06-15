@@ -31,11 +31,12 @@ func NewApp() (*App, error) {
 		return nil, fmt.Errorf("failed to load credentials: %w", err)
 	}
 
-	// Load vendor-model pairs
-	models, err := config.LoadVendorModels("configs/models.json")
+	// Load vendor-model pairs and vendor URLs
+	modelsConfig, err := config.LoadModelsConfig("configs/models.json")
 	if err != nil {
-		return nil, fmt.Errorf("failed to load vendor models: %w", err)
+		return nil, fmt.Errorf("failed to load models configuration: %w", err)
 	}
+	models := modelsConfig.Models
 
 	// Validate configuration
 	if validationErr := config.ValidateConfiguration(creds, models); validationErr != nil {
@@ -52,7 +53,7 @@ func NewApp() (*App, error) {
 	// Database logging functionality has been removed
 
 	// Initialize components
-	apiClient := proxy.NewAPIClient()
+	apiClient := proxy.NewAPIClient(modelsConfig.Vendors)
 	modelSelector := selector.NewContextAwareSelector()
 	apiHandlers := handlers.NewAPIHandlers(creds, models, apiClient, modelSelector)
 

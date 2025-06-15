@@ -25,6 +25,11 @@ type VendorModel struct {
 	Config *ModelConfig `json:"config,omitempty"`
 }
 
+type ModelsConfig struct {
+	Vendors map[string]string `json:"vendors"`
+	Models  []VendorModel     `json:"models"`
+}
+
 func LoadCredentials(filePath string) ([]Credential, error) {
 	filePath = filepath.Clean(filePath)
 	data, err := os.ReadFile(filePath)
@@ -45,4 +50,15 @@ func LoadVendorModels(filePath string) ([]VendorModel, error) {
 	var models []VendorModel
 	err = json.Unmarshal(data, &models)
 	return models, err
+}
+
+func LoadModelsConfig(filePath string) (*ModelsConfig, error) {
+	filePath = filepath.Clean(filePath)
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	var config ModelsConfig
+	err = json.Unmarshal(data, &config)
+	return &config, err
 }

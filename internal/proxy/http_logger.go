@@ -123,10 +123,10 @@ func (h *HTTPLogger) LogRequestWithTiming(ctx context.Context, req *http.Request
 	}
 
 	// Add tracking headers info
-	if requestID := req.Header.Get("X-Request-ID"); requestID != "" {
+	if requestID := req.Header.Get(utils.HeaderRequestID); requestID != "" {
 		requestData["forwarded_request_id"] = requestID
 	}
-	if correlationID := req.Header.Get("X-Correlation-ID"); correlationID != "" {
+	if correlationID := req.Header.Get(utils.HeaderCorrelationID); correlationID != "" {
 		requestData["forwarded_correlation_id"] = correlationID
 	}
 

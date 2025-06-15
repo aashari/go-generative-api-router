@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // ImageProcessor handles image URL processing and conversion
@@ -478,43 +478,59 @@ func (p *ImageProcessor) extractFileHeaders(fileURL *FileURL) map[string]string 
 }
 
 // generateImageFailureMessage creates a contextual user message for failed image downloads
-func (p *ImageProcessor) generateImageFailureMessage(err error, imagePosition, totalImages int, hasMixedScenario bool) string {
+// generateProcessingFailureMessage creates a generic failure message for any item type (image, file, audio)
+func (p *ImageProcessor) generateProcessingFailureMessage(err error, itemType string, itemPosition, totalItems int, hasMixedScenario bool) string {
 	// Determine the type of error for more specific messaging
 	errorMsg := err.Error()
 	var baseMessage string
 	var contextPrefix string
 
 	// Create context prefix for mixed scenarios
-	if hasMixedScenario && totalImages > 1 {
-		contextPrefix = fmt.Sprintf("Image %d of %d could not be processed. ", imagePosition, totalImages)
-	} else if totalImages > 1 {
-		contextPrefix = fmt.Sprintf("One of the %d images provided could not be processed. ", totalImages)
+	if hasMixedScenario && totalItems > 1 {
+		contextPrefix = fmt.Sprintf("%s %d of %d could not be processed. ", strings.Title(itemType), itemPosition, totalItems)
+	} else if totalItems > 1 {
+		contextPrefix = fmt.Sprintf("One of the %d %ss provided could not be processed. ", totalItems, itemType)
 	} else {
-		contextPrefix = "The image provided could not be processed. "
+		contextPrefix = fmt.Sprintf("The %s provided could not be processed. ", itemType)
 	}
 
 	// Determine specific error message based on error type
 	if strings.Contains(errorMsg, "no such host") || strings.Contains(errorMsg, "dial tcp") {
-		baseMessage = "Respond naturally that you couldn't access the image due to network connectivity issues. The image server appears to be unreachable or the domain doesn't exist. Ask the user to verify the URL or provide an alternative image."
+		baseMessage = fmt.Sprintf("Respond naturally that you couldn't access the %s due to network connectivity issues. The %s server appears to be unreachable or the domain doesn't exist. Ask the user to verify the URL or provide an alternative %s.", itemType, itemType, itemType)
 	} else if strings.Contains(errorMsg, "status 401") || strings.Contains(errorMsg, "status 403") {
-		baseMessage = "Respond naturally that the image requires authentication or access permissions that weren't provided. The image couldn't be accessed due to authorization issues. Suggest they provide proper authentication headers or use a publicly accessible image."
+		baseMessage = fmt.Sprintf("Respond naturally that the %s requires authentication or access permissions that weren't provided. The %s couldn't be accessed due to authorization issues. Suggest they provide proper authentication headers or use a publicly accessible %s.", itemType, itemType, itemType)
 	} else if strings.Contains(errorMsg, "status 404") {
-		baseMessage = "Respond naturally that the image URL appears to be broken or the image has been moved/deleted (404 Not Found). Ask them to provide a valid image URL."
+		baseMessage = fmt.Sprintf("Respond naturally that the %s URL appears to be broken or the %s has been moved/deleted (404 Not Found). Ask them to provide a valid %s URL.", itemType, itemType, itemType)
 	} else if strings.Contains(errorMsg, "invalid content type") {
-		baseMessage = "Respond naturally that the URL doesn't point to a valid image file. The content isn't an image format that can be processed. Ask them to provide a direct link to an image file (PNG, JPEG, GIF, WebP, etc.)."
+		var formatExamples string
+		switch itemType {
+		case "image":
+			formatExamples = "(PNG, JPEG, GIF, WebP, etc.)"
+		case "audio":
+			formatExamples = "(MP3, WAV, etc.)"
+		default:
+			formatExamples = ""
+		}
+		baseMessage = fmt.Sprintf("Respond naturally that the URL doesn't point to a valid %s file. The content isn't an %s format that can be processed. Ask them to provide a direct link to an %s file %s.", itemType, itemType, itemType, formatExamples)
 	} else if strings.Contains(errorMsg, "size exceeds limit") {
-		baseMessage = "Respond naturally that the image file is too large to process (exceeds 20MB limit). Ask them to provide a smaller image or compress it before sharing."
+		baseMessage = fmt.Sprintf("Respond naturally that the %s file is too large to process (exceeds 20MB limit). Ask them to provide a smaller %s or compress it before sharing.", itemType, itemType)
 	} else if strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "deadline exceeded") {
-		baseMessage = "Respond naturally that the image took too long to download due to slow response from the image server. Suggest they try again later or provide an alternative image."
+		baseMessage = fmt.Sprintf("Respond naturally that the %s took too long to download due to slow response from the %s server. Suggest they try again later or provide an alternative %s.", itemType, itemType, itemType)
+	} else if strings.Contains(errorMsg, "markitdown failed") && itemType == "file" {
+		baseMessage = "Respond naturally that the file couldn't be converted to text. The file format may not be supported by the text conversion tool, or the file may be corrupted. Ask them to provide the file in a different format (PDF, Word document, text file, etc.)."
 	} else {
 		// Generic error message for unknown error types
-		baseMessage = "Respond naturally that there was a technical issue processing this image. Ask them to try providing the image again or use an alternative image."
+		baseMessage = fmt.Sprintf("Respond naturally that there was a technical issue processing this %s. Ask them to try providing the %s again or use an alternative %s.", itemType, itemType, itemType)
 	}
 
 	// Add guidance for mixed scenarios
 	var mixedScenarioGuidance string
-	if hasMixedScenario && totalImages > 1 {
-		mixedScenarioGuidance = " You can still analyze and respond to the other images that were successfully processed."
+	if hasMixedScenario && totalItems > 1 {
+		if itemType == "file" {
+			mixedScenarioGuidance = " You can still analyze and respond to the other files and images that were successfully processed."
+		} else {
+			mixedScenarioGuidance = fmt.Sprintf(" You can still analyze and respond to the other %ss that were successfully processed.", itemType)
+		}
 	}
 
 	// Construct the complete user message (no system wrapper for vendor compatibility)
@@ -522,6 +538,10 @@ func (p *ImageProcessor) generateImageFailureMessage(err error, imagePosition, t
 		contextPrefix, baseMessage, mixedScenarioGuidance)
 
 	return userMessage
+}
+
+func (p *ImageProcessor) generateImageFailureMessage(err error, imagePosition, totalImages int, hasMixedScenario bool) string {
+	return p.generateProcessingFailureMessage(err, "image", imagePosition, totalImages, hasMixedScenario)
 }
 
 // isPublicURL checks if a URL is a public HTTP/HTTPS URL
@@ -538,53 +558,16 @@ func (p *ImageProcessor) downloadAndConvertImage(ctx context.Context, imageURL s
 func (p *ImageProcessor) downloadAndConvertImageWithHeaders(ctx context.Context, imageURL string, headers map[string]string) (string, error) {
 	ctx = logger.WithComponent(ctx, "image_processor")
 	ctx = logger.WithStage(ctx, "image_download")
-	logger.Debug(ctx, "Downloading image from URL with headers", "url", imageURL, "headers", headers)
 
-	// Create request with context
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Set user agent to avoid blocks
-	req.Header.Set("User-Agent", "Generative-API-Router/1.0")
-
-	// Add custom headers if provided
-	if headers != nil {
-		for key, value := range headers {
-			req.Header.Set(key, value)
-			logger.Debug(ctx, "Added custom header for image download", "header_key", key, "header_value", value, "url", imageURL)
-		}
-	}
-
-	// Download the image
-	resp, err := p.httpClient.Do(req)
+	// Use the utility function to download the file
+	imageData, contentType, err := utils.DownloadFile(ctx, imageURL, headers, p.maxSize)
 	if err != nil {
 		return "", fmt.Errorf("failed to download image: %w", err)
 	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to download image: status %d", resp.StatusCode)
-	}
 
 	// Check content type
-	contentType := resp.Header.Get("Content-Type")
 	if !p.isValidImageType(contentType) {
 		return "", fmt.Errorf("invalid content type: %s", contentType)
-	}
-
-	// Read with size limit
-	limitedReader := io.LimitReader(resp.Body, p.maxSize)
-	imageData, err := io.ReadAll(limitedReader)
-	if err != nil {
-		return "", fmt.Errorf("failed to read image data: %w", err)
-	}
-
-	// Check if we hit the size limit
-	if int64(len(imageData)) >= p.maxSize {
-		return "", fmt.Errorf("image size exceeds limit of %d bytes", p.maxSize)
 	}
 
 	// For generic content types, detect the actual image format from magic numbers
@@ -851,35 +834,11 @@ func mustMarshal(v interface{}) []byte {
 func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, fileURL string, headers map[string]string) (string, error) {
 	ctx = logger.WithComponent(ctx, "image_processor")
 	ctx = logger.WithStage(ctx, "file_download")
-	logger.Debug(ctx, "Downloading file from URL with headers", "url", fileURL, "headers", headers)
 
-	// Create request with context
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Set user agent to avoid blocks
-	req.Header.Set("User-Agent", "Generative-API-Router/1.0")
-
-	// Add custom headers if provided
-	if headers != nil {
-		for key, value := range headers {
-			req.Header.Set(key, value)
-			logger.Debug(ctx, "Added custom header for file download", "header_key", key, "header_value", value, "url", fileURL)
-		}
-	}
-
-	// Download the file
-	resp, err := p.httpClient.Do(req)
+	// Use the utility function to download the file
+	fileData, originalContentType, err := utils.DownloadFile(ctx, fileURL, headers, p.maxSize)
 	if err != nil {
 		return "", fmt.Errorf("failed to download file: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to download file: status %d", resp.StatusCode)
 	}
 
 	// Create temporary file
@@ -890,18 +849,6 @@ func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, 
 	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
 
-	// Read with size limit and write to temp file
-	limitedReader := io.LimitReader(resp.Body, p.maxSize)
-	fileData, err := io.ReadAll(limitedReader)
-	if err != nil {
-		return "", fmt.Errorf("failed to read file data: %w", err)
-	}
-
-	// Check if we hit the size limit
-	if int64(len(fileData)) >= p.maxSize {
-		return "", fmt.Errorf("file size exceeds limit of %d bytes", p.maxSize)
-	}
-
 	// Write data to temp file
 	_, err = tempFile.Write(fileData)
 	if err != nil {
@@ -910,7 +857,6 @@ func (p *ImageProcessor) downloadAndConvertFileWithHeaders(ctx context.Context, 
 	tempFile.Close()
 
 	// Detect actual file type for better logging
-	originalContentType := resp.Header.Get("Content-Type")
 	detectedFileType := p.detectDocumentFormat(fileData)
 
 	// Convert file to text using markitdown
@@ -976,94 +922,10 @@ func (p *ImageProcessor) generateFileUserMessage(fileInfo map[string]interface{}
 
 // generateFileFailureMessage creates a contextual user message for failed file downloads
 func (p *ImageProcessor) generateFileFailureMessage(err error, filePosition, totalFiles int, hasMixedScenario bool) string {
-	// Determine the type of error for more specific messaging
-	errorMsg := err.Error()
-	var baseMessage string
-	var contextPrefix string
-
-	// Create context prefix for mixed scenarios
-	if hasMixedScenario && totalFiles > 1 {
-		contextPrefix = fmt.Sprintf("File %d of %d could not be processed. ", filePosition, totalFiles)
-	} else if totalFiles > 1 {
-		contextPrefix = fmt.Sprintf("One of the %d files provided could not be processed. ", totalFiles)
-	} else {
-		contextPrefix = "The file provided could not be processed. "
-	}
-
-	// Determine specific error message based on error type
-	if strings.Contains(errorMsg, "no such host") || strings.Contains(errorMsg, "dial tcp") {
-		baseMessage = "Respond naturally that you couldn't access the file due to network connectivity issues. The file server appears to be unreachable or the domain doesn't exist. Ask the user to verify the URL or provide an alternative file."
-	} else if strings.Contains(errorMsg, "status 401") || strings.Contains(errorMsg, "status 403") {
-		baseMessage = "Respond naturally that the file requires authentication or access permissions that weren't provided. The file couldn't be accessed due to authorization issues. Suggest they provide proper authentication headers or use a publicly accessible file."
-	} else if strings.Contains(errorMsg, "status 404") {
-		baseMessage = "Respond naturally that the file URL appears to be broken or the file has been moved/deleted (404 Not Found). Ask them to provide a valid file URL."
-	} else if strings.Contains(errorMsg, "size exceeds limit") {
-		baseMessage = "Respond naturally that the file is too large to process (exceeds 20MB limit). Ask them to provide a smaller file or compress it before sharing."
-	} else if strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "deadline exceeded") {
-		baseMessage = "Respond naturally that the file took too long to download due to slow response from the file server. Suggest they try again later or provide an alternative file."
-	} else if strings.Contains(errorMsg, "markitdown failed") {
-		baseMessage = "Respond naturally that the file couldn't be converted to text. The file format may not be supported by the text conversion tool, or the file may be corrupted. Ask them to provide the file in a different format (PDF, Word document, text file, etc.)."
-	} else {
-		// Generic error message for unknown error types
-		baseMessage = "Respond naturally that there was a technical issue processing this file. Ask them to try providing the file again or use an alternative file."
-	}
-
-	// Add guidance for mixed scenarios
-	var mixedScenarioGuidance string
-	if hasMixedScenario && totalFiles > 1 {
-		mixedScenarioGuidance = " You can still analyze and respond to the other files and images that were successfully processed."
-	}
-
-	// Construct the complete user message (no system wrapper for vendor compatibility)
-	userMessage := fmt.Sprintf("%s%s%s",
-		contextPrefix, baseMessage, mixedScenarioGuidance)
-
-	return userMessage
+	return p.generateProcessingFailureMessage(err, "file", filePosition, totalFiles, hasMixedScenario)
 }
 
 // generateAudioFailureMessage creates a contextual user message for failed audio downloads
 func (p *ImageProcessor) generateAudioFailureMessage(err error, audioPosition, totalAudios int, hasMixedScenario bool) string {
-	// Determine the type of error for more specific messaging
-	errorMsg := err.Error()
-	var baseMessage string
-	var contextPrefix string
-
-	// Create context prefix for mixed scenarios
-	if hasMixedScenario && totalAudios > 1 {
-		contextPrefix = fmt.Sprintf("Audio %d of %d could not be processed. ", audioPosition, totalAudios)
-	} else if totalAudios > 1 {
-		contextPrefix = fmt.Sprintf("One of the %d audios provided could not be processed. ", totalAudios)
-	} else {
-		contextPrefix = "The audio provided could not be processed. "
-	}
-
-	// Determine specific error message based on error type
-	if strings.Contains(errorMsg, "no such host") || strings.Contains(errorMsg, "dial tcp") {
-		baseMessage = "Respond naturally that you couldn't access the audio due to network connectivity issues. The audio server appears to be unreachable or the domain doesn't exist. Ask the user to verify the URL or provide an alternative audio."
-	} else if strings.Contains(errorMsg, "status 401") || strings.Contains(errorMsg, "status 403") {
-		baseMessage = "Respond naturally that the audio requires authentication or access permissions that weren't provided. The audio couldn't be accessed due to authorization issues. Suggest they provide proper authentication headers or use a publicly accessible audio."
-	} else if strings.Contains(errorMsg, "status 404") {
-		baseMessage = "Respond naturally that the audio URL appears to be broken or the audio has been moved/deleted (404 Not Found). Ask them to provide a valid audio URL."
-	} else if strings.Contains(errorMsg, "invalid content type") {
-		baseMessage = "Respond naturally that the URL doesn't point to a valid audio file. The content isn't an audio format that can be processed. Ask them to provide a direct link to an audio file (MP3, WAV, etc.)."
-	} else if strings.Contains(errorMsg, "size exceeds limit") {
-		baseMessage = "Respond naturally that the audio file is too large to process (exceeds 20MB limit). Ask them to provide a smaller audio file or compress it before sharing."
-	} else if strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "deadline exceeded") {
-		baseMessage = "Respond naturally that the audio took too long to download due to slow response from the audio server. Suggest they try again later or provide an alternative audio."
-	} else {
-		// Generic error message for unknown error types
-		baseMessage = "Respond naturally that there was a technical issue processing this audio. Ask them to try providing the audio again or use an alternative audio."
-	}
-
-	// Add guidance for mixed scenarios
-	var mixedScenarioGuidance string
-	if hasMixedScenario && totalAudios > 1 {
-		mixedScenarioGuidance = " You can still analyze and respond to the other audios that were successfully processed."
-	}
-
-	// Construct the complete user message (no system wrapper for vendor compatibility)
-	userMessage := fmt.Sprintf("%s%s%s",
-		contextPrefix, baseMessage, mixedScenarioGuidance)
-
-	return userMessage
+	return p.generateProcessingFailureMessage(err, "audio", audioPosition, totalAudios, hasMixedScenario)
 }

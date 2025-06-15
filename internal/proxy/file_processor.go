@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // FileProcessor handles file processing operations with intelligent routing
@@ -178,7 +179,7 @@ func (f *FileProcessor) detectFileType(ctx context.Context, fileURL string, head
 	}
 
 	// Set user agent
-	req.Header.Set("User-Agent", "Generative-API-Router/1.0")
+	req.Header.Set(utils.HeaderUserAgent, utils.ServiceName)
 
 	// Add custom headers if provided
 	if headers != nil {
@@ -200,7 +201,7 @@ func (f *FileProcessor) detectFileType(ctx context.Context, fileURL string, head
 	}
 
 	// Get content type from header
-	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
+	contentType := strings.ToLower(resp.Header.Get(utils.HeaderContentType))
 
 	// Read first 512 bytes for magic number detection
 	buffer := make([]byte, 512)

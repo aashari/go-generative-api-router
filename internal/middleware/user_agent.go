@@ -6,6 +6,7 @@ import (
 
 	"github.com/aashari/go-generative-api-router/internal/errors"
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // UserAgentFilterMiddleware filters requests based on User-Agent header
@@ -37,10 +38,10 @@ func UserAgentFilterMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Get User-Agent header
-		userAgent := r.Header.Get("User-Agent")
+		userAgent := r.Header.Get(utils.HeaderUserAgent)
 
 		// Check if User-Agent starts with "BrainyBuddy-API"
-		if !strings.HasPrefix(userAgent, "BrainyBuddy-API") {
+		if !strings.HasPrefix(userAgent, utils.UserAgentPrefix) {
 			// Log the blocked request
 			ctx := logger.WithComponent(r.Context(), "UserAgentMiddleware")
 			ctx = logger.WithStage(ctx, "RequestBlocked")

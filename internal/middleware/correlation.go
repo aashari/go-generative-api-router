@@ -3,8 +3,6 @@ package middleware
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -62,30 +60,30 @@ func extractTrackingIDsWithPriority(r *http.Request) (requestID, correlationID s
 	// Priority cascade for Request ID (matching BrainyBuddy logic)
 
 	// 1. Client-provided X-Request-ID (highest priority)
-	if clientRequestID := r.Header.Get("X-Request-ID"); clientRequestID != "" {
+	if clientRequestID := r.Header.Get(utils.HeaderRequestID); clientRequestID != "" {
 		requestID = clientRequestID
 		sources.RequestIDSource = "client-x-request-id"
-	} else if cfRay := r.Header.Get("cf-ray"); cfRay != "" {
+	} else if cfRay := r.Header.Get(utils.HeaderCloudFlareRay); cfRay != "" {
 		// 2. CloudFlare Ray ID
 		requestID = cfRay
 		sources.RequestIDSource = "cloudflare-ray"
-	} else if xForwardedFor := r.Header.Get("X-Forwarded-For"); xForwardedFor != "" {
+	} else if xForwardedFor := r.Header.Get(utils.HeaderXForwardedFor); xForwardedFor != "" {
 		// 3. X-Forwarded-For based ID (for load balancer scenarios)
 		requestID = generateHashFromIP(xForwardedFor)
 		sources.RequestIDSource = "x-forwarded-for-hash"
 	} else {
 		// 4. Generated fallback
-		requestID = generateRequestID()
+		requestID = utils.GenerateRequestID()
 		sources.RequestIDSource = "generated-uuid"
 	}
 
 	// Priority cascade for Correlation ID
 
 	// 1. Client-provided X-Correlation-ID (highest priority)
-	if clientCorrelationID := r.Header.Get("X-Correlation-ID"); clientCorrelationID != "" {
+	if clientCorrelationID := r.Header.Get(utils.HeaderCorrelationID); clientCorrelationID != "" {
 		correlationID = clientCorrelationID
 		sources.CorrelationIDSource = "client-x-correlation-id"
-	} else if cfRay := r.Header.Get("cf-ray"); cfRay != "" {
+	} else if cfRay := r.Header.Get(utils.HeaderCloudFlareRay); cfRay != "" {
 		// 2. CloudFlare Ray ID for correlation
 		correlationID = cfRay
 		sources.CorrelationIDSource = "cloudflare-ray"
@@ -215,7 +213,7 @@ func logStructuredRequest(ctx context.Context, r *http.Request, body []byte) {
 	requestData := map[string]interface{}{
 		"method":     r.Method,
 		"endpoint":   r.URL.Path,
-		"user_agent": r.Header.Get("User-Agent"),
+		"user_agent": r.Header.Get(utils.HeaderUserAgent),
 		"client_ip":  getClientIP(r),
 		"headers":    utils.SanitizeHeaders(r.Header),
 	}
@@ -269,13 +267,13 @@ func logStructuredResponse(ctx context.Context, w *responseWriterWrapper, durati
 // getClientIP extracts client IP with priority cascade
 func getClientIP(r *http.Request) string {
 	// Priority: X-Forwarded-For > X-Real-IP > CF-Connecting-IP > RemoteAddr
-	if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+	if forwardedFor := r.Header.Get(utils.HeaderXForwardedFor); forwardedFor != "" {
 		return strings.Split(forwardedFor, ",")[0]
 	}
-	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+	if realIP := r.Header.Get(utils.HeaderXRealIP); realIP != "" {
 		return realIP
 	}
-	if cfIP := r.Header.Get("CF-Connecting-IP"); cfIP != "" {
+	if cfIP := r.Header.Get(utils.HeaderCFConnectingIP); cfIP != "" {
 		return cfIP
 	}
 	return r.RemoteAddr
@@ -298,7 +296,7 @@ func (w *responseWriterWrapper) WriteHeader(statusCode int) {
 
 func (w *responseWriterWrapper) Write(data []byte) (int, error) {
 	// Check if it's a streaming response
-	if strings.Contains(w.Header().Get("Content-Type"), "text/event-stream") {
+	if strings.Contains(w.Header().Get(utils.HeaderContentType), utils.ContentTypeEventStream) {
 		w.isStreaming = true
 		// For streaming, write directly to original writer
 		if !w.headerWritten {
@@ -326,16 +324,7 @@ func (w *responseWriterWrapper) Flush() {
 
 // Header constants
 const (
-	RequestIDHeader     = "X-Request-ID"
-	CorrelationIDHeader = "X-Correlation-ID"
+	RequestIDHeader     = utils.HeaderRequestID
+	CorrelationIDHeader = utils.HeaderCorrelationID
 )
 
-// generateRequestID creates a unique request ID
-func generateRequestID() string {
-	bytes := make([]byte, 8)
-	if _, err := rand.Read(bytes); err != nil {
-		// Fallback to timestamp-based ID if random fails
-		return hex.EncodeToString([]byte(time.Now().Format("20060102150405.000")))
-	}
-	return hex.EncodeToString(bytes)
-}

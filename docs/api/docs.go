@@ -78,7 +78,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ChatCompletionRequest"
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ChatCompletionRequest"
                         }
                     }
                 ],
@@ -86,25 +86,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OpenAI-compatible chat completion response",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ChatCompletionResponse"
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ChatCompletionResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request error",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized error",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ErrorResponse"
                         }
                     }
                 }
@@ -135,7 +135,7 @@ const docTemplate = `{
                     "200": {
                         "description": "List of available models",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ModelsResponse"
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ModelsResponse"
                         }
                     }
                 }
@@ -143,16 +143,16 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "internal_handlers.ChatCompletionRequest": {
+        "github_com_aashari_go-generative-api-router_internal_types.ChatCompletionRequest": {
             "type": "object"
         },
-        "internal_handlers.ChatCompletionResponse": {
+        "github_com_aashari_go-generative-api-router_internal_types.ChatCompletionResponse": {
             "type": "object",
             "properties": {
                 "choices": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_handlers.Choice"
+                        "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.Choice"
                     }
                 },
                 "created": {
@@ -180,11 +180,11 @@ const docTemplate = `{
                     "example": "fp_abc123"
                 },
                 "usage": {
-                    "$ref": "#/definitions/internal_handlers.Usage"
+                    "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.Usage"
                 }
             }
         },
-        "internal_handlers.Choice": {
+        "github_com_aashari_go-generative-api-router_internal_types.Choice": {
             "type": "object",
             "properties": {
                 "finish_reason": {
@@ -200,11 +200,11 @@ const docTemplate = `{
                     "example": "null"
                 },
                 "message": {
-                    "$ref": "#/definitions/internal_handlers.Message"
+                    "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.Message"
                 }
             }
         },
-        "internal_handlers.ErrorInfo": {
+        "github_com_aashari_go-generative-api-router_internal_types.ErrorInfo": {
             "type": "object",
             "properties": {
                 "code": {
@@ -225,36 +225,15 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers.ErrorResponse": {
+        "github_com_aashari_go-generative-api-router_internal_types.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {
-                    "$ref": "#/definitions/internal_handlers.ErrorInfo"
+                    "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ErrorInfo"
                 }
             }
         },
-        "internal_handlers.HealthResponse": {
-            "type": "object",
-            "properties": {
-                "details": {
-                    "type": "object",
-                    "additionalProperties": true
-                },
-                "services": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "status": {
-                    "type": "string"
-                },
-                "timestamp": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_handlers.Message": {
+        "github_com_aashari_go-generative-api-router_internal_types.Message": {
             "type": "object",
             "properties": {
                 "content": {
@@ -275,12 +254,12 @@ const docTemplate = `{
                 "tool_calls": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_handlers.ToolCall"
+                        "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ToolCall"
                     }
                 }
             }
         },
-        "internal_handlers.Model": {
+        "github_com_aashari_go-generative-api-router_internal_types.Model": {
             "type": "object",
             "properties": {
                 "created": {
@@ -301,13 +280,13 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers.ModelsResponse": {
+        "github_com_aashari_go-generative-api-router_internal_types.ModelsResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_handlers.Model"
+                        "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.Model"
                     }
                 },
                 "object": {
@@ -316,7 +295,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers.TokenDetails": {
+        "github_com_aashari_go-generative-api-router_internal_types.TokenDetails": {
             "type": "object",
             "properties": {
                 "accepted_prediction_tokens": {
@@ -341,7 +320,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers.ToolCall": {
+        "github_com_aashari_go-generative-api-router_internal_types.ToolCall": {
             "type": "object",
             "properties": {
                 "function": {
@@ -358,7 +337,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers.Usage": {
+        "github_com_aashari_go-generative-api-router_internal_types.Usage": {
             "type": "object",
             "properties": {
                 "completion_tokens": {
@@ -366,7 +345,7 @@ const docTemplate = `{
                     "example": 20
                 },
                 "completion_tokens_details": {
-                    "$ref": "#/definitions/internal_handlers.TokenDetails"
+                    "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.TokenDetails"
                 },
                 "prompt_tokens": {
                     "type": "integer",
@@ -376,13 +355,34 @@ const docTemplate = `{
                     "description": "Added additional usage details for OpenAI compatibility",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/internal_handlers.TokenDetails"
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.TokenDetails"
                         }
                     ]
                 },
                 "total_tokens": {
                     "type": "integer",
                     "example": 30
+                }
+            }
+        },
+        "internal_handlers.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "details": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "services": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
                 }
             }
         }

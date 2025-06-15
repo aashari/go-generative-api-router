@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // AudioProcessor handles audio URL processing and conversion
@@ -90,7 +91,7 @@ func (p *AudioProcessor) downloadAudio(ctx context.Context, audioURL string, hea
 	}
 
 	// Set user agent
-	req.Header.Set("User-Agent", "Generative-API-Router/1.0")
+	req.Header.Set(utils.HeaderUserAgent, utils.ServiceName)
 
 	// Add custom headers if provided
 	if headers != nil {
@@ -112,7 +113,7 @@ func (p *AudioProcessor) downloadAudio(ctx context.Context, audioURL string, hea
 	}
 
 	// Get content type
-	contentType := resp.Header.Get("Content-Type")
+	contentType := resp.Header.Get(utils.HeaderContentType)
 
 	// Read with size limit
 	limitedReader := io.LimitReader(resp.Body, p.maxSize)

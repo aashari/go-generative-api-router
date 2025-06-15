@@ -10,6 +10,7 @@ import (
 	"github.com/aashari/go-generative-api-router/internal/logger"
 	"github.com/aashari/go-generative-api-router/internal/reliability"
 	"github.com/aashari/go-generative-api-router/internal/selector"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 	"github.com/aashari/go-generative-api-router/internal/validator"
 )
 
@@ -128,7 +129,7 @@ func executeProxyRequestWithRetry(w http.ResponseWriter, r *http.Request, select
 	logger.Info(ctx, "Processing request",
 		"method", r.Method,
 		"path", r.URL.Path,
-		"user_agent", r.Header.Get("User-Agent"),
+		"user_agent", r.Header.Get(utils.HeaderUserAgent),
 		"headers", map[string][]string(r.Header),
 		"body_length", len(body),
 		"component", "Proxy",

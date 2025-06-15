@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // ProcessResponse processes the API response, ensuring all required fields are present
@@ -274,7 +275,7 @@ func decompressResponse(responseBody []byte, contentEncoding string) ([]byte, er
 // addMissingIDs generates missing chat completion IDs
 func addMissingIDs(responseData map[string]interface{}) {
 	if id, ok := responseData["id"]; !ok || id == nil || id == "" {
-		responseData["id"] = ChatCompletionID()
+		responseData["id"] = utils.GenerateChatCompletionID()
 	}
 }
 
@@ -288,7 +289,7 @@ func addOpenAICompatibilityFields(responseData map[string]interface{}) {
 	// Add system_fingerprint if missing or invalid
 	systemFingerprintValue, systemFingerprintExists := responseData["system_fingerprint"]
 	if !systemFingerprintExists || systemFingerprintValue == nil {
-		generatedFP := SystemFingerprint()
+		generatedFP := utils.GenerateSystemFingerprint()
 		responseData["system_fingerprint"] = generatedFP
 		// Log complete system fingerprint generation
 		ctx := context.Background()
@@ -302,7 +303,7 @@ func addOpenAICompatibilityFields(responseData map[string]interface{}) {
 			"value_existed", systemFingerprintExists)
 	} else if _, isString := systemFingerprintValue.(string); !isString {
 		// If it exists but is not a string
-		generatedFP := SystemFingerprint()
+		generatedFP := utils.GenerateSystemFingerprint()
 		responseData["system_fingerprint"] = generatedFP
 		// Log complete system fingerprint replacement
 		ctx := context.Background()

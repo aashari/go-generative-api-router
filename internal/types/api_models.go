@@ -1,4 +1,4 @@
-package app
+package types
 
 // ChatCompletionRequest represents a request to the chat completions API
 type ChatCompletionRequest struct {

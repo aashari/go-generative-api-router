@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/aashari/go-generative-api-router/internal/logger"
+	"github.com/aashari/go-generative-api-router/internal/utils"
 )
 
 // ProcessToolCalls processes a list of tool calls, adding or updating IDs as needed.
@@ -82,7 +83,7 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 		// Force override for Gemini vendor or if ID is missing/empty
 		if vendor == "gemini" {
 			// Always generate a new ID for Gemini responses regardless of current value
-			newID := ToolCallID()
+			newID := utils.GenerateToolCallID()
 			// Log complete Gemini ID forcing operation
 			ctx = logger.WithStage(ctx, "gemini_id_forcing")
 			logger.Info(ctx, "Forcing new tool call ID for Gemini with complete data",
@@ -95,7 +96,7 @@ func ProcessToolCalls(toolCalls []interface{}, vendor string) []interface{} {
 			toolCallMap["id"] = newID
 		} else if !idExists || toolCallID == nil || toolCallID == "" {
 			// For other vendors, only generate if missing/empty
-			newID := ToolCallID()
+			newID := utils.GenerateToolCallID()
 			// Log complete ID generation operation
 			ctx = logger.WithStage(ctx, "id_generation")
 			logger.Info(ctx, "Generated new tool call ID with complete data",
@@ -186,7 +187,7 @@ func validateAndSplitArguments(originalToolCall map[string]interface{}, argument
 		newToolCall["function"] = newFunction
 
 		// Generate new ID for each split tool call
-		newID := ToolCallID()
+		newID := utils.GenerateToolCallID()
 		newToolCall["id"] = newID
 
 		// Log complete split tool call creation

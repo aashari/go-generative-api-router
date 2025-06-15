@@ -30,9 +30,10 @@ func SetupRoutes(apiHandlers *handlers.APIHandlers) http.Handler {
 	))
 
 	// Wrap with middleware stack
-	// Apply User-Agent filtering first, then request correlation
+	// Apply CORS first (outermost), then User-Agent filtering, then request correlation
 	handler := middleware.UserAgentFilterMiddleware(mux)
 	handler = middleware.RequestCorrelationMiddleware(handler)
+	handler = middleware.CORSMiddleware(handler)
 
 	return handler
 }

@@ -45,6 +45,14 @@ ENV LOG_LEVEL=INFO
 ENV LOG_FORMAT=json
 ENV LOG_OUTPUT=stdout
 
+# Configure timeout settings for production AI workloads
+# Server timeouts should be longer than client timeout to prevent premature connection closure
+# Increased timeouts to prevent 120-second client timeouts
+ENV READ_TIMEOUT=1500
+ENV WRITE_TIMEOUT=1500
+ENV IDLE_TIMEOUT=1800
+ENV CLIENT_TIMEOUT=1200
+
 # Ensure logs are sent to stdout/stderr for CloudWatch collection
 ENV GLOG_logtostderr=1
 
@@ -52,4 +60,4 @@ ENV GLOG_logtostderr=1
 EXPOSE 8082
 
 # Run the application
-CMD ["./generative-api-router"] 
+CMD ["./generative-api-router"]
