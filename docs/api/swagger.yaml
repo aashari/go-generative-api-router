@@ -63,6 +63,23 @@ definitions:
       error:
         $ref: '#/definitions/github_com_aashari_go-generative-api-router_internal_types.ErrorInfo'
     type: object
+  github_com_aashari_go-generative-api-router_internal_types.ImageToTextRequest:
+    properties:
+      image_url:
+        $ref: '#/definitions/github_com_aashari_go-generative-api-router_internal_types.ImageURLWithHeaders'
+      type:
+        example: image_url
+        type: string
+    type: object
+  github_com_aashari_go-generative-api-router_internal_types.ImageURLWithHeaders:
+    properties:
+      headers:
+        additionalProperties:
+          type: string
+        type: object
+      url:
+        type: string
+    type: object
   github_com_aashari_go-generative-api-router_internal_types.Message:
     properties:
       content:
@@ -238,6 +255,42 @@ paths:
       summary: Chat completions API
       tags:
       - chat
+  /v1/images/text:
+    post:
+      consumes:
+      - application/json
+      description: Generates a detailed text description of a single image
+      parameters:
+      - description: Optional vendor to target (e.g., 'openai', 'gemini')
+        in: query
+        name: vendor
+        type: string
+      - description: Image description request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_aashari_go-generative-api-router_internal_types.ImageToTextRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OpenAI-compatible chat completion response
+          schema:
+            $ref: '#/definitions/github_com_aashari_go-generative-api-router_internal_types.ChatCompletionResponse'
+        "400":
+          description: Bad request error
+          schema:
+            $ref: '#/definitions/github_com_aashari_go-generative-api-router_internal_types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_aashari_go-generative-api-router_internal_types.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Describe image
+      tags:
+      - images
   /v1/models:
     get:
       consumes:

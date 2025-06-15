@@ -427,6 +427,28 @@ POST /v1/chat/completions?vendor=gemini
 
 Available vendors depend on server configuration.
 
+### Image Description
+
+Generate a detailed textual description of a single image.
+
+#### Request
+```http
+POST /v1/images/text
+Content-Type: application/json
+Authorization: Bearer YOUR_API_KEY
+
+{
+  "type": "image_url",
+  "image_url": {
+    "url": "https://example.com/image.jpg"
+  }
+}
+```
+
+#### Response
+
+Returns the same structure as the chat completions endpoint.
+
 ### Tool Calling
 
 The service supports OpenAI-compatible tool calling:

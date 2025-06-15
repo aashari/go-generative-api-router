@@ -116,3 +116,15 @@ type Model struct {
 	Created int64  `json:"created" example:"1677610602"`
 	OwnedBy string `json:"owned_by" example:"openai"`
 }
+
+// ImageToTextRequest represents a request to describe a single image
+type ImageToTextRequest struct {
+	Type     string              `json:"type" example:"image_url"`
+	ImageURL ImageURLWithHeaders `json:"image_url"`
+}
+
+// ImageURLWithHeaders represents an image URL with optional headers
+type ImageURLWithHeaders struct {
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
+}

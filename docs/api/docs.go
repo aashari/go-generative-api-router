@@ -110,6 +110,63 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/images/text": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Generates a detailed text description of a single image",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "images"
+                ],
+                "summary": "Describe image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Optional vendor to target (e.g., 'openai', 'gemini')",
+                        "name": "vendor",
+                        "in": "query"
+                    },
+                    {
+                        "description": "Image description request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ImageToTextRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OpenAI-compatible chat completion response",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ChatCompletionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/models": {
             "get": {
                 "description": "Returns a list of available language models in OpenAI-compatible format",
@@ -230,6 +287,32 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ErrorInfo"
+                }
+            }
+        },
+        "github_com_aashari_go-generative-api-router_internal_types.ImageToTextRequest": {
+            "type": "object",
+            "properties": {
+                "image_url": {
+                    "$ref": "#/definitions/github_com_aashari_go-generative-api-router_internal_types.ImageURLWithHeaders"
+                },
+                "type": {
+                    "type": "string",
+                    "example": "image_url"
+                }
+            }
+        },
+        "github_com_aashari_go-generative-api-router_internal_types.ImageURLWithHeaders": {
+            "type": "object",
+            "properties": {
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "url": {
+                    "type": "string"
                 }
             }
         },
