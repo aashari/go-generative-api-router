@@ -436,3 +436,82 @@ func SanitizeHeaders(headers map[string][]string) map[string][]string {
 	}
 	return sanitized
 }
+
+// MaxLogTextLength defines the maximum length of string fields in logs
+const MaxLogTextLength = 100
+
+// TruncateStringsInData walks through any data structure and truncates
+// string values to MaxLogTextLength characters while preserving the shape
+// of the original structure.
+func TruncateStringsInData(data interface{}) interface{} {
+	return truncateStringsValue(reflect.ValueOf(data), MaxLogTextLength).Interface()
+}
+
+// truncateStringsValue recursively truncates strings in reflect.Value
+func truncateStringsValue(v reflect.Value, maxLen int) reflect.Value {
+	if !v.IsValid() {
+		return v
+	}
+
+	switch v.Kind() {
+	case reflect.String:
+		s := v.String()
+		runes := []rune(s)
+		if len(runes) > maxLen {
+			truncated := string(runes[:maxLen]) + fmt.Sprintf("...[%d chars truncated]", len(runes)-maxLen)
+			return reflect.ValueOf(truncated)
+		}
+		return v
+
+	case reflect.Map:
+		if v.IsNil() {
+			return v
+		}
+		newMap := reflect.MakeMap(v.Type())
+		for _, key := range v.MapKeys() {
+			value := v.MapIndex(key)
+			newMap.SetMapIndex(key, truncateStringsValue(value, maxLen))
+		}
+		return newMap
+
+	case reflect.Slice, reflect.Array:
+		newSlice := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
+		for i := 0; i < v.Len(); i++ {
+			newSlice.Index(i).Set(truncateStringsValue(v.Index(i), maxLen))
+		}
+		return newSlice
+
+	case reflect.Struct:
+		newStruct := reflect.New(v.Type()).Elem()
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Field(i)
+			fieldType := v.Type().Field(i)
+			if !field.CanInterface() {
+				continue
+			}
+			truncated := truncateStringsValue(field, maxLen)
+			if newStruct.Field(i).CanSet() && truncated.Type().AssignableTo(fieldType.Type) {
+				newStruct.Field(i).Set(truncated)
+			}
+		}
+		return newStruct
+
+	case reflect.Ptr:
+		if v.IsNil() {
+			return v
+		}
+		elem := truncateStringsValue(v.Elem(), maxLen)
+		newPtr := reflect.New(elem.Type())
+		newPtr.Elem().Set(elem)
+		return newPtr
+
+	case reflect.Interface:
+		if v.IsNil() {
+			return v
+		}
+		return reflect.ValueOf(TruncateStringsInData(v.Interface()))
+
+	default:
+		return v
+	}
+}

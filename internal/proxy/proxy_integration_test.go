@@ -183,18 +183,18 @@ func TestFullProxyPipeline_NonStreaming(t *testing.T) {
 				// Verify request body
 				body, err := io.ReadAll(r.Body)
 				require.NoError(t, err)
-				
+
 				var requestData map[string]interface{}
 				err = json.Unmarshal(body, &requestData)
 				require.NoError(t, err)
-				
+
 				// Verify model was properly set
 				assert.Equal(t, tt.selectedModel, requestData["model"])
 
 				// Send mock response
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				
+
 				responseBody, _ := json.Marshal(tt.vendorResponse)
 				w.Write(responseBody)
 			}))
@@ -247,15 +247,15 @@ func TestFullProxyPipeline_NonStreaming(t *testing.T) {
 			} else {
 				// For success cases, verify successful response
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				
+
 				// Verify response body
 				responseBody, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
-				
+
 				var responseData map[string]interface{}
 				err = json.Unmarshal(responseBody, &responseData)
 				require.NoError(t, err)
-				
+
 				// Verify standardized response structure
 				assert.NotEmpty(t, responseData["id"], "Response should have an ID")
 				assert.Equal(t, "chat.completion", responseData["object"])
@@ -334,7 +334,7 @@ func TestFullProxyPipeline_Streaming(t *testing.T) {
 		},
 		"stream": true,
 	}
-	
+
 	requestBodyBytes, _ := json.Marshal(requestBody)
 	req := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(requestBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
@@ -360,7 +360,7 @@ func TestFullProxyPipeline_Streaming(t *testing.T) {
 	require.NoError(t, err)
 
 	responseStr := string(responseBody)
-	
+
 	// Verify streaming chunks are present
 	assert.Contains(t, responseStr, `"object":"chat.completion.chunk"`)
 	assert.Contains(t, responseStr, `"content":"Hello"`)
@@ -391,25 +391,25 @@ func TestProxyPipeline_WithImageProcessing(t *testing.T) {
 		// Verify request contains base64 encoded image
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
-		
+
 		var requestData map[string]interface{}
 		err = json.Unmarshal(body, &requestData)
 		require.NoError(t, err)
-		
+
 		// Check that image_url was processed
 		messages := requestData["messages"].([]interface{})
 		message := messages[0].(map[string]interface{})
 		content := message["content"].([]interface{})
 		imageContent := content[1].(map[string]interface{})
 		imageURL := imageContent["image_url"].(map[string]interface{})
-		
+
 		// Should contain base64 data, not original URL
 		assert.Contains(t, imageURL["url"].(string), "data:image")
 
 		// Send mock response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
+
 		response := map[string]interface{}{
 			"id":      "chatcmpl-vision123",
 			"object":  "chat.completion",
@@ -431,7 +431,7 @@ func TestProxyPipeline_WithImageProcessing(t *testing.T) {
 				"total_tokens":      60,
 			},
 		}
-		
+
 		responseBody, _ := json.Marshal(response)
 		w.Write(responseBody)
 	}))
@@ -448,7 +448,7 @@ func TestProxyPipeline_WithImageProcessing(t *testing.T) {
 			0x01, 0x01, 0x01, 0x00, 0x18, 0xdd, 0x8d, 0xb4, 0x00, 0x00, 0x00, 0x00,
 			0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
 		}
-		
+
 		w.Header().Set("Content-Type", "image/png")
 		w.WriteHeader(http.StatusOK)
 		w.Write(pngData)
@@ -499,7 +499,7 @@ func TestProxyPipeline_WithImageProcessing(t *testing.T) {
 		},
 		"stream": false,
 	}
-	
+
 	requestBodyBytes, _ := json.Marshal(requestBody)
 	req := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(requestBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
@@ -516,15 +516,15 @@ func TestProxyPipeline_WithImageProcessing(t *testing.T) {
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	
+
 	// Verify response body
 	responseBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	
+
 	var responseData map[string]interface{}
 	err = json.Unmarshal(responseBody, &responseData)
 	require.NoError(t, err)
-	
+
 	// Verify standardized response structure
 	assert.Equal(t, "chatcmpl-vision123", responseData["id"])
 	assert.Equal(t, "chat.completion", responseData["object"])
@@ -540,11 +540,11 @@ func TestProxyPipeline_ValidationAndModification(t *testing.T) {
 	credentials, models, _ := setupProxyTestData()
 
 	tests := []struct {
-		name           string
-		requestBody    map[string]interface{}
-		expectedModel  string
-		expectError    bool
-		errorContains  string
+		name          string
+		requestBody   map[string]interface{}
+		expectedModel string
+		expectError   bool
+		errorContains string
 	}{
 		{
 			name: "valid request - no modification needed",
@@ -595,7 +595,7 @@ func TestProxyPipeline_ValidationAndModification(t *testing.T) {
 				vendorServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusOK)
-					
+
 					response := map[string]interface{}{
 						"id":      "chatcmpl-test",
 						"object":  "chat.completion",
@@ -617,7 +617,7 @@ func TestProxyPipeline_ValidationAndModification(t *testing.T) {
 							"total_tokens":      15,
 						},
 					}
-					
+
 					responseBody, _ := json.Marshal(response)
 					w.Write(responseBody)
 				}))
@@ -631,8 +631,9 @@ func TestProxyPipeline_ValidationAndModification(t *testing.T) {
 				testVendors["gemini"] = vendorServer.URL
 			} else {
 				// For error cases that don't reach vendor, provide dummy URLs
-				testVendors["openai"] = "http://dummy.url"
-				testVendors["gemini"] = "http://dummy.url"
+				// Use an unreachable local address to simulate network failure
+				testVendors["openai"] = "http://127.0.0.1:65534"
+				testVendors["gemini"] = "http://127.0.0.1:65534"
 			}
 
 			// Create mock selector
@@ -689,15 +690,15 @@ func TestProxyPipeline_ValidationAndModification(t *testing.T) {
 					expectedStatus = http.StatusBadGateway
 				}
 				assert.Equal(t, expectedStatus, resp.StatusCode)
-				
+
 				responseBody, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
-				
+
 				assert.Contains(t, string(responseBody), tt.errorContains)
 			} else {
 				// Should succeed
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				
+
 				// Verify mock expectations
 				mockSelector.AssertExpectations(t)
 			}
@@ -713,7 +714,7 @@ func BenchmarkFullProxyPipeline(b *testing.B) {
 	vendorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
+
 		response := map[string]interface{}{
 			"id":      "chatcmpl-bench",
 			"object":  "chat.completion",
@@ -735,7 +736,7 @@ func BenchmarkFullProxyPipeline(b *testing.B) {
 				"total_tokens":      15,
 			},
 		}
-		
+
 		responseBody, _ := json.Marshal(response)
 		w.Write(responseBody)
 	}))
@@ -762,7 +763,7 @@ func BenchmarkFullProxyPipeline(b *testing.B) {
 		},
 		"stream": false,
 	}
-	
+
 	requestBodyBytes, _ := json.Marshal(requestBody)
 
 	b.ResetTimer()

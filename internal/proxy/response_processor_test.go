@@ -495,11 +495,11 @@ func TestAddOpenAICompatibilityFields(t *testing.T) {
 		{
 			name: "existing valid fields",
 			responseData: map[string]interface{}{
-				"service_tier":        "premium",
+				"service_tier":       "premium",
 				"system_fingerprint": "fp_existing",
 			},
 			checkFields: map[string]interface{}{
-				"service_tier":        "premium",
+				"service_tier":       "premium",
 				"system_fingerprint": "fp_existing",
 			},
 		},
@@ -527,9 +527,9 @@ func TestAddOpenAICompatibilityFields(t *testing.T) {
 
 func TestReplaceModelField(t *testing.T) {
 	tests := []struct {
-		name         string
-		responseData map[string]interface{}
-		vendor       string
+		name          string
+		responseData  map[string]interface{}
+		vendor        string
 		originalModel string
 		expectedModel string
 	}{
@@ -543,9 +543,9 @@ func TestReplaceModelField(t *testing.T) {
 			expectedModel: "gpt-4-turbo",
 		},
 		{
-			name:         "add model to response without one",
-			responseData: map[string]interface{}{},
-			vendor:       "gemini",
+			name:          "add model to response without one",
+			responseData:  map[string]interface{}{},
+			vendor:        "gemini",
 			originalModel: "gemini-pro",
 			expectedModel: "gemini-pro",
 		},
@@ -563,7 +563,7 @@ func TestReplaceModelField(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			replaceModelField(tt.responseData, tt.vendor, tt.originalModel)
-			
+
 			if tt.originalModel != "" {
 				assert.Equal(t, tt.expectedModel, tt.responseData["model"])
 			}
