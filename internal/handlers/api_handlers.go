@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -324,4 +326,92 @@ func (h *APIHandlers) ModelsHandler(w http.ResponseWriter, r *http.Request) {
 			"response_size", len(jsonResp),
 		)
 	}
+}
+
+// ImageToTextHandler handles the image description endpoint
+// @Summary      Describe image
+// @Description  Generates a detailed text description of a single image
+// @Tags         images
+// @Accept       json
+// @Produce      json
+// @Param        vendor  query     string                     false  "Optional vendor to target (e.g., 'openai', 'gemini')"
+// @Param        request body      types.ImageToTextRequest   true   "Image description request"
+// @Security     BearerAuth
+// @Success      200  {object}  types.ChatCompletionResponse "OpenAI-compatible chat completion response"
+// @Failure      400  {object}  types.ErrorResponse          "Bad request error"
+// @Failure      500  {object}  types.ErrorResponse          "Internal server error"
+// @Router       /v1/images/text [post]
+func (h *APIHandlers) ImageToTextHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := logger.WithComponent(r.Context(), "ImageToTextHandler")
+	ctx = logger.WithStage(ctx, "Request")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var imgReq types.ImageToTextRequest
+	if err := json.NewDecoder(r.Body).Decode(&imgReq); err != nil {
+		logger.Error(ctx, "Failed to decode request", err)
+		validationErr := errors.NewValidationError("invalid request format")
+		errors.HandleError(w, validationErr, http.StatusBadRequest)
+		return
+	}
+
+	if imgReq.Type != "image_url" || imgReq.ImageURL.URL == "" {
+		validationErr := errors.NewValidationError("invalid image_url object")
+		errors.HandleError(w, validationErr, http.StatusBadRequest)
+		return
+	}
+
+	// Build chat completion payload with system instruction
+	userContent := map[string]interface{}{
+		"type":      "image_url",
+		"image_url": map[string]interface{}{"url": imgReq.ImageURL.URL},
+	}
+	if len(imgReq.ImageURL.Headers) > 0 {
+		userContent["image_url"].(map[string]interface{})["headers"] = imgReq.ImageURL.Headers
+	}
+
+	payload := map[string]interface{}{
+		"model": utils.DefaultImageModel,
+		"messages": []interface{}{
+			map[string]interface{}{
+				"role":    "system",
+				"content": utils.ImageDescriptionPrompt,
+			},
+			map[string]interface{}{
+				"role":    "user",
+				"content": []interface{}{userContent},
+			},
+		},
+	}
+
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		logger.Error(ctx, "Failed to marshal payload", err)
+		apiErr := errors.NewInternalError("failed to build request")
+		errors.HandleError(w, apiErr, http.StatusInternalServerError)
+		return
+	}
+
+	newReq := r.Clone(r.Context())
+	newReq.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	newReq.ContentLength = int64(len(bodyBytes))
+
+	vendorFilter := r.URL.Query().Get("vendor")
+	creds := h.Credentials
+	models := h.VendorModels
+	if vendorFilter != "" {
+		creds = filter.CredentialsByVendor(creds, vendorFilter)
+		models = filter.ModelsByVendor(models, vendorFilter)
+
+		if len(creds) == 0 || len(models) == 0 {
+			validationErr := errors.NewValidationError("no credentials or models for vendor")
+			errors.HandleError(w, validationErr, http.StatusBadRequest)
+			return
+		}
+	}
+
+	proxy.ProxyRequest(w, newReq, creds, models, h.APIClient, h.ModelSelector)
 }

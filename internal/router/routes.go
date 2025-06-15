@@ -17,6 +17,7 @@ func SetupRoutes(apiHandlers *handlers.APIHandlers) http.Handler {
 	mux.HandleFunc("/health", apiHandlers.HealthHandler)
 	mux.HandleFunc("/v1/chat/completions", apiHandlers.ChatCompletionsHandler)
 	mux.HandleFunc("/v1/models", apiHandlers.ModelsHandler)
+	mux.HandleFunc("/v1/images/text", apiHandlers.ImageToTextHandler)
 
 	// Add pprof endpoints for performance profiling
 	monitoring.SetupPprofRoutes(mux)

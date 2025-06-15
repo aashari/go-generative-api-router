@@ -79,7 +79,7 @@ func TestValidateAndModifyRequest(t *testing.T) {
 							map[string]interface{}{
 								"type": "image_url",
 								"image_url": map[string]interface{}{
-									"url": "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==",
+									"url": "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
 								},
 							},
 						},
